@@ -21,13 +21,13 @@
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
-  },
-  "include": ["src"],
-   "baseUrl": ".",
+    "noUncheckedSideEffectImports": true,
+
+    /* 🔑 Alias fix */
+    "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "./src/*"
-      ]
+      "@/*": ["./src/*"]
     }
+  },
+  "include": ["src"]
 }

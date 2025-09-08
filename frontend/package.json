@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@radix-ui/react-slot": "^1.2.3",
     "@react-three/drei": "^10.7.4",
     "@react-three/fiber": "^9.3.0",
     "@tailwindcss/vite": "^4.1.13",

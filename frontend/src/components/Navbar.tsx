@@ -1,17 +1,18 @@
 import { Button } from "./ui/button";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-
+  const navigate = useNavigate();
   return (
     <nav className="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-md border-b border-border">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex items-center">
-            <h1 className="text-2xl font-bold bg-hero-gradient bg-clip-text text-white">
+            <h1 className="text-2xl font-bold bg-hero-gradient bg-clip-text text-white cursor-pointer" onClick={()=>navigate("/")}> 
               Rehearse.io
             </h1>
           </div>
@@ -34,7 +35,7 @@ const Navbar = () => {
 
           {/* Desktop CTA */}
           <div className="hidden md:flex items-center space-x-4">
-            <Button variant="outline" className="text-accent-foreground">Sign In</Button>
+            <Button variant="outline" className="text-accent-foreground" onClick={()=>navigate("/signup")}>Sign In</Button>
             <Button variant="default" className="">Start Free Trial</Button>
           </div>
 

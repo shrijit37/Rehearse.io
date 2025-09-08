@@ -2,12 +2,19 @@ import express from "express";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
 import authRoutes from "./routes/auth.js";
+import morgan from "morgan";
 
 
 dotenv.config();
 const app = express();
 
 app.use(express.json());
+app.use(morgan("dev"));
+
+morgan.token("remote-ip", function (req) {
+  return req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+});
+app.use(morgan(":remote-ip :method :url :status :res[content-length] - :response-time ms"));
 
 const PORT = process.env.PORT || 9000;
 

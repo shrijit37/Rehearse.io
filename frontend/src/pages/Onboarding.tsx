@@ -49,11 +49,7 @@ const Onboarding = () => {
     const audioChunksRef = useRef<Blob[]>([]);
 
     // --- Step 1: Resume Upload Logic ---
-    const onDrop = useCallback((acceptedFiles: File[]) => {
-        if (acceptedFiles.length > 0) {
-            setResumeFile(acceptedFiles[0]);
-        }
-    }, []);
+  
 
     // Mock dropzone for this example since we don't have the actual library
     const getRootProps = () => ({
@@ -174,7 +170,7 @@ const Onboarding = () => {
         }
     };
 
-    
+
     const startRecording = async () => {
         try {
             const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });

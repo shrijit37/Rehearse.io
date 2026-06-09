@@ -1,0 +1,70 @@
+services:
+  mongo:
+    image: mongo:7.0
+    container_name: rehearse-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - rehearse-network
+
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: rehearse-ai-service
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY
+      - GROQ_API_KEY
+      - ANTHROPIC_API_KEY
+      - LITELLM_MODEL
+      - STT_MODEL
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000}
+      - API_KEY=${AI_SERVICE_API_KEY:-}  # Shared secret for backend→AI auth
+    networks:
+      - rehearse-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: rehearse-backend
+    ports:
+      - "9000:9000"
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/rehearse
+      - JWT_SECRET=${JWT_SECRET}  # REQUIRED — no default; fails fast if unset
+      - PORT=9000
+      - NODE_ENV=production
+      - AI_SERVICE_URL=http://ai-service:8000
+      - AI_SERVICE_API_KEY=${AI_SERVICE_API_KEY:-}  # Shared secret for backend→AI auth
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000}
+    depends_on:
+      - mongo
+      - ai-service
+    networks:
+      - rehearse-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=${VITE_API_URL:-http://localhost:9000}
+    container_name: rehearse-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - rehearse-network
+
+networks:
+  rehearse-network:
+    driver: bridge
+
+volumes:
+  mongo_data:

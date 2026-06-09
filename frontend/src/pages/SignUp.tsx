@@ -1,17 +1,9 @@
 import React, { useState, type ChangeEvent, type FormEvent } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import { Eye, EyeOff, Github, Mail, User, Lock } from "lucide-react";
+import { Eye, EyeOff, Mail, User, Lock, ArrowLeft, CheckCircle2, Building2, Users } from "lucide-react";
 
 interface FormData {
   email: string;
@@ -19,263 +11,326 @@ interface FormData {
   confirmPassword: string;
   firstName: string;
   lastName: string;
+  role: "recruiter" | "candidate";
+  consentGiven: boolean;
 }
 
 const SignUp: React.FC = () => {
+  const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState<boolean>(true);
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
   const [formData, setFormData] = useState<FormData>({
     email: "",
     password: "",
     confirmPassword: "",
     firstName: "",
     lastName: "",
+    role: "recruiter",
+    consentGiven: false,
   });
 
-  const handleInputChange = (
-    e: ChangeEvent<HTMLInputElement>
-  ): void => {
+  const handleInputChange = (e: ChangeEvent<HTMLInputElement>): void => {
     const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = (e: FormEvent): void => {
+  const handleSubmit = async (e: FormEvent): Promise<void> => {
     e.preventDefault();
-    console.log("Form submitted:", formData);
-    // Add your authentication logic here
+    setError(null);
+    setSuccess(null);
+    setLoading(true);
+
+    try {
+      if (!isLogin && formData.password !== formData.confirmPassword) {
+        setError("Passwords do not match");
+        setLoading(false);
+        return;
+      }
+      if (!isLogin && !formData.consentGiven) {
+        setError("You must accept the Privacy Policy and Terms of Service to create an account.");
+        setLoading(false);
+        return;
+      }
+
+      const endpoint = isLogin ? "/api/auth/login" : "/api/auth/signup";
+      const payload = isLogin
+        ? { email: formData.email, password: formData.password }
+        : {
+            name: `${formData.firstName} ${formData.lastName}`,
+            email: formData.email,
+            password: formData.password,
+            role: formData.role,
+            consentGiven: formData.consentGiven,
+            consentVersion: "1.0",
+          };
+
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:9000";
+      const response = await fetch(`${apiUrl}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Authentication failed");
+
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user", JSON.stringify(data.user));
+      setSuccess(isLogin ? "Signed in successfully." : "Account created successfully.");
+      window.dispatchEvent(new Event("storage"));
+
+      setTimeout(() => {
+        if (!isLogin) {
+          // New signup: redirect based on role
+          if (data.user?.role === "recruiter") {
+            navigate("/recruiter");
+          } else {
+            navigate("/onboarding");
+          }
+        } else {
+          // Login: redirect based on role and onboarding status
+          if (data.user?.role === "recruiter") {
+            navigate("/recruiter");
+          } else {
+            // Candidate login — check if they have completed onboarding (resume present)
+            if (data.user?.onboarded) {
+              navigate("/dashboard");
+            } else {
+              navigate("/onboarding");
+            }
+          }
+        }
+      }, 600);
+    } catch (err: any) {
+      setError(err.message || "An error occurred");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-slate-100 to-slate-200 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 flex items-center justify-center p-4 ">
-      {/* Background decorative elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-blue-400/20 to-purple-600/20 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-tr from-pink-400/20 to-blue-600/20 rounded-full blur-3xl" />
+    <div className="min-h-screen bg-background flex pt-14">
+      {/* Auth form */}
+      <div className="flex-1 flex flex-col justify-center items-center px-4 sm:px-6 lg:px-20 xl:px-24 py-12 relative">
+        {/* Back to home */}
+        <button
+          onClick={() => navigate("/")}
+          className="absolute top-6 left-6 flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Home
+        </button>
+
+        <div className="w-full max-w-md space-y-8">
+          {/* Header */}
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold tracking-[-0.02em] text-foreground">
+              {isLogin ? "Welcome back" : "Create your account"}
+            </h1>
+            <p className="text-[13px] text-muted-foreground leading-relaxed">
+              {isLogin
+                ? "Sign in to manage or complete your interviews."
+                : "Set up your organization and start running structured interviews."}
+            </p>
+          </div>
+
+          {/* Form card */}
+          <div className="border border-border/80 rounded-xl bg-card p-6 shadow-sm">
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {error && (
+                <div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-lg border border-destructive/20 text-center animate-in fade-in slide-in-from-top-1 duration-150">
+                  {error}
+                </div>
+              )}
+              {success && (
+                <div className="bg-success/10 text-success text-[13px] font-medium p-3 rounded-lg border border-success/20 text-center animate-in fade-in slide-in-from-top-1 duration-150">
+                  {success}
+                </div>
+              )}
+
+              {/* Role selection (signup only) */}
+              {!isLogin && (
+                <div className="space-y-2">
+                  <Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">I am a...</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setFormData((p) => ({ ...p, role: "recruiter" }))}
+                      className={`p-4 rounded-lg border-2 transition-all text-center space-y-2 ${
+                        formData.role === "recruiter"
+                          ? "border-primary bg-primary/[0.05] ring-1 ring-primary/20"
+                          : "border-border hover:border-primary/30"
+                      }`}
+                    >
+                      <Building2 className={`h-5 w-5 mx-auto ${formData.role === "recruiter" ? "text-primary" : "text-muted-foreground"}`} />
+                      <p className="text-[13px] font-semibold">Recruiter</p>
+                      <p className="text-[11px] text-muted-foreground">Create & manage interviews</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData((p) => ({ ...p, role: "candidate" }))}
+                      className={`p-4 rounded-lg border-2 transition-all text-center space-y-2 ${
+                        formData.role === "candidate"
+                          ? "border-primary bg-primary/[0.05] ring-1 ring-primary/20"
+                          : "border-border hover:border-primary/30"
+                      }`}
+                    >
+                      <Users className={`h-5 w-5 mx-auto ${formData.role === "candidate" ? "text-primary" : "text-muted-foreground"}`} />
+                      <p className="text-[13px] font-semibold">Candidate</p>
+                      <p className="text-[11px] text-muted-foreground">Complete interviews</p>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Name fields (signup only) */}
+              {!isLogin && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="firstName" className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">First name</Label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input id="firstName" name="firstName" placeholder="Jane" value={formData.firstName} onChange={handleInputChange}
+                        className="pl-9 h-9 text-[13px]" required={!isLogin} />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="lastName" className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Last name</Label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                      <Input id="lastName" name="lastName" placeholder="Doe" value={formData.lastName} onChange={handleInputChange}
+                        className="pl-9 h-9 text-[13px]" required={!isLogin} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Email */}
+              <div className="space-y-1.5">
+                <Label htmlFor="email" className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Email address</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input id="email" name="email" type="email" placeholder="name@company.com" value={formData.email} onChange={handleInputChange}
+                    className="pl-9 h-9 text-[13px]" required />
+                </div>
+              </div>
+
+              {/* Password */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <Label htmlFor="password" className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Password</Label>
+                  {isLogin && (
+                    <button type="button" className="text-[11px] text-primary font-medium hover:underline focus:outline-none">
+                      Forgot password?
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input id="password" name="password" type={showPassword ? "text" : "password"} value={formData.password} onChange={handleInputChange}
+                    className="pl-9 pr-10 h-9 text-[13px]" required />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground transition-colors focus:outline-none">
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Confirm password (signup only) */}
+              {!isLogin && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="confirmPassword" className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Confirm password</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input id="confirmPassword" name="confirmPassword" type={showConfirmPassword ? "text" : "password"} value={formData.confirmPassword} onChange={handleInputChange}
+                      className="pl-9 pr-10 h-9 text-[13px]" required={!isLogin} />
+                    <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground transition-colors focus:outline-none">
+                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Consent checkbox (signup only) */}
+              {!isLogin && (
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.consentGiven}
+                    onChange={(e) => setFormData((p) => ({ ...p, consentGiven: e.target.checked }))}
+                    className="accent-primary mt-0.5 shrink-0"
+                  />
+                  <span className="text-[12px] text-muted-foreground leading-relaxed">
+                    I agree to the{" "}
+                    <button type="button" onClick={() => window.open("/privacy", "_blank")} className="text-primary font-medium hover:underline">Privacy Policy</button>
+                    {" "}and{" "}
+                    <button type="button" onClick={() => window.open("/terms", "_blank")} className="text-primary font-medium hover:underline">Terms of Service</button>.
+                  </span>
+                </label>
+              )}
+
+              <Button type="submit" className="w-full font-semibold h-10" disabled={loading}>
+                {loading ? "Please wait..." : isLogin ? "Sign in" : "Create account"}
+              </Button>
+            </form>
+
+            <p className="text-center text-[13px] text-muted-foreground mt-5 pt-4 border-t border-border/60">
+              {isLogin ? "New to Rehearse.io?" : "Already have an account?"}
+              <button onClick={() => { setIsLogin(!isLogin); setError(null); setSuccess(null); }}
+                className="ml-1.5 text-primary font-semibold hover:underline focus:outline-none">
+                {isLogin ? "Create an account" : "Sign in"}
+              </button>
+            </p>
+          </div>
+        </div>
       </div>
 
-      <Card className="w-full max-w-md relative backdrop-blur-sm bg-white/80 dark:bg-slate-900/80 border-white/20 shadow-2xl mt-4">
-        <CardHeader className="space-y-1 pb-6">
-          <div className="flex items-center justify-center mb-4">
-            <div className="w-12 h-12 bg-gradient-to-tr from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-              <User className="w-6 h-6 text-white" />
-            </div>
-          </div>
-          <CardTitle className="text-2xl font-bold text-center bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-300 bg-clip-text text-transparent">
-            {isLogin ? "Welcome back" : "Create account"}
-          </CardTitle>
-          <CardDescription className="text-center text-muted-foreground">
-            {isLogin
-              ? "Sign in to your account to continue"
-              : "Sign up to get started with your account"}
-          </CardDescription>
-        </CardHeader>
+      {/* Marketing panel (lg+) */}
+      <div className="hidden lg:flex lg:w-[45%] bg-primary text-primary-foreground p-12 flex-col justify-between relative overflow-hidden select-none">
+        {/* Background accents */}
+        <div className="absolute -top-32 -right-32 w-[500px] h-[500px] bg-white/[0.06] rounded-full blur-[100px] pointer-events-none" />
+        <div className="absolute -bottom-32 -left-32 w-[350px] h-[350px] bg-white/[0.04] rounded-full blur-[80px] pointer-events-none" />
 
-        <CardContent className="space-y-4">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {!isLogin && (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName" className="text-sm font-medium">
-                    First name
-                  </Label>
-                  <Input
-                    id="firstName"
-                    name="firstName"
-                    placeholder="John"
-                    value={formData.firstName}
-                    onChange={handleInputChange}
-                    className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20"
-                    required={!isLogin}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lastName" className="text-sm font-medium">
-                    Last name
-                  </Label>
-                  <Input
-                    id="lastName"
-                    name="lastName"
-                    placeholder="Doe"
-                    value={formData.lastName}
-                    onChange={handleInputChange}
-                    className="transition-all duration-200 focus:ring-2 focus:ring-blue-500/20"
-                    required={!isLogin}
-                  />
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-medium">
-                Email address
-              </Label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  placeholder="john@example.com"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-blue-500/20"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm font-medium">
-                Password
-              </Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                <Input
-                  id="password"
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  className="pl-10 pr-10 transition-all duration-200 focus:ring-2 focus:ring-blue-500/20"
-                  required
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4 text-muted-foreground" />
-                  ) : (
-                    <Eye className="w-4 h-4 text-muted-foreground" />
-                  )}
-                </Button>
-              </div>
-            </div>
-
-            {!isLogin && (
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword" className="text-sm font-medium">
-                  Confirm password
-                </Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                  <Input
-                    id="confirmPassword"
-                    name="confirmPassword"
-                    type={showConfirmPassword ? "text" : "password"}
-                    placeholder="••••••••"
-                    value={formData.confirmPassword}
-                    onChange={handleInputChange}
-                    className="pl-10 pr-10 transition-all duration-200 focus:ring-2 focus:ring-blue-500/20"
-                    required={!isLogin}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  >
-                    {showConfirmPassword ? (
-                      <EyeOff className="w-4 h-4 text-muted-foreground" />
-                    ) : (
-                      <Eye className="w-4 h-4 text-muted-foreground" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {isLogin && (
-              <div className="flex justify-end">
-                <Button
-                  variant="link"
-                  className="text-sm px-0 h-auto font-normal"
-                  type="button"
-                >
-                  Forgot your password?
-                </Button>
-              </div>
-            )}
-
-            <Button
-              type="submit"
-              className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-medium py-2.5 transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
-            >
-              {isLogin ? "Sign in" : "Create account"}
-            </Button>
-          </form>
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <Separator className="w-full" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white dark:bg-slate-900 px-2 text-muted-foreground">
-                Or continue with
-              </span>
-            </div>
+        {/* Content */}
+        <div className="space-y-10 max-w-md relative z-10 my-auto">
+          <div className="space-y-4">
+            <h2 className="text-3xl font-bold leading-[1.15] tracking-[-0.02em]">
+              Run structured first rounds at scale.
+            </h2>
+            <p className="text-sm text-white/80 leading-relaxed max-w-sm">
+              Create sessions, invite candidates, and let AI handle the rest. Every evaluation consistent, every score fair.
+            </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Button
-              variant="outline"
-              className="transition-all duration-200 hover:bg-slate-50 dark:hover:bg-slate-800"
-              type="button"
-            >
-              <Github className="w-4 h-4 mr-2" />
-              Github
-            </Button>
-            <Button
-              variant="outline"
-              className="transition-all duration-200 hover:bg-slate-50 dark:hover:bg-slate-800"
-              type="button"
-            >
-              <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24">
-                <path
-                  fill="currentColor"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                />
-                <path
-                  fill="currentColor"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                />
-                <path
-                  fill="currentColor"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                />
-                <path
-                  fill="currentColor"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                />
-              </svg>
-              Google
-            </Button>
+          <div className="space-y-3.5">
+            {[
+              "Candidates interview on their own schedule, no coordination needed.",
+              "AI-powered transcription, scoring, and feedback for every answer.",
+              "GDPR/CCPA compliant with full data export and account deletion.",
+            ].map((text, i) => (
+              <div key={i} className="flex items-start gap-2.5">
+                <CheckCircle2 className="h-4 w-4 text-white/70 shrink-0 mt-0.5" />
+                <p className="text-[13px] text-white/90 leading-relaxed">{text}</p>
+              </div>
+            ))}
           </div>
-        </CardContent>
 
-        <CardFooter className="pt-0">
-          <div className="text-center w-full text-sm text-muted-foreground">
-            {isLogin ? "Don't have an account? " : "Already have an account? "}
-            <Button
-              variant="link"
-              className="px-0 h-auto font-medium text-blue-600 hover:text-blue-700"
-              onClick={() => setIsLogin(!isLogin)}
-              type="button"
-            >
-              {isLogin ? "Sign up" : "Sign in"}
-            </Button>
+          <div className="bg-white/[0.08] border border-white/[0.15] rounded-lg p-5">
+            <blockquote className="text-[13px] text-white/85 leading-relaxed italic mb-3">
+              "Rehearse.io cut our first-round screening time by 60%. The AI evaluations are consistent, fair, and our candidates love the flexibility."
+            </blockquote>
+            <div>
+              <p className="text-[13px] font-semibold text-white">Sarah Chen</p>
+              <p className="text-[11px] text-white/60">VP of Engineering, TechCorp</p>
+            </div>
           </div>
-        </CardFooter>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 };

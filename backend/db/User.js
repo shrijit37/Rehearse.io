@@ -62,5 +62,13 @@ const UserSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
+// Defense-in-depth: strip HTML tags from name before saving
+UserSchema.pre('save', function (next) {
+  if (this.isModified('name') && typeof this.name === 'string') {
+    this.name = this.name.replace(/<[^>]*>/g, '').trim();
+  }
+  next();
+});
+
 const User = mongoose.model('User', UserSchema);
 export default User;

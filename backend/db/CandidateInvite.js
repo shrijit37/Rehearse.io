@@ -35,7 +35,7 @@ const CandidateInviteSchema = new mongoose.Schema({
   results: [{
     question: { type: String, required: true },
     transcription: { type: String, default: '' },
-    score: { type: Number, min: 0, max: 10 },
+    score: { type: Number, min: 1, max: 10, default: null },
     feedback: { type: String, default: '' },
   }],
 }, { timestamps: true });

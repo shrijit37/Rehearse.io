@@ -131,11 +131,8 @@ router.delete("/delete-account", protect, asyncHandler(async (req, res) => {
   // Delete rehearsal sessions
   await RehearsalSession.deleteMany({ user: req.user._id });
 
-  // Anonymize candidate invites
-  await CandidateInvite.updateMany(
-    { candidate: req.user._id },
-    { $set: { candidate: null } }
-  );
+  // Delete candidate invites (cannot set candidate to null due to required field)
+  await CandidateInvite.deleteMany({ candidate: req.user._id });
 
   await logAudit({
     userId: req.user._id,

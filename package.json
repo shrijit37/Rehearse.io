@@ -14,7 +14,9 @@
     "install:ai": "cd ai-service && pip install -r requirements.txt",
     "setup": "npm run install:backend && npm run install:frontend && npm run install:ai",
     "setup:env": "cd backend && cp example.env .env",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Run tests per-service: npm run build --prefix frontend, npm test --prefix backend\"",
+    "lint:frontend": "npm run lint --prefix frontend",
+    "build:frontend": "npm run build --prefix frontend"
   },
   "repository": {
     "type": "git",

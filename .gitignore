@@ -4,3 +4,15 @@
 /backend/.env
 /frontend/.env
 /ai-service/.env
+.env
+# Local Pi runtime state
+.atl/
+.pi/
+# Build artifacts
+__pycache__/
+*.pyc
+# Test results
+test-results/
+# Review/fix notes
+review-*.md
+fix-*.md

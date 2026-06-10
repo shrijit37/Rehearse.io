@@ -1,0 +1,60 @@
+strict_tdd: true
+context: |
+  rehearse.io is a Node.js/TypeScript, Node.js/TypeScript ESM, React, Python project.
+  Detected markers: package.json, npm package manager, backend/package.json, backend/npm package manager, frontend/package.json, frontend/tsconfig.json, frontend/npm package manager.
+  Package managers: npm.
+  Additional evidence: Test-like files detected (2); examples: e2e/bug-hunt.test.js, e2e/flows.test.js.
+  Primary test command: npm test.
+  Unit tests: package script (npm test); package script (cd backend && npm test).
+  Integration tests: none.
+  E2E tests: none.
+rules:
+  proposal:
+    require_problem_statement: true
+  spec:
+    require_acceptance_criteria: true
+  design:
+    require_tradeoffs: true
+  tasks:
+    protect_review_workload: true
+  apply:
+    test_command: "npm test"
+  verify:
+    test_command: "npm test"
+testing:
+  detected: "2026-06-10"
+  runner:
+    command: "npm test"
+    framework: "package script"
+  layers:
+    unit: "package script, package script"
+    integration: ""
+    e2e: ""
+  commands:
+    unit:
+      - scope: "."
+        command: "npm test"
+        framework: "package script"
+      - scope: "backend"
+        command: "cd backend && npm test"
+        framework: "package script"
+    integration:
+      []
+    e2e:
+      []
+  coverage:
+    command: ""
+    commands:
+      []
+quality:
+  lint: "cd frontend && npm run lint"
+  lint_commands:
+    - scope: "frontend"
+      command: "cd frontend && npm run lint"
+      framework: "linter"
+  typecheck: ""
+  typecheck_commands:
+    []
+  format: ""
+  format_commands:
+    []

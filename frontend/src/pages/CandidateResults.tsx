@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, AlertCircle, BarChart3, MessageSquare, Calendar, Users } from "lucide-react";
+import { api } from "@/lib/api";
 
 const CandidateResults: React.FC = () => {
   const navigate = useNavigate();
@@ -21,12 +22,7 @@ const CandidateResults: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const token = localStorage.getItem("token");
-      if (!token) throw new Error("Not authenticated");
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:9000";
-      const res = await fetch(`${apiUrl}/api/interviews/${id}`, { headers: { Authorization: `Bearer ${token}` } });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to fetch");
+      const data = await api.get<{ interview: any; candidates: any[] }>(`/api/interviews/${id}`);
       setInterview(data.interview);
       setCandidates(data.candidates || []);
       if (data.candidates?.length > 0) setSelectedCandidate(data.candidates[0]);

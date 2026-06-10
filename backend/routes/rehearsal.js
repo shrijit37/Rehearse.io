@@ -1,19 +1,31 @@
 import express from "express";
 import multer from "multer";
-import { startRehearsal, evaluateAnswer, saveSession, getHistory } from "../controller/rehearsalController.js";
-import { protect } from "../middleware/auth.js";
+import {
+	startRehearsal,
+	evaluateAnswer,
+	saveSession,
+	getHistory,
+} from "../controller/rehearsalController.js";
+import { protect, requireOnboarded } from "../middleware/auth.js";
+import { MAX_AUDIO_SIZE } from "../config/constants.js";
 
 const router = express.Router();
 const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB max (matches OpenAI Whisper limit)
+	storage: multer.memoryStorage(),
+	limits: { fileSize: MAX_AUDIO_SIZE },
 });
 
 // GET /api/rehearsal/start
-router.get("/start", protect, startRehearsal);
+router.get("/start", protect, requireOnboarded, startRehearsal);
 
 // POST /api/rehearsal/evaluate
-router.post("/evaluate", protect, upload.single("audio"), evaluateAnswer);
+router.post(
+	"/evaluate",
+	protect,
+	requireOnboarded,
+	upload.single("audio"),
+	evaluateAnswer,
+);
 
 // POST /api/rehearsal/session
 router.post("/session", protect, saveSession);

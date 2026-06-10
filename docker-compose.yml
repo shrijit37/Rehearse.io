@@ -39,6 +39,10 @@ services:
       - JWT_SECRET=${JWT_SECRET}  # REQUIRED — no default; fails fast if unset
       - PORT=9000
       - NODE_ENV=production
+      - AUTH_RATE_MAX=${AUTH_RATE_MAX:-200}
+      - AUTH_RATE_WINDOW_MS=${AUTH_RATE_WINDOW_MS:-900000}
+      - RATE_MAX=${RATE_MAX:-5000}
+      - RATE_WINDOW_MS=${RATE_WINDOW_MS:-900000}
       - AI_SERVICE_URL=http://ai-service:8000
       - AI_SERVICE_API_KEY=${AI_SERVICE_API_KEY:-}  # Shared secret for backend→AI auth
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000}

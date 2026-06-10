@@ -31,7 +31,7 @@ app.add_middleware(
 )
 
 # Maximum file upload size: 25MB (matches OpenAI Whisper limit)
-MAX_AUDIO_SIZE = 25 * 1024 * 1024  # 25MB
+MAX_AUDIO_SIZE = int(os.getenv("MAX_AUDIO_SIZE_MB", "25")) * 1024 * 1024
 ALLOWED_AUDIO_TYPES = {
     "audio/webm", "audio/wav", "audio/mpeg", "audio/mp3",
     "audio/m4a", "audio/ogg", "audio/flac", "audio/mp4",
@@ -56,6 +56,12 @@ else:
 
 # Shared API key for backend→AI authentication
 API_KEY = os.getenv("API_KEY", "")
+
+if not API_KEY:
+    logger.warning("WARNING: API_KEY is not set. The AI service is running without authentication!")
+    if os.environ.get("NODE_ENV") == "production":
+        logger.error("CRITICAL: Running in production without API_KEY is a security risk!")
+
 
 
 async def verify_api_key(authorization: str = Header(None)):
@@ -155,6 +161,11 @@ def generate_scenario(payload: ScenarioRequest, _auth=Depends(verify_api_key)):
             status_code=500,
             detail="An error occurred while generating the scenario"
         )
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
 
 
 @app.post("/api/evaluate-audio")

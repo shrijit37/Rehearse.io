@@ -12,8 +12,10 @@ RUN npm ci
 # Copy application source code
 COPY . .
 
-# Support build-time injection of environment variables
-ARG VITE_API_URL
+# VITE_API_URL must be set at build time for the frontend to connect to the backend
+# For Docker: use http://backend:9000 (internal network)
+# For production: use your actual backend URL
+ARG VITE_API_URL=http://backend:9000
 ENV VITE_API_URL=$VITE_API_URL
 
 # Build the React application

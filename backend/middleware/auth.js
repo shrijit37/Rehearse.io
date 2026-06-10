@@ -35,3 +35,14 @@ export const protect = async (req, res, next) => {
     return res.status(401).json({ message: "Token is not valid" });
   }
 };
+
+/**
+ * Middleware to require completed onboarding (resume uploaded).
+ * Must be used after `protect`.
+ */
+export const requireOnboarded = (req, res, next) => {
+  if (!req.user.resume) {
+    return res.status(403).json({ message: "Please complete onboarding first." });
+  }
+  next();
+};

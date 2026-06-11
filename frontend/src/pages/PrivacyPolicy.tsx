@@ -12,7 +12,7 @@ const PrivacyPolicy = () => {
           <ArrowLeft className="h-3.5 w-3.5" /> Back
         </Button>
 
-        <div className="border border-border/80 rounded-xl bg-card shadow-sm overflow-hidden">
+        <div className="border border-border rounded-[20px] bg-card  overflow-hidden">
           <div className="p-8 sm:p-10 space-y-8">
             <div className="space-y-1.5">
               <h1 className="text-2xl font-bold tracking-[-0.02em] text-foreground">Privacy Policy</h1>

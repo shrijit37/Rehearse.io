@@ -22,7 +22,8 @@ services:
       - ANTHROPIC_API_KEY
       - LITELLM_MODEL
       - STT_MODEL
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000}
+      - SERVER_IP=${SERVER_IP:-161.118.179.12}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,http://161.118.179.12:3000,http://161.118.179.12:9000}
       - API_KEY=${AI_SERVICE_API_KEY:-}  # Shared secret for backend→AI auth
     networks:
       - rehearse-network
@@ -39,13 +40,14 @@ services:
       - JWT_SECRET=${JWT_SECRET}  # REQUIRED — no default; fails fast if unset
       - PORT=9000
       - NODE_ENV=production
+      - SERVER_IP=${SERVER_IP:-161.118.179.12}
       - AUTH_RATE_MAX=${AUTH_RATE_MAX:-200}
       - AUTH_RATE_WINDOW_MS=${AUTH_RATE_WINDOW_MS:-900000}
       - RATE_MAX=${RATE_MAX:-5000}
       - RATE_WINDOW_MS=${RATE_WINDOW_MS:-900000}
       - AI_SERVICE_URL=http://ai-service:8000
       - AI_SERVICE_API_KEY=${AI_SERVICE_API_KEY:-}  # Shared secret for backend→AI auth
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,http://161.118.179.12:3000,http://161.118.179.12:9000}
     depends_on:
       - mongo
       - ai-service
@@ -57,7 +59,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - VITE_API_URL=${VITE_API_URL:-http://localhost:9000}
+        - VITE_API_URL=${VITE_API_URL:-http://161.118.179.12:9000}
     container_name: rehearse-frontend
     ports:
       - "3000:80"

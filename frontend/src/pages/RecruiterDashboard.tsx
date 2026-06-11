@@ -99,7 +99,7 @@ const RecruiterDashboard: React.FC = () => {
 					<div className="h-7 w-64 bg-secondary rounded-md" />
 					<div className="grid grid-cols-3 gap-4">
 						{[1, 2, 3].map((i) => (
-							<div key={i} className="h-24 bg-secondary/50 rounded-lg" />
+							<div key={i} className="h-24 bg-secondary/50 rounded-[20px]" />
 						))}
 					</div>
 				</div>
@@ -110,7 +110,7 @@ const RecruiterDashboard: React.FC = () => {
 	if (error) {
 		return (
 			<div className="min-h-screen flex items-center justify-center bg-background p-4 mt-14">
-				<div className="w-full max-w-sm border border-border/80 rounded-xl bg-card p-8 text-center space-y-4">
+				<div className="w-full max-w-sm border border-border rounded-[20px] bg-card p-8 text-center space-y-4">
 					<AlertCircle className="w-6 h-6 text-destructive mx-auto" />
 					<p className="text-[13px] font-semibold">{error}</p>
 					<Button onClick={fetchData} className="font-medium">
@@ -125,7 +125,7 @@ const RecruiterDashboard: React.FC = () => {
 		<>
 			<div className="max-w-5xl mx-auto space-y-6">
 				{/* Header */}
-				<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/60 pb-6">
+				<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6">
 					<div className="space-y-1">
 						<h1 className="text-2xl font-bold tracking-[-0.02em] text-foreground">
 							Recruiter Dashboard
@@ -156,7 +156,7 @@ const RecruiterDashboard: React.FC = () => {
 
 				{/* Org info bar */}
 				{selectedOrg && (
-					<div className="border border-border/80 rounded-lg bg-card px-5 py-3.5 flex items-center justify-between">
+					<div className="border border-border rounded-[20px] bg-card px-5 py-3.5 flex items-center justify-between">
 						<div>
 							<p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
 								Organization
@@ -178,7 +178,7 @@ const RecruiterDashboard: React.FC = () => {
 
 				{/* No org state */}
 				{organizations.length === 0 && (
-					<div className="border-2 border-dashed border-border/60 rounded-xl p-16 text-center space-y-4 bg-surface/30">
+					<div className="border-2 border-dashed border-border rounded-[20px] p-16 text-center space-y-4 bg-surface/30">
 						<Users className="w-10 h-10 text-muted-foreground mx-auto" />
 						<div className="space-y-1">
 							<h3 className="text-base font-bold text-foreground">
@@ -199,7 +199,7 @@ const RecruiterDashboard: React.FC = () => {
 
 				{/* No interviews state */}
 				{selectedOrg && interviews.length === 0 && (
-					<div className="border-2 border-dashed border-border/60 rounded-xl p-16 text-center space-y-4 bg-surface/30">
+					<div className="border-2 border-dashed border-border rounded-[20px] p-16 text-center space-y-4 bg-surface/30">
 						<FileText className="w-10 h-10 text-muted-foreground mx-auto" />
 						<div className="space-y-1">
 							<h3 className="text-base font-bold text-foreground">
@@ -229,7 +229,7 @@ const RecruiterDashboard: React.FC = () => {
 							{interviews.map((interview) => (
 								<div
 									key={interview._id}
-									className="border border-border/80 rounded-lg bg-card p-4 hover:border-primary/20 transition-colors"
+									className="border border-border rounded-[20px] bg-card p-4 hover:border-primary/20 transition-colors"
 								>
 									<div className="flex items-start justify-between gap-4">
 										<div className="space-y-1 min-w-0 flex-1">
@@ -324,7 +324,7 @@ const RecruiterDashboard: React.FC = () => {
 			{/* New Organization Modal */}
 			{showNewOrgModal && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-					<div className="bg-card border border-border/80 rounded-xl shadow-2xl p-6 w-full max-w-sm space-y-4">
+					<div className="bg-card border border-border rounded-[20px]  p-6 w-full max-w-sm space-y-4">
 						<h3 className="text-[14px] font-bold text-foreground">
 							Create Organization
 						</h3>
@@ -336,7 +336,7 @@ const RecruiterDashboard: React.FC = () => {
 							onKeyDown={(e) => {
 								if (e.key === "Enter") handleCreateOrg();
 							}}
-							className="w-full h-9 px-3 rounded-lg border border-border bg-background text-[13px] focus:border-primary/50 focus:outline-none"
+							className="w-full h-9 px-3 rounded-[20px] border border-border bg-background text-[13px] focus:border-primary/50 focus:outline-none"
 							autoFocus
 						/>
 						<div className="flex gap-2 justify-end">
@@ -367,7 +367,7 @@ const RecruiterDashboard: React.FC = () => {
 			{/* Invite Modal */}
 			{showInviteModal && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-					<div className="bg-card border border-border/80 rounded-xl shadow-2xl p-6 w-full max-w-sm space-y-4">
+					<div className="bg-card border border-border rounded-[20px]  p-6 w-full max-w-sm space-y-4">
 						<h3 className="text-[14px] font-bold text-foreground">
 							Invite Candidate
 						</h3>
@@ -379,7 +379,7 @@ const RecruiterDashboard: React.FC = () => {
 							onKeyDown={(e) => {
 								if (e.key === "Enter") handleGenerateInvite();
 							}}
-							className="w-full h-9 px-3 rounded-lg border border-border bg-background text-[13px] focus:border-primary/50 focus:outline-none"
+							className="w-full h-9 px-3 rounded-[20px] border border-border bg-background text-[13px] focus:border-primary/50 focus:outline-none"
 							autoFocus
 						/>
 						<div className="flex gap-2 justify-end">

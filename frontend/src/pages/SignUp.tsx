@@ -16,6 +16,14 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 
+interface AuthUser {
+	id: string;
+	email: string;
+	name?: string;
+	role: "recruiter" | "candidate";
+	onboarded?: boolean;
+}
+
 interface FormData {
 	email: string;
 	password: string;
@@ -28,7 +36,7 @@ interface FormData {
 
 const SignUp: React.FC = () => {
 	const navigate = useNavigate();
-	const [isLogin, setIsLogin] = useState<boolean>(true);
+	const [isLogin, setIsLogin] = useState<boolean>(false);
 	const [showPassword, setShowPassword] = useState<boolean>(false);
 	const [showConfirmPassword, setShowConfirmPassword] =
 		useState<boolean>(false);
@@ -87,7 +95,7 @@ const SignUp: React.FC = () => {
 						consentVersion: "1.0",
 					};
 
-			const data = await api.post<{ token: string; user: any }>(
+			const data = await api.post<{ token: string; user: AuthUser }>(
 				endpoint,
 				payload,
 			);
@@ -121,8 +129,8 @@ const SignUp: React.FC = () => {
 					}
 				}
 			}, 600);
-		} catch (err: any) {
-			setError(err.message || "An error occurred");
+		} catch (err: unknown) {
+			setError(err instanceof Error ? err.message : "An error occurred");
 		} finally {
 			setLoading(false);
 		}
@@ -135,7 +143,7 @@ const SignUp: React.FC = () => {
 				{/* Back to home */}
 				<button
 					onClick={() => navigate("/")}
-					className="absolute top-6 left-6 flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+					className="absolute top-6 left-6 flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground hover:text-[#3860be] transition-colors"
 				>
 					<ArrowLeft className="h-3.5 w-3.5" />
 					Home
@@ -155,15 +163,15 @@ const SignUp: React.FC = () => {
 					</div>
 
 					{/* Form card */}
-					<div className="border border-border/80 rounded-xl bg-card p-6 shadow-sm">
+					<div className="border border-border/80 rounded-[20px] bg-card p-6">
 						<form onSubmit={handleSubmit} className="space-y-5">
 							{error && (
-								<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-lg border border-destructive/20 text-center animate-in fade-in slide-in-from-top-1 duration-150">
+								<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-[20px] border border-destructive/20 text-center animate-in fade-in slide-in-from-top-1 duration-150">
 									{error}
 								</div>
 							)}
 							{success && (
-								<div className="bg-success/10 text-success text-[13px] font-medium p-3 rounded-lg border border-success/20 text-center animate-in fade-in slide-in-from-top-1 duration-150">
+								<div className="bg-success/10 text-success text-[13px] font-medium p-3 rounded-[20px] border border-success/20 text-center animate-in fade-in slide-in-from-top-1 duration-150">
 									{success}
 								</div>
 							)}
@@ -171,7 +179,7 @@ const SignUp: React.FC = () => {
 							{/* Role selection (signup only) */}
 							{!isLogin && (
 								<div className="space-y-2">
-									<Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+									<Label className="text-muted-foreground">
 										I am a...
 									</Label>
 									<div className="grid grid-cols-2 gap-3">
@@ -180,7 +188,7 @@ const SignUp: React.FC = () => {
 											onClick={() =>
 												setFormData((p) => ({ ...p, role: "recruiter" }))
 											}
-											className={`p-4 rounded-lg border-2 transition-all text-center space-y-2 ${
+											className={`p-4 rounded-[20px] border-2 transition-all text-center space-y-2 ${
 												formData.role === "recruiter"
 													? "border-primary bg-primary/[0.05] ring-1 ring-primary/20"
 													: "border-border hover:border-primary/30"
@@ -199,7 +207,7 @@ const SignUp: React.FC = () => {
 											onClick={() =>
 												setFormData((p) => ({ ...p, role: "candidate" }))
 											}
-											className={`p-4 rounded-lg border-2 transition-all text-center space-y-2 ${
+											className={`p-4 rounded-[20px] border-2 transition-all text-center space-y-2 ${
 												formData.role === "candidate"
 													? "border-primary bg-primary/[0.05] ring-1 ring-primary/20"
 													: "border-border hover:border-primary/30"
@@ -223,7 +231,7 @@ const SignUp: React.FC = () => {
 									<div className="space-y-1.5">
 										<Label
 											htmlFor="firstName"
-											className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+											className="text-muted-foreground"
 										>
 											First name
 										</Label>
@@ -243,7 +251,7 @@ const SignUp: React.FC = () => {
 									<div className="space-y-1.5">
 										<Label
 											htmlFor="lastName"
-											className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+											className="text-muted-foreground"
 										>
 											Last name
 										</Label>
@@ -267,7 +275,7 @@ const SignUp: React.FC = () => {
 							<div className="space-y-1.5">
 								<Label
 									htmlFor="email"
-									className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+									className="text-muted-foreground"
 								>
 									Email address
 								</Label>
@@ -291,7 +299,7 @@ const SignUp: React.FC = () => {
 								<div className="flex justify-between items-center">
 									<Label
 										htmlFor="password"
-										className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+										className="text-muted-foreground"
 									>
 										Password
 									</Label>
@@ -318,7 +326,7 @@ const SignUp: React.FC = () => {
 									<button
 										type="button"
 										onClick={() => setShowPassword(!showPassword)}
-										className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground transition-colors focus:outline-none"
+										className="absolute right-3 top-2.5 text-muted-foreground hover:text-[#3860be] transition-colors focus:outline-none"
 									>
 										{showPassword ? (
 											<EyeOff className="h-4 w-4" />
@@ -334,7 +342,7 @@ const SignUp: React.FC = () => {
 								<div className="space-y-1.5">
 									<Label
 										htmlFor="confirmPassword"
-										className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+										className="text-muted-foreground"
 									>
 										Confirm password
 									</Label>
@@ -354,7 +362,7 @@ const SignUp: React.FC = () => {
 											onClick={() =>
 												setShowConfirmPassword(!showConfirmPassword)
 											}
-											className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground transition-colors focus:outline-none"
+											className="absolute right-3 top-2.5 text-muted-foreground hover:text-[#3860be] transition-colors focus:outline-none"
 										>
 											{showConfirmPassword ? (
 												<EyeOff className="h-4 w-4" />
@@ -444,10 +452,7 @@ const SignUp: React.FC = () => {
 			</div>
 
 			{/* Marketing panel (lg+) */}
-			<div className="hidden lg:flex lg:w-[45%] bg-primary text-primary-foreground p-12 flex-col justify-between relative overflow-hidden select-none">
-				{/* Background accents */}
-				<div className="absolute -top-32 -right-32 w-[500px] h-[500px] bg-white/[0.06] rounded-full blur-[100px] pointer-events-none" />
-				<div className="absolute -bottom-32 -left-32 w-[350px] h-[350px] bg-white/[0.04] rounded-full blur-[80px] pointer-events-none" />
+			<div className="hidden lg:flex lg:w-[45%] bg-[#5200ff] text-white p-12 flex-col justify-between relative overflow-hidden select-none">
 
 				{/* Content */}
 				<div className="space-y-10 max-w-md relative z-10 my-auto">

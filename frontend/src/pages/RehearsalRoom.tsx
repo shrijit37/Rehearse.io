@@ -235,22 +235,22 @@ const RehearsalRoom: React.FC = () => {
 					</div>
 
 					{error && (
-						<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-lg border border-destructive/20 text-center">
+						<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-[20px] border border-destructive/20 text-center">
 							{error}
 						</div>
 					)}
 
-					<div className="border border-border/80 rounded-xl bg-card p-4 shadow-sm">
+					<div className="border border-border rounded-[20px] bg-card p-4 ">
 						<div className="grid grid-cols-2 gap-2">
 							{PRESET_ROLES.map((role) => (
 								<button
 									key={role}
 									onClick={() => startInterview(role)}
 									disabled={isLoading}
-									className={`p-3 rounded-lg border text-left transition-all text-[13px] font-medium ${
+									className={`p-3 rounded-[20px] border text-left transition-all text-[13px] font-medium ${
 										targetRole === role
 											? "border-primary bg-primary/5 text-primary"
-											: "border-border/60 hover:border-primary/30 hover:bg-secondary/50 text-foreground"
+											: "border-border hover:border-primary/30 hover:bg-secondary/50 text-foreground"
 									}`}
 								>
 									{role}
@@ -259,8 +259,8 @@ const RehearsalRoom: React.FC = () => {
 						</div>
 					</div>
 
-					<div className="border border-border/80 rounded-xl bg-card p-4 shadow-sm space-y-3">
-						<Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+					<div className="border border-border rounded-[20px] bg-card p-4  space-y-3">
+						<Label className="text-muted-foreground">
 							Or type a custom role
 						</Label>
 						<div className="flex gap-2">
@@ -308,7 +308,7 @@ const RehearsalRoom: React.FC = () => {
 	if (error && !questions.length) {
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center p-4">
-				<div className="w-full max-w-sm border border-border/80 rounded-xl bg-card p-8 flex flex-col items-center text-center space-y-5">
+				<div className="w-full max-w-sm border border-border rounded-[20px] bg-card p-8 flex flex-col items-center text-center space-y-5">
 					<div className="w-12 h-12 bg-destructive/10 rounded-full flex items-center justify-center">
 						<AlertCircle className="w-6 h-6 text-destructive" />
 					</div>
@@ -340,7 +340,7 @@ const RehearsalRoom: React.FC = () => {
 	return (
 		<div className="min-h-screen bg-background flex flex-col pt-14">
 			{/* Progress bar */}
-			<div className="border-b border-border/60 bg-surface/80 backdrop-blur-sm sticky top-14 z-30 py-3 px-4 sm:px-6 lg:px-8">
+			<div className="border-b border-border bg-surface/80  sticky top-14 z-30 py-3 px-4 sm:px-6 lg:px-8">
 				<div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
 					<div className="flex items-center gap-3">
 						<button
@@ -372,9 +372,9 @@ const RehearsalRoom: React.FC = () => {
 			<div className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col md:grid md:grid-cols-12 gap-5">
 				{/* Interviewer panel */}
 				<div className="md:col-span-5 flex flex-col">
-					<div className="border border-border/80 shadow-sm bg-card rounded-xl flex-1 flex flex-col overflow-hidden min-h-[280px]">
+					<div className="border border-border  bg-card rounded-[20px] flex-1 flex flex-col overflow-hidden min-h-[280px]">
 						{/* Header */}
-						<div className="border-b border-border/60 px-5 py-3 bg-secondary/15 flex items-center justify-between">
+						<div className="border-b border-border px-5 py-3 bg-secondary/15 flex items-center justify-between">
 							<div className="flex items-center gap-2">
 								<div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
 								<span className="text-[12px] font-semibold text-foreground">
@@ -401,7 +401,7 @@ const RehearsalRoom: React.FC = () => {
 						</div>
 
 						{/* Question */}
-						<div className="border-t border-border/60 p-5 bg-background">
+						<div className="border-t border-border p-5 bg-background">
 							<span className="text-[10px] font-bold uppercase tracking-wider text-primary">
 								Question
 							</span>
@@ -415,17 +415,17 @@ const RehearsalRoom: React.FC = () => {
 				{/* Recording panel */}
 				<div className="md:col-span-7 flex flex-col relative">
 					{error && (
-						<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-lg border border-destructive/20 mb-3 flex items-center gap-2 animate-in fade-in duration-200">
+						<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-[20px] border border-destructive/20 mb-3 flex items-center gap-2 animate-in fade-in duration-200">
 							<AlertCircle className="w-4 h-4 shrink-0" />
 							<span>{error}</span>
 						</div>
 					)}
 
-					<div className="border border-border/80 shadow-sm bg-card rounded-xl flex-1 flex flex-col overflow-hidden relative min-h-[340px]">
+					<div className="border border-border  bg-card rounded-[20px] flex-1 flex flex-col overflow-hidden relative min-h-[340px]">
 						{/* Viewfinder */}
 						<div className="flex-1 bg-black relative flex flex-col justify-center items-center overflow-hidden">
 							{isEvaluating ? (
-								<div className="absolute inset-0 bg-background/95 backdrop-blur-md z-20 flex flex-col items-center justify-center gap-3 animate-in fade-in duration-200">
+								<div className="absolute inset-0 bg-background/95  z-20 flex flex-col items-center justify-center gap-3 animate-in fade-in duration-200">
 									<Loader2 className="w-8 h-8 text-primary animate-spin" />
 									<div className="text-center space-y-1">
 										<p className="text-[13px] font-semibold text-foreground">
@@ -437,7 +437,7 @@ const RehearsalRoom: React.FC = () => {
 									</div>
 								</div>
 							) : evaluation ? (
-								<div className="absolute inset-0 bg-background/95 backdrop-blur-md z-20 flex flex-col justify-between p-5 overflow-y-auto animate-in fade-in duration-200">
+								<div className="absolute inset-0 bg-background/95  z-20 flex flex-col justify-between p-5 overflow-y-auto animate-in fade-in duration-200">
 									<div className="space-y-3">
 										<div className="flex items-center justify-between border-b border-border pb-3">
 											<div>
@@ -464,7 +464,7 @@ const RehearsalRoom: React.FC = () => {
 											{evaluation.feedback}
 										</p>
 									</div>
-									<div className="border-t border-border/60 pt-3 flex justify-end gap-2">
+									<div className="border-t border-border pt-3 flex justify-end gap-2">
 										<Button
 											variant="outline"
 											size="sm"
@@ -495,7 +495,7 @@ const RehearsalRoom: React.FC = () => {
 								</span>
 							</div>
 
-							<div className="absolute inset-4 border border-white/5 rounded-lg pointer-events-none" />
+							<div className="absolute inset-4 border border-white/5 rounded-[20px] pointer-events-none" />
 
 							{/* Live indicators */}
 							{isRecording ? (
@@ -522,7 +522,7 @@ const RehearsalRoom: React.FC = () => {
 
 						{/* Controls */}
 						{!evaluation && (
-							<div className="border-t border-border/60 p-4 bg-background flex flex-col sm:flex-row items-center justify-between gap-3">
+							<div className="border-t border-border p-4 bg-background flex flex-col sm:flex-row items-center justify-between gap-3">
 								<p className="text-[12px] text-muted-foreground font-medium">
 									{isRecording
 										? "Speak clearly into your microphone."

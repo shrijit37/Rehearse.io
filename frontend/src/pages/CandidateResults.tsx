@@ -34,14 +34,14 @@ const CandidateResults: React.FC = () => {
     <div className="min-h-screen bg-background py-8 px-4 mt-14">
       <div className="max-w-5xl mx-auto space-y-8 animate-pulse">
         <div className="h-7 w-64 bg-secondary rounded-md" />
-        <div className="h-96 bg-secondary/30 rounded-xl" />
+        <div className="h-96 bg-secondary/30 rounded-[20px]" />
       </div>
     </div>
   );
 
   if (error) return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4 mt-14">
-      <div className="w-full max-w-sm border border-border/80 rounded-xl bg-card p-8 text-center space-y-4">
+      <div className="w-full max-w-sm border border-border rounded-[20px] bg-card p-8 text-center space-y-4">
         <AlertCircle className="w-6 h-6 text-destructive mx-auto" />
         <p className="text-[13px] font-semibold">{error}</p>
         <Button onClick={fetchData} className="font-medium">Retry</Button>
@@ -53,7 +53,7 @@ const CandidateResults: React.FC = () => {
     <div className="min-h-screen bg-background py-8 px-4 sm:px-6 lg:px-8 mt-14">
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-4 border-b border-border/60 pb-6">
+        <div className="flex items-center gap-4 border-b border-border pb-6">
           <Button variant="ghost" size="sm" onClick={() => navigate("/recruiter")} className="text-muted-foreground font-medium gap-1.5">
             <ArrowLeft className="h-3.5 w-3.5" /> Dashboard
           </Button>
@@ -68,7 +68,7 @@ const CandidateResults: React.FC = () => {
         </div>
 
         {candidates.length === 0 ? (
-          <div className="border-2 border-dashed border-border/60 rounded-xl p-16 text-center space-y-4 bg-surface/30">
+          <div className="border-2 border-dashed border-border rounded-[20px] p-16 text-center space-y-4 bg-surface/30">
             <Users className="w-10 h-10 text-muted-foreground mx-auto" />
             <div className="space-y-1">
               <h3 className="text-base font-bold text-foreground">No candidates yet</h3>
@@ -86,8 +86,8 @@ const CandidateResults: React.FC = () => {
                   const avg = c.results?.length ? (c.results.reduce((a: number, r: any) => a + (r.score || 0), 0) / c.results.length).toFixed(1) : "—";
                   return (
                     <button key={c._id} onClick={() => setSelectedCandidate(c)}
-                      className={`w-full text-left p-3.5 border rounded-lg transition-all ${
-                        isSelected ? "bg-card border-primary/60 shadow-sm" : "bg-card border-border/60 hover:border-primary/30"
+                      className={`w-full text-left p-3.5 border rounded-[20px] transition-all ${
+                        isSelected ? "bg-card border-primary/60 " : "bg-card border-border hover:border-primary/30"
                       }`}>
                       <div className="flex items-center justify-between">
                         <div className="min-w-0">
@@ -111,8 +111,8 @@ const CandidateResults: React.FC = () => {
             {/* Results detail */}
             <div className="lg:col-span-8">
               {selectedCandidate?.results?.length > 0 ? (
-                <div className="border border-border/80 rounded-xl bg-card overflow-hidden">
-                  <div className="border-b border-border/60 bg-secondary/15 px-6 py-4 flex items-center justify-between">
+                <div className="border border-border rounded-[20px] bg-card overflow-hidden">
+                  <div className="border-b border-border bg-secondary/15 px-6 py-4 flex items-center justify-between">
                     <div>
                       <h3 className="text-base font-bold flex items-center gap-1.5">
                         <BarChart3 className="h-4 w-4 text-primary" /> {selectedCandidate.candidate?.name}
@@ -129,7 +129,7 @@ const CandidateResults: React.FC = () => {
                   </div>
                   <div className="p-6 space-y-4 max-h-[500px] overflow-y-auto">
                     {selectedCandidate.results.map((result: any, idx: number) => (
-                      <div key={idx} className="border border-border/50 rounded-lg p-4 space-y-3">
+                      <div key={idx} className="border border-border/50 rounded-[20px] p-4 space-y-3">
                         <div className="flex items-start justify-between gap-3 border-b border-border/40 pb-2.5">
                           <div className="flex items-start gap-2">
                             <span className="text-[11px] font-bold text-primary">{idx + 1}.</span>
@@ -154,12 +154,12 @@ const CandidateResults: React.FC = () => {
                   </div>
                 </div>
               ) : selectedCandidate ? (
-                <div className="h-96 border border-border/80 rounded-xl bg-card flex flex-col items-center justify-center text-center p-6">
+                <div className="h-96 border border-border rounded-[20px] bg-card flex flex-col items-center justify-center text-center p-6">
                   <p className="text-[13px] text-muted-foreground">This candidate has not completed the interview yet.</p>
                   <p className="text-[11px] text-muted-foreground/70 mt-1">Status: {selectedCandidate.status}</p>
                 </div>
               ) : (
-                <div className="h-96 border border-border/80 rounded-xl bg-card flex flex-col items-center justify-center text-center p-6">
+                <div className="h-96 border border-border rounded-[20px] bg-card flex flex-col items-center justify-center text-center p-6">
                   <p className="text-[13px] text-muted-foreground">Select a candidate to view results</p>
                 </div>
               )}

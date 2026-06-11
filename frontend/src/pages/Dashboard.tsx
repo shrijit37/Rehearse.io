@@ -142,7 +142,7 @@ const ResultDetailPanel: React.FC<{
 			: "—";
 
 	return (
-		<div className="border border-border/80 rounded-xl bg-card overflow-hidden animate-in fade-in duration-200">
+		<div className="border border-border/80 rounded-[20px] bg-card overflow-hidden animate-in fade-in duration-200">
 			<div className="border-b border-border/60 bg-secondary/15 px-6 py-4 flex items-center justify-between">
 				<div className="space-y-1">
 					<span className="text-[10px] font-bold bg-primary/10 text-primary border border-primary/15 rounded px-2 py-0.5 uppercase tracking-wider">
@@ -167,7 +167,7 @@ const ResultDetailPanel: React.FC<{
 				{results.map((result: ResultItem, idx: number) => (
 					<div
 						key={result._id || idx}
-						className="border border-border/50 rounded-lg p-4 space-y-3"
+						className="border border-border/50 rounded-[20px] p-4 space-y-3"
 					>
 						<div className="flex items-start justify-between gap-3 border-b border-border/40 pb-2.5">
 							<div className="flex items-start gap-2">
@@ -223,9 +223,9 @@ const SessionListItem: React.FC<{
 	return (
 		<button
 			onClick={onClick}
-			className={`w-full text-left p-3.5 border rounded-lg transition-all flex items-center justify-between select-none ${
+			className={`w-full text-left p-3.5 border rounded-[20px] transition-all flex items-center justify-between select-none ${
 				isSelected
-					? "bg-card border-primary/60 shadow-sm"
+					? "bg-card border-primary/60 "
 					: "bg-card border-border/60 hover:border-primary/30"
 			}`}
 		>
@@ -374,11 +374,11 @@ const Dashboard: React.FC = () => {
 						{[1, 2, 3].map((i) => (
 							<div
 								key={i}
-								className="h-24 bg-secondary/50 rounded-lg border border-border/40"
+								className="h-24 bg-secondary/50 rounded-[20px] border border-border/40"
 							/>
 						))}
 					</div>
-					<div className="h-96 bg-secondary/30 rounded-xl border border-border/40" />
+					<div className="h-96 bg-secondary/30 rounded-[20px] border border-border/40" />
 				</div>
 			</div>
 		);
@@ -387,7 +387,7 @@ const Dashboard: React.FC = () => {
 	if (error) {
 		return (
 			<div className="min-h-screen flex items-center justify-center bg-background p-4 mt-14">
-				<div className="w-full max-w-sm border border-border/80 rounded-xl bg-card p-8 flex flex-col items-center text-center gap-5">
+				<div className="w-full max-w-sm border border-border/80 rounded-[20px] bg-card p-8 flex flex-col items-center text-center gap-5">
 					<div className="w-12 h-12 bg-destructive/10 rounded-full flex items-center justify-center">
 						<AlertCircle className="w-6 h-6 text-destructive" />
 					</div>
@@ -432,7 +432,7 @@ const Dashboard: React.FC = () => {
 					</div>
 					<Button
 						onClick={() => navigate("/rehearsal")}
-						className="font-semibold shadow-sm gap-2"
+						className="font-semibold  gap-2"
 					>
 						<Play className="w-3.5 h-3.5 fill-primary-foreground" />
 						Start Interview
@@ -441,7 +441,7 @@ const Dashboard: React.FC = () => {
 
 				{/* Stats */}
 				<div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-					<div className="border border-border/80 rounded-lg bg-card p-4 space-y-3">
+					<div className="border border-border/80 rounded-[20px] bg-card p-4 space-y-3">
 						<div className="flex items-center justify-between">
 							<span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
 								Average Score
@@ -455,7 +455,7 @@ const Dashboard: React.FC = () => {
 							<span className="text-[12px] text-muted-foreground">/ 10</span>
 						</div>
 					</div>
-					<div className="border border-border/80 rounded-lg bg-card p-4 space-y-3">
+					<div className="border border-border/80 rounded-[20px] bg-card p-4 space-y-3">
 						<div className="flex items-center justify-between">
 							<span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
 								Total Sessions
@@ -466,7 +466,7 @@ const Dashboard: React.FC = () => {
 							{totalSessions}
 						</span>
 					</div>
-					<div className="border border-border/80 rounded-lg bg-card p-4 space-y-3">
+					<div className="border border-border/80 rounded-[20px] bg-card p-4 space-y-3">
 						<div className="flex items-center justify-between">
 							<span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
 								Peak Score
@@ -484,7 +484,7 @@ const Dashboard: React.FC = () => {
 
 				{/* Tabs */}
 				{(invitedInterviews.length > 0 || history.length > 0) && (
-					<div className="flex gap-1 p-1 bg-surface rounded-lg border border-border/60">
+					<div className="flex gap-1 p-1 bg-surface rounded-[20px] border border-border/60">
 						{[
 							{
 								key: "invited" as const,
@@ -509,7 +509,7 @@ const Dashboard: React.FC = () => {
 								}}
 								className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-md text-[13px] font-semibold transition-all ${
 									activeTab === key
-										? "bg-card text-foreground shadow-sm border border-border/60"
+										? "bg-card text-foreground  border border-border/60"
 										: "text-muted-foreground hover:text-foreground"
 								}`}
 							>
@@ -527,7 +527,7 @@ const Dashboard: React.FC = () => {
 
 				{/* Content */}
 				{activeSessions.length === 0 ? (
-					<div className="border-2 border-dashed border-border/60 rounded-xl p-16 text-center space-y-4 bg-surface/30">
+					<div className="border-2 border-dashed border-border/60 rounded-[20px] p-16 text-center space-y-4 bg-surface/30">
 						{activeTab === "invited" ? (
 							<Users className="w-10 h-10 text-muted-foreground mx-auto" />
 						) : (
@@ -589,7 +589,7 @@ const Dashboard: React.FC = () => {
 									results={selectedSession.results}
 								/>
 							) : selectedSession ? (
-								<div className="h-96 border border-border/80 rounded-xl bg-card flex flex-col items-center justify-center text-center p-6">
+								<div className="h-96 border border-border/80 rounded-[20px] bg-card flex flex-col items-center justify-center text-center p-6">
 									<p className="text-[13px] text-muted-foreground">
 										{activeTab === "invited"
 											? "You haven't completed this interview yet."
@@ -602,7 +602,7 @@ const Dashboard: React.FC = () => {
 									)}
 								</div>
 							) : (
-								<div className="h-96 border border-border/80 rounded-xl bg-card flex flex-col items-center justify-center text-center p-6">
+								<div className="h-96 border border-border/80 rounded-[20px] bg-card flex flex-col items-center justify-center text-center p-6">
 									<p className="text-[13px] text-muted-foreground">
 										Select an interview to view results
 									</p>

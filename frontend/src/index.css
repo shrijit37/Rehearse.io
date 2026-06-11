@@ -1,13 +1,22 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
-
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  /* Font families */
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "Space Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Anton", "Impact", ui-sans-serif, sans-serif;
+
+  /* Verge discrete radius scale */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 20px;
+  --radius-xl: 24px;
+  --radius-2xl: 30px;
+  --radius-3xl: 40px;
+  --radius: 24px;
+
+  /* Token mappings */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -23,6 +32,7 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -47,102 +57,92 @@
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
   --color-info: var(--info);
+
+  /* Verge custom colors */
+  --color-mint: #3cffd0;
+  --color-ultraviolet: #5200ff;
+  --color-canvas: #131313;
+  --color-surface-slate: #2d2d2d;
+  --color-deep-link: #3860be;
+  --color-console-mint: #309875;
+  --color-focus-cyan: #1eaedb;
 }
 
+/* Dark-only canvas — no light mode */
 :root {
-  --radius: 0.5rem;
-  --background: oklch(0.99 0.002 250);
-  --foreground: oklch(0.16 0.015 260);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.16 0.015 260);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.16 0.015 260);
-  --primary: oklch(0.42 0.14 264);
-  --primary-foreground: oklch(0.98 0 0);
-  --secondary: oklch(0.965 0.003 250);
-  --secondary-foreground: oklch(0.30 0.015 260);
-  --muted: oklch(0.955 0.004 250);
-  --muted-foreground: oklch(0.42 0.012 260);
-  --accent: oklch(0.955 0.004 250);
-  --accent-foreground: oklch(0.16 0.015 260);
-  --destructive: oklch(0.55 0.20 25);
-  --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.915 0.005 250);
-  --input: oklch(0.915 0.005 250);
-  --ring: oklch(0.42 0.14 264);
-  --surface: oklch(0.97 0.003 250);
-  --surface-hover: oklch(0.945 0.004 250);
-  --surface-active: oklch(0.925 0.005 250);
-  --success: oklch(0.55 0.15 155);
-  --success-foreground: oklch(0.98 0 0);
-  --warning: oklch(0.70 0.15 75);
-  --warning-foreground: oklch(0.20 0.05 75);
-  --info: oklch(0.50 0.10 250);
-  --chart-1: oklch(0.42 0.14 264);
-  --chart-2: oklch(0.55 0.15 155);
-  --chart-3: oklch(0.60 0.14 200);
-  --chart-4: oklch(0.70 0.12 80);
-  --chart-5: oklch(0.55 0.16 30);
-  --sidebar: oklch(0.975 0.003 250);
-  --sidebar-foreground: oklch(0.30 0.015 260);
-  --sidebar-primary: oklch(0.42 0.14 264);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.95 0.004 250);
-  --sidebar-accent-foreground: oklch(0.16 0.015 260);
-  --sidebar-border: oklch(0.915 0.005 250);
-  --sidebar-ring: oklch(0.42 0.14 264);
-}
+  /* Verge Canvas Black — the forever background */
+  --background: #131313;
+  --foreground: #ffffff;
+  --card: #2d2d2d;
+  --card-foreground: #ffffff;
+  --popover: #1e1e1e;
+  --popover-foreground: #ffffff;
 
-.dark {
-  --background: oklch(0.12 0.006 260);
-  --foreground: oklch(0.935 0.005 250);
-  --card: oklch(0.16 0.007 260);
-  --card-foreground: oklch(0.935 0.005 250);
-  --popover: oklch(0.16 0.007 260);
-  --popover-foreground: oklch(0.935 0.005 250);
-  --primary: oklch(0.58 0.14 264);
-  --primary-foreground: oklch(0.12 0.006 260);
-  --secondary: oklch(0.20 0.008 260);
-  --secondary-foreground: oklch(0.90 0.005 250);
-  --muted: oklch(0.20 0.008 260);
-  --muted-foreground: oklch(0.58 0.012 260);
-  --accent: oklch(0.22 0.010 260);
-  --accent-foreground: oklch(0.935 0.005 250);
-  --destructive: oklch(0.58 0.20 25);
-  --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.24 0.008 260);
-  --input: oklch(0.24 0.008 260);
-  --ring: oklch(0.58 0.14 264);
-  --surface: oklch(0.18 0.007 260);
-  --surface-hover: oklch(0.22 0.010 260);
-  --surface-active: oklch(0.26 0.012 260);
-  --success: oklch(0.62 0.15 155);
-  --success-foreground: oklch(0.12 0.006 260);
-  --warning: oklch(0.75 0.14 75);
-  --warning-foreground: oklch(0.15 0.05 75);
-  --info: oklch(0.58 0.10 250);
-  --chart-1: oklch(0.58 0.14 264);
-  --chart-2: oklch(0.62 0.15 155);
-  --chart-3: oklch(0.65 0.12 200);
-  --chart-4: oklch(0.75 0.12 80);
-  --chart-5: oklch(0.60 0.16 30);
-  --sidebar: oklch(0.14 0.006 260);
-  --sidebar-foreground: oklch(0.70 0.010 260);
-  --sidebar-primary: oklch(0.58 0.14 264);
-  --sidebar-primary-foreground: oklch(0.12 0.006 260);
-  --sidebar-accent: oklch(0.20 0.008 260);
-  --sidebar-accent-foreground: oklch(0.935 0.005 250);
-  --sidebar-border: oklch(0.24 0.008 260);
-  --sidebar-ring: oklch(0.58 0.14 264);
+  /* Primary: Jelly Mint hazard accent */
+  --primary: #3cffd0;
+  --primary-foreground: #131313;
+
+  /* Secondary: Surface Slate */
+  --secondary: #363636;
+  --secondary-foreground: #e9e9e9;
+
+  /* Muted surfaces */
+  --muted: #1a1a1a;
+  --muted-foreground: #949494;
+
+  /* Accent */
+  --accent: #2d2d2d;
+  --accent-foreground: #ffffff;
+
+  /* Destructive → Verge Ultraviolet */
+  --destructive: #5200ff;
+  --destructive-foreground: #ffffff;
+
+  /* Borders: hairline white at low opacity */
+  --border: rgba(255, 255, 255, 0.12);
+  --input: rgba(255, 255, 255, 0.12);
+
+  /* Focus: Cyan */
+  --ring: #1eaedb;
+
+  /* Surface variants */
+  --surface: #131313;
+  --surface-hover: #1a1a1a;
+  --surface-active: #222222;
+
+  /* Semantic */
+  --success: #309875;
+  --success-foreground: #131313;
+  --warning: #e8a839;
+  --warning-foreground: #131313;
+  --info: #3860be;
+
+  /* Chart colors */
+  --chart-1: #3cffd0;
+  --chart-2: #309875;
+  --chart-3: #1eaedb;
+  --chart-4: #e8a839;
+  --chart-5: #5200ff;
+
+  /* Sidebar */
+  --sidebar: #1a1a1a;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #3cffd0;
+  --sidebar-primary-foreground: #131313;
+  --sidebar-accent: #2d2d2d;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #1eaedb;
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
+    outline-color: oklch(from var(--ring) l c h / 0.5);
   }
   body {
-    @apply text-foreground bg-background antialiased selection:bg-primary/20 selection:text-primary;
-    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    @apply bg-[#131313] text-white antialiased;
+    font-family: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -162,6 +162,53 @@
   }
   .text-pretty {
     text-wrap: pretty;
+  }
+
+  /* Verge typography utilities */
+
+  /* Hero/Display: Anton substitute for Manuka */
+  .type-hero {
+    font-family: "Anton", "Impact", ui-sans-serif, sans-serif;
+    font-weight: 900;
+    text-transform: uppercase;
+    line-height: 0.95;
+    letter-spacing: 1.07px;
+  }
+
+  /* All-caps mono labels (Space Mono, always UPPERCASE) */
+  .type-mono-label {
+    font-family: "Space Mono", ui-monospace, SFMono-Regular, monospace;
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+  }
+
+  /* Thin-weight "fashion whisper" — 300 weight, wide tracking */
+  .type-whisper {
+    font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+    font-weight: 300;
+    font-size: 19px;
+    letter-spacing: 1.9px;
+    text-transform: uppercase;
+  }
+
+  /* Eyebrow: smaller uppercase labels */
+  .type-eyebrow {
+    font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+    font-weight: 500;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1.8px;
+  }
+
+  /* Button mono label */
+  .type-button-mono {
+    font-family: "Space Mono", ui-monospace, SFMono-Regular, monospace;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    line-height: 2;
   }
 }
 

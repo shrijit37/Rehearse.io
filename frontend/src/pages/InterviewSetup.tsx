@@ -96,21 +96,21 @@ const InterviewSetup: React.FC = () => {
 				</div>
 
 				{/* Form card */}
-				<div className="border border-border/80 rounded-xl bg-card p-6 shadow-sm space-y-5">
+				<div className="border border-border rounded-[20px] bg-card p-6  space-y-5">
 					{error && (
-						<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-lg border border-destructive/20 text-center">
+						<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-[20px] border border-destructive/20 text-center">
 							{error}
 						</div>
 					)}
 
 					<div className="space-y-1.5">
-						<Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+						<Label className="text-muted-foreground">
 							Organization
 						</Label>
 						<select
 							value={selectedOrgId}
 							onChange={(e) => setSelectedOrgId(e.target.value)}
-							className="w-full h-9 px-3 rounded-lg border border-border bg-background text-[13px] focus:border-primary/50 focus:outline-none"
+							className="w-full h-9 px-3 rounded-[20px] border border-border bg-background text-[13px] focus:border-primary/50 focus:outline-none"
 						>
 							{organizations.length === 0 && (
 								<option value="">No organizations found</option>
@@ -124,7 +124,7 @@ const InterviewSetup: React.FC = () => {
 					</div>
 
 					<div className="space-y-1.5">
-						<Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+						<Label className="text-muted-foreground">
 							Interview Title
 						</Label>
 						<Input
@@ -137,7 +137,7 @@ const InterviewSetup: React.FC = () => {
 					</div>
 
 					<div className="space-y-1.5">
-						<Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+						<Label className="text-muted-foreground">
 							Target Role
 						</Label>
 						<Input
@@ -149,7 +149,7 @@ const InterviewSetup: React.FC = () => {
 					</div>
 
 					<div className="space-y-1.5">
-						<Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+						<Label className="text-muted-foreground">
 							Description (optional)
 						</Label>
 						<Input
@@ -162,7 +162,7 @@ const InterviewSetup: React.FC = () => {
 					</div>
 
 					<div className="space-y-1.5">
-						<Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+						<Label className="text-muted-foreground">
 							Expires At
 						</Label>
 						<Input
@@ -176,7 +176,7 @@ const InterviewSetup: React.FC = () => {
 					{/* Questions */}
 					<div className="space-y-3">
 						<div className="flex items-center justify-between">
-							<Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+							<Label className="text-muted-foreground">
 								Questions
 							</Label>
 							<Button
@@ -215,7 +215,7 @@ const InterviewSetup: React.FC = () => {
 					</div>
 
 					{/* Actions */}
-					<div className="flex gap-3 pt-4 border-t border-border/60">
+					<div className="flex gap-3 pt-4 border-t border-border">
 						<Button
 							onClick={handleSubmit}
 							disabled={isSubmitting}

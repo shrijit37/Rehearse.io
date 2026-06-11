@@ -86,9 +86,9 @@ const CookieConsent = () => {
 
 	return (
 		<div className="fixed bottom-0 left-0 right-0 z-[100] p-4 sm:p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-			<div className="max-w-3xl mx-auto bg-card border border-border/80 rounded-xl shadow-2xl p-5">
+			<div className="max-w-3xl mx-auto bg-card border border-border rounded-[20px]  p-5">
 				<div className="flex items-start gap-4">
-					<div className="w-9 h-9 bg-primary/10 border border-primary/15 text-primary rounded-lg flex items-center justify-center shrink-0">
+					<div className="w-9 h-9 bg-primary/10 border border-primary/15 text-primary rounded-[20px] flex items-center justify-center shrink-0">
 						<ShieldCheck className="h-4 w-4" />
 					</div>
 					<div className="flex-1 space-y-3.5">
@@ -104,7 +104,7 @@ const CookieConsent = () => {
 						</div>
 
 						<div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-							<label className="flex items-center gap-2 p-2.5 bg-surface rounded-lg border border-border/60">
+							<label className="flex items-center gap-2 p-2.5 bg-surface rounded-[20px] border border-border">
 								<input
 									type="checkbox"
 									checked
@@ -120,7 +120,7 @@ const CookieConsent = () => {
 									</p>
 								</div>
 							</label>
-							<label className="flex items-center gap-2 p-2.5 bg-surface rounded-lg border border-border/60 cursor-pointer hover:border-primary/30 transition-colors">
+							<label className="flex items-center gap-2 p-2.5 bg-surface rounded-[20px] border border-border cursor-pointer hover:border-primary/30 transition-colors">
 								<input
 									type="checkbox"
 									checked={analytics}
@@ -136,7 +136,7 @@ const CookieConsent = () => {
 									</p>
 								</div>
 							</label>
-							<label className="flex items-center gap-2 p-2.5 bg-surface rounded-lg border border-border/60 cursor-pointer hover:border-primary/30 transition-colors">
+							<label className="flex items-center gap-2 p-2.5 bg-surface rounded-[20px] border border-border cursor-pointer hover:border-primary/30 transition-colors">
 								<input
 									type="checkbox"
 									checked={marketing}

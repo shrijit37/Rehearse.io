@@ -293,11 +293,11 @@ const AccountSettings: React.FC = () => {
 				</div>
 
 				{/* Profile */}
-				<div className="border border-border/80 rounded-xl bg-card p-6 shadow-sm space-y-4">
+				<div className="border border-border rounded-[20px] bg-card p-6  space-y-4">
 					<h2 className="text-[14px] font-bold text-foreground">Profile</h2>
 					<div className="grid grid-cols-2 gap-4">
 						<div className="space-y-1.5">
-							<Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+							<Label className="text-muted-foreground">
 								Name
 							</Label>
 							<Input
@@ -307,7 +307,7 @@ const AccountSettings: React.FC = () => {
 							/>
 						</div>
 						<div className="space-y-1.5">
-							<Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+							<Label className="text-muted-foreground">
 								Email
 							</Label>
 							<Input
@@ -318,7 +318,7 @@ const AccountSettings: React.FC = () => {
 						</div>
 					</div>
 					<div className="space-y-1.5">
-						<Label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+						<Label className="text-muted-foreground">
 							Role
 						</Label>
 						<Input
@@ -330,7 +330,7 @@ const AccountSettings: React.FC = () => {
 				</div>
 
 				{/* Profile Photo */}
-				<div className="border border-border/80 rounded-xl bg-card p-6 shadow-sm space-y-4">
+				<div className="border border-border rounded-[20px] bg-card p-6  space-y-4">
 					<div className="space-y-1">
 						<h2 className="text-[14px] font-bold text-foreground flex items-center gap-2">
 							<Camera className="h-4 w-4 text-primary" /> Profile Photo
@@ -352,7 +352,7 @@ const AccountSettings: React.FC = () => {
 					)}
 					{photo ? (
 						<div className="flex flex-col items-center gap-4">
-							<div className="w-40 h-40 rounded-full border-4 border-card outline outline-2 outline-primary overflow-hidden shadow-md">
+							<div className="w-40 h-40 rounded-full border-4 border-card outline outline-2 outline-primary overflow-hidden ">
 								<img
 									src={photo}
 									alt="Profile"
@@ -384,7 +384,7 @@ const AccountSettings: React.FC = () => {
 						</div>
 					) : (
 						<div className="flex flex-col items-center gap-4">
-							<div className="relative w-full max-w-md aspect-video bg-black rounded-xl overflow-hidden border border-border">
+							<div className="relative w-full max-w-md aspect-video bg-black rounded-[20px] overflow-hidden border border-border">
 								{cameraLoading && (
 									<div className="absolute inset-0 flex items-center justify-center bg-secondary/80 z-10">
 										<RefreshCw className="animate-spin h-5 w-5 text-primary" />
@@ -411,7 +411,7 @@ const AccountSettings: React.FC = () => {
 				</div>
 
 				{/* Voice Calibration */}
-				<div className="border border-border/80 rounded-xl bg-card p-6 shadow-sm space-y-4">
+				<div className="border border-border rounded-[20px] bg-card p-6  space-y-4">
 					<div className="space-y-1">
 						<h2 className="text-[14px] font-bold text-foreground flex items-center gap-2">
 							<Mic className="h-4 w-4 text-primary" /> Voice Calibration
@@ -431,7 +431,7 @@ const AccountSettings: React.FC = () => {
 						</div>
 					)}
 					{audioUrl ? (
-						<div className="flex flex-col items-center gap-4 w-full max-w-md bg-card p-4 rounded-lg border border-border/80 shadow-sm">
+						<div className="flex flex-col items-center gap-4 w-full max-w-md bg-card p-4 rounded-[20px] border border-border ">
 							<div className="flex items-center gap-2 w-full">
 								<Volume2 className="h-4 w-4 text-success" />
 								<span className="text-[13px] font-semibold">
@@ -461,7 +461,7 @@ const AccountSettings: React.FC = () => {
 						</div>
 					) : (
 						<div className="flex flex-col items-center gap-4">
-							<div className="w-full max-w-md bg-surface border border-border/60 rounded-lg p-4 text-center">
+							<div className="w-full max-w-md bg-surface border border-border rounded-[20px] p-4 text-center">
 								<p className="text-[10px] font-bold text-primary uppercase tracking-wider mb-1.5">
 									Read this aloud
 								</p>
@@ -473,7 +473,7 @@ const AccountSettings: React.FC = () => {
 							<Button
 								variant={isRecording ? "destructive" : "default"}
 								size="lg"
-								className={`w-32 h-32 rounded-full font-bold text-sm shadow-md transition-all duration-300 ${isRecording ? "animate-pulse" : ""}`}
+								className={`w-32 h-32 rounded-full font-bold text-sm  transition-all duration-300 ${isRecording ? "animate-pulse" : ""}`}
 								onClick={isRecording ? stopRecording : startRecording}
 							>
 								{isRecording ? (
@@ -495,7 +495,7 @@ const AccountSettings: React.FC = () => {
 				</div>
 
 				{/* Data Export */}
-				<div className="border border-border/80 rounded-xl bg-card p-6 shadow-sm space-y-4">
+				<div className="border border-border rounded-[20px] bg-card p-6  space-y-4">
 					<div className="space-y-1">
 						<h2 className="text-[14px] font-bold text-foreground flex items-center gap-2">
 							<Download className="h-4 w-4 text-primary" /> Export Your Data
@@ -516,7 +516,7 @@ const AccountSettings: React.FC = () => {
 				</div>
 
 				{/* Consent */}
-				<div className="border border-border/80 rounded-xl bg-card p-6 shadow-sm space-y-4">
+				<div className="border border-border rounded-[20px] bg-card p-6  space-y-4">
 					<div className="space-y-1">
 						<h2 className="text-[14px] font-bold text-foreground flex items-center gap-2">
 							<ShieldCheck className="h-4 w-4 text-primary" /> Consent
@@ -526,7 +526,7 @@ const AccountSettings: React.FC = () => {
 							Control your data processing consent preferences.
 						</p>
 					</div>
-					<div className="flex items-center justify-between p-4 bg-surface rounded-lg border border-border/60">
+					<div className="flex items-center justify-between p-4 bg-surface rounded-[20px] border border-border">
 						<div>
 							<p className="text-[13px] font-semibold text-foreground">
 								Data Processing Consent
@@ -554,7 +554,7 @@ const AccountSettings: React.FC = () => {
 				</div>
 
 				{/* Delete Account */}
-				<div className="border border-destructive/20 rounded-xl bg-card p-6 shadow-sm space-y-4">
+				<div className="border border-destructive/20 rounded-[20px] bg-card p-6  space-y-4">
 					<div className="space-y-1">
 						<h2 className="text-[14px] font-bold text-destructive flex items-center gap-2">
 							<Trash2 className="h-4 w-4" /> Delete Account
@@ -573,7 +573,7 @@ const AccountSettings: React.FC = () => {
 							Delete My Account
 						</Button>
 					) : (
-						<div className="space-y-4 p-4 bg-destructive/5 border border-destructive/15 rounded-lg">
+						<div className="space-y-4 p-4 bg-destructive/5 border border-destructive/15 rounded-[20px]">
 							<p className="text-[13px] text-foreground font-medium">
 								This will permanently delete your account, all interview
 								sessions, and all personal data. Enter your password to confirm.

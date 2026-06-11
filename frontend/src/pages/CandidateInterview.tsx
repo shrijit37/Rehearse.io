@@ -240,7 +240,7 @@ const CandidateInterview: React.FC = () => {
 	if (error && !questions.length)
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center p-4">
-				<div className="w-full max-w-sm border border-border/80 rounded-xl bg-card p-8 text-center space-y-4">
+				<div className="w-full max-w-sm border border-border rounded-[20px] bg-card p-8 text-center space-y-4">
 					<AlertCircle className="w-6 h-6 text-destructive mx-auto" />
 					<h3 className="font-bold text-foreground">
 						Could not load interview
@@ -268,7 +268,7 @@ const CandidateInterview: React.FC = () => {
 	if (completed)
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center p-4">
-				<div className="w-full max-w-sm border border-border/80 rounded-xl bg-card p-8 text-center space-y-5">
+				<div className="w-full max-w-sm border border-border rounded-[20px] bg-card p-8 text-center space-y-5">
 					<div className="w-14 h-14 bg-success/10 rounded-full flex items-center justify-center mx-auto">
 						<CheckCircle2 className="w-7 h-7 text-success" />
 					</div>
@@ -283,7 +283,7 @@ const CandidateInterview: React.FC = () => {
 							{sessionResults.map((r, i) => (
 								<div
 									key={i}
-									className="flex items-center justify-between p-2.5 bg-surface rounded-lg text-[13px]"
+									className="flex items-center justify-between p-2.5 bg-surface rounded-[20px] text-[13px]"
 								>
 									<span className="font-medium text-foreground">Q{i + 1}</span>
 									<span className="font-bold text-primary">
@@ -310,7 +310,7 @@ const CandidateInterview: React.FC = () => {
 	return (
 		<div className="min-h-screen bg-background flex flex-col pt-14">
 			{/* Progress bar */}
-			<div className="border-b border-border/60 bg-surface/80 backdrop-blur-sm sticky top-14 z-30 py-3 px-4 sm:px-6 lg:px-8">
+			<div className="border-b border-border bg-surface/80  sticky top-14 z-30 py-3 px-4 sm:px-6 lg:px-8">
 				<div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
 					<div className="flex items-center gap-3">
 						<button
@@ -342,8 +342,8 @@ const CandidateInterview: React.FC = () => {
 			<div className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col md:grid md:grid-cols-12 gap-5">
 				{/* Question panel */}
 				<div className="md:col-span-5 flex flex-col">
-					<div className="border border-border/80 shadow-sm bg-card rounded-xl flex-1 flex flex-col overflow-hidden">
-						<div className="border-b border-border/60 px-5 py-3 bg-secondary/15">
+					<div className="border border-border  bg-card rounded-[20px] flex-1 flex flex-col overflow-hidden">
+						<div className="border-b border-border px-5 py-3 bg-secondary/15">
 							<span className="text-[12px] font-semibold text-foreground">
 								{interview?.title || "Interview"}
 							</span>
@@ -363,7 +363,7 @@ const CandidateInterview: React.FC = () => {
 								Listen carefully, then record your response.
 							</p>
 						</div>
-						<div className="border-t border-border/60 p-5 bg-background">
+						<div className="border-t border-border p-5 bg-background">
 							<span className="text-[10px] font-bold uppercase tracking-wider text-primary">
 								Question
 							</span>
@@ -377,22 +377,22 @@ const CandidateInterview: React.FC = () => {
 				{/* Recording panel */}
 				<div className="md:col-span-7 flex flex-col relative">
 					{error && (
-						<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-lg border border-destructive/20 mb-3 flex items-center gap-2">
+						<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-[20px] border border-destructive/20 mb-3 flex items-center gap-2">
 							<AlertCircle className="w-4 h-4 shrink-0" />
 							<span>{error}</span>
 						</div>
 					)}
-					<div className="border border-border/80 shadow-sm bg-card rounded-xl flex-1 flex flex-col overflow-hidden relative min-h-[340px]">
+					<div className="border border-border  bg-card rounded-[20px] flex-1 flex flex-col overflow-hidden relative min-h-[340px]">
 						<div className="flex-1 bg-black relative flex flex-col justify-center items-center overflow-hidden">
 							{isEvaluating ? (
-								<div className="absolute inset-0 bg-background/95 backdrop-blur-md z-20 flex flex-col items-center justify-center gap-3">
+								<div className="absolute inset-0 bg-background/95  z-20 flex flex-col items-center justify-center gap-3">
 									<Loader2 className="w-8 h-8 text-primary animate-spin" />
 									<p className="text-[13px] font-semibold">
 										Evaluating your response...
 									</p>
 								</div>
 							) : evaluation ? (
-								<div className="absolute inset-0 bg-background/95 backdrop-blur-md z-20 flex flex-col justify-between p-5 overflow-y-auto">
+								<div className="absolute inset-0 bg-background/95  z-20 flex flex-col justify-between p-5 overflow-y-auto">
 									<div className="space-y-3">
 										<div className="flex items-center justify-between border-b border-border pb-3">
 											<div>
@@ -412,7 +412,7 @@ const CandidateInterview: React.FC = () => {
 											{evaluation.feedback}
 										</p>
 									</div>
-									<div className="border-t border-border/60 pt-3 flex justify-end gap-2">
+									<div className="border-t border-border pt-3 flex justify-end gap-2">
 										<Button
 											variant="outline"
 											size="sm"
@@ -456,7 +456,7 @@ const CandidateInterview: React.FC = () => {
 						</div>
 
 						{!evaluation && (
-							<div className="border-t border-border/60 p-4 bg-background flex flex-col sm:flex-row items-center justify-between gap-3">
+							<div className="border-t border-border p-4 bg-background flex flex-col sm:flex-row items-center justify-between gap-3">
 								<p className="text-[12px] text-muted-foreground font-medium">
 									{isRecording
 										? "Click stop when finished."

@@ -16,8 +16,14 @@ dotenv.config();
 
 const app = express();
 
-// Security headers
-app.use(helmet());
+// Security headers — omit deprecated browsing-topics (removed in Chrome 100+)
+app.use(
+	helmet({
+		permissionsPolicy: {
+			policy: {},
+		},
+	}),
+);
 
 // Sanitize data — prevent NoSQL injection via query params/body (e.g., ?key[$ne]=)
 // mongo-sanitize strips keys starting with $ from objects

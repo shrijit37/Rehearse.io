@@ -310,9 +310,9 @@ const Onboarding = () => {
 
 				{/* Main content card */}
 				<div className="flex-1 flex flex-col">
-					<div className="border border-border/80 rounded-xl bg-card shadow-sm flex-1 flex flex-col overflow-hidden">
+					<div className="border border-border rounded-[20px] bg-card  flex-1 flex flex-col overflow-hidden">
 						{/* Progress bar */}
-						<div className="border-b border-border/60 px-6 py-3 flex items-center justify-between bg-secondary/20">
+						<div className="border-b border-border px-6 py-3 flex items-center justify-between bg-secondary/20">
 							<span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
 								Step {currentStep} of {steps.length}
 							</span>
@@ -332,7 +332,7 @@ const Onboarding = () => {
 						{/* Step content */}
 						<div className="flex-1 p-8 flex flex-col justify-center min-h-[340px]">
 							{error && (
-								<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-lg border border-destructive/20 mb-6 flex items-center gap-2 animate-in fade-in duration-200">
+								<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-[20px] border border-destructive/20 mb-6 flex items-center gap-2 animate-in fade-in duration-200">
 									<AlertCircle className="w-4 h-4 shrink-0" />
 									<span>{error}</span>
 								</div>
@@ -341,8 +341,8 @@ const Onboarding = () => {
 							{currentStep === 1 && (
 								<div className="flex flex-col items-center">
 									{resumeFile ? (
-										<div className="w-full max-w-md bg-surface border border-border/60 rounded-lg p-4 flex items-center gap-4 animate-in zoom-in-95 duration-200">
-											<div className="w-10 h-10 bg-primary/10 border border-primary/15 text-primary rounded-lg flex items-center justify-center shrink-0">
+										<div className="w-full max-w-md bg-surface border border-border rounded-[20px] p-4 flex items-center gap-4 animate-in zoom-in-95 duration-200">
+											<div className="w-10 h-10 bg-primary/10 border border-primary/15 text-primary rounded-[20px] flex items-center justify-center shrink-0">
 												<FileText className="h-5 w-5" />
 											</div>
 											<div className="flex-1 min-w-0">
@@ -363,9 +363,9 @@ const Onboarding = () => {
 									) : (
 										<div
 											{...getRootProps()}
-											className="w-full max-w-md border-2 border-dashed border-border hover:border-primary/40 bg-surface/50 hover:bg-secondary/50 rounded-xl p-10 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 select-none group"
+											className="w-full max-w-md border-2 border-dashed border-border hover:border-primary/40 bg-surface/50 hover:bg-secondary/50 rounded-[20px] p-10 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 select-none group"
 										>
-											<div className="w-12 h-12 bg-card border border-border rounded-full flex items-center justify-center mb-4 shadow-sm group-hover:scale-105 transition-transform">
+											<div className="w-12 h-12 bg-card border border-border rounded-full flex items-center justify-center mb-4  group-hover:scale-105 transition-transform">
 												<Upload className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
 											</div>
 											<h3 className="text-sm font-semibold text-foreground mb-1">
@@ -383,7 +383,7 @@ const Onboarding = () => {
 								<div className="flex flex-col items-center gap-5">
 									{photo ? (
 										<div className="flex flex-col items-center gap-4 animate-in zoom-in-95 duration-200">
-											<div className="w-40 h-40 rounded-full border-4 border-card outline outline-2 outline-primary overflow-hidden shadow-md">
+											<div className="w-40 h-40 rounded-full border-4 border-card outline outline-2 outline-primary overflow-hidden ">
 												<img
 													src={photo}
 													alt="Profile"
@@ -405,7 +405,7 @@ const Onboarding = () => {
 										</div>
 									) : (
 										<div className="w-full max-w-md flex flex-col items-center gap-4">
-											<div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-border">
+											<div className="relative w-full aspect-video bg-black rounded-[20px] overflow-hidden border border-border">
 												{cameraLoading && (
 													<div className="absolute inset-0 flex items-center justify-center bg-secondary/80 z-10">
 														<RefreshCw className="animate-spin h-5 w-5 text-primary" />
@@ -444,7 +444,7 @@ const Onboarding = () => {
 
 							{currentStep === 3 && (
 								<div className="flex flex-col items-center gap-5 w-full">
-									<div className="w-full max-w-md bg-surface border border-border/60 rounded-lg p-4 text-center">
+									<div className="w-full max-w-md bg-surface border border-border rounded-[20px] p-4 text-center">
 										<p className="text-[10px] font-bold text-primary uppercase tracking-wider mb-1.5">
 											Read this aloud
 										</p>
@@ -454,7 +454,7 @@ const Onboarding = () => {
 										</p>
 									</div>
 									{audioUrl ? (
-										<div className="flex flex-col items-center gap-4 w-full max-w-md bg-card p-4 rounded-lg border border-border/80 shadow-sm animate-in zoom-in-95 duration-200">
+										<div className="flex flex-col items-center gap-4 w-full max-w-md bg-card p-4 rounded-[20px] border border-border  animate-in zoom-in-95 duration-200">
 											<div className="flex items-center gap-2 w-full">
 												<Volume2 className="h-4 w-4 text-success" />
 												<span className="text-[13px] font-semibold">
@@ -477,7 +477,7 @@ const Onboarding = () => {
 											<Button
 												variant={isRecording ? "destructive" : "default"}
 												size="lg"
-												className={`w-32 h-32 rounded-full font-bold text-sm shadow-md transition-all duration-300 ${isRecording ? "animate-pulse" : ""}`}
+												className={`w-32 h-32 rounded-full font-bold text-sm  transition-all duration-300 ${isRecording ? "animate-pulse" : ""}`}
 												onClick={isRecording ? stopRecording : startRecording}
 											>
 												{isRecording ? (
@@ -511,7 +511,7 @@ const Onboarding = () => {
 						</div>
 
 						{/* Footer nav */}
-						<div className="border-t border-border/60 px-6 py-4 flex items-center justify-between bg-secondary/10">
+						<div className="border-t border-border px-6 py-4 flex items-center justify-between bg-secondary/10">
 							<Button
 								variant="ghost"
 								onClick={handleBack}

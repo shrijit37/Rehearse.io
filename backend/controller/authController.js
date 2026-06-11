@@ -192,5 +192,8 @@ export const onboard = asyncHandler(async (req, res) => {
 	delete userData.photo;
 	delete userData.audio;
 
-	res.json({ message: "Onboarding completed successfully", user: userData });
+	res.json({
+		message: "Onboarding completed successfully",
+		user: { ...userData, onboarded: Boolean(user.resume) },
+	});
 });

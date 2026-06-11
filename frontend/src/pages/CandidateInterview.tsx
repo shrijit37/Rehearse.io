@@ -8,10 +8,12 @@ import {
 	Loader2,
 	AlertCircle,
 	Volume2,
+	VolumeX,
 	ArrowLeft,
 	CheckCircle2,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { useSpeak } from "@/hooks/useSpeak";
 
 interface ResultItem {
 	question: string;
@@ -40,6 +42,8 @@ const CandidateInterview: React.FC = () => {
 	const [recordingSeconds, setRecordingSeconds] = useState(0);
 	const [completed, setCompleted] = useState(false);
 	const [isSubmitting, setIsSubmitting] = useState(false);
+
+	const { speak, stop, speaking, supported: ttsSupported } = useSpeak();
 
 	const streamRef = useRef<MediaStream | null>(null);
 	const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -105,7 +109,17 @@ const CandidateInterview: React.FC = () => {
 			.toString()
 			.padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
 
+	const handleSpeakQuestion = () => {
+		if (speaking) {
+			stop();
+		} else {
+			speak(currentQuestion);
+		}
+	};
+
+	// Stop TTS when starting recording
 	const handleToggleRecording = async () => {
+		if (speaking) stop();
 		if (isRecording) {
 			if (
 				mediaRecorderRef.current &&
@@ -179,6 +193,7 @@ const CandidateInterview: React.FC = () => {
 	};
 
 	const handleNext = async () => {
+		if (speaking) stop();
 		if (isRecording) {
 			if (mediaRecorderRef.current?.state !== "inactive")
 				mediaRecorderRef.current?.stop();
@@ -202,22 +217,18 @@ const CandidateInterview: React.FC = () => {
 		setIsSubmitting(true);
 		try {
 			if (invite?._id) {
-				await Promise.allSettled(
-					sessionResults.map((result, i) => {
-						if (!result) return Promise.resolve();
-						return api.post(
-							"/api/interviews/candidate/submit",
-							{
-								inviteId: invite._id,
-								questionIndex: i,
-								transcription: result.transcription || "",
-								score: result.score,
-								feedback: result.feedback || "",
-							},
-							{ tokenOverride: authToken || undefined },
-						);
-					}),
-				);
+				for (let i = 0; i < sessionResults.length; i++) {
+					const result = sessionResults[i];
+					if (!result) continue;
+					await api.post(
+						"/api/interviews/candidate/submit",
+						{
+							inviteId: invite._id,
+							questionIndex: i,
+						},
+						{ tokenOverride: authToken || undefined },
+					);
+				}
 			}
 			setCompleted(true);
 		} catch (err: any) {
@@ -363,11 +374,31 @@ const CandidateInterview: React.FC = () => {
 								Listen carefully, then record your response.
 							</p>
 						</div>
-						<div className="border-t border-border p-5 bg-background">
-							<span className="text-[10px] font-bold uppercase tracking-wider text-primary">
-								Question
-							</span>
-							<h2 className="text-[14px] font-semibold text-foreground leading-snug pt-1">
+						<div className="border-t border-border p-5 bg-background space-y-2">
+							<div className="flex items-center justify-between">
+								<span className="text-[10px] font-bold uppercase tracking-wider text-primary">
+									Question
+								</span>
+								{ttsSupported && (
+									<button
+										onClick={handleSpeakQuestion}
+										disabled={isRecording || isEvaluating}
+										title={speaking ? "Stop" : "Play question aloud"}
+										className={`p-1.5 rounded-full transition-all ${
+											speaking
+												? "bg-primary/15 text-primary animate-pulse"
+												: "text-muted-foreground hover:text-primary hover:bg-primary/10"
+										} disabled:opacity-30 disabled:cursor-not-allowed`}
+									>
+										{speaking ? (
+											<VolumeX className="h-4 w-4" />
+										) : (
+											<Volume2 className="h-4 w-4" />
+										)}
+									</button>
+								)}
+							</div>
+							<h2 className="text-[14px] font-semibold text-foreground leading-snug">
 								"{currentQuestion}"
 							</h2>
 						</div>

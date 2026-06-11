@@ -1,6 +1,4 @@
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-const pdfParse = require("pdf-parse");
+import { PDFParse } from "pdf-parse";
 
 /**
  * Extracts raw text from a Base64 encoded PDF string.
@@ -16,6 +14,8 @@ export const extractTextFromBase64Pdf = async (base64String) => {
   const base64Data = base64String.replace(/^data:application\/pdf;base64,/, "");
 
   const buffer = Buffer.from(base64Data, "base64");
-  const data = await pdfParse(buffer);
-  return data.text;
+  const parser = new PDFParse({ data: buffer });
+  const textResult = await parser.getText();
+  await parser.destroy();
+  return textResult.text;
 };

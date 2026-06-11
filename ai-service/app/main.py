@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import litellm
-from openai import OpenAI
+# OpenAI import moved to stt_provider.py
 
 load_dotenv()
 
@@ -39,20 +39,17 @@ ALLOWED_AUDIO_TYPES = {
 
 MODEL_NAME = os.getenv("LITELLM_MODEL", "gpt-4o-mini")
 
-# Configure OpenAI client for Speech-to-Text (Whisper)
-openai_api_key = os.getenv("OPENAI_API_KEY")
-groq_api_key = os.getenv("GROQ_API_KEY")
+# Speech-to-Text provider — local faster-whisper by default (free, unlimited)
+# Override with STT_BACKEND=groq or STT_BACKEND=openai or STT_BACKEND=auto
+from stt_provider import create_stt_provider
 
-if groq_api_key:
-    stt_client = OpenAI(api_key=groq_api_key, base_url="https://api.groq.com/openai/v1")
-    stt_model = os.getenv("STT_MODEL", "whisper-large-v3")
-elif openai_api_key:
-    stt_client = OpenAI(api_key=openai_api_key)
-    stt_model = os.getenv("STT_MODEL", "whisper-1")
-else:
-    stt_client = None
-    stt_model = None
-    logger.warning("No STT API key configured (neither GROQ_API_KEY nor OPENAI_API_KEY)")
+stt_provider = None
+try:
+    stt_provider = create_stt_provider()
+    logger.info("STT provider initialized: %s", os.getenv("STT_BACKEND", "local"))
+except Exception as exc:
+    logger.warning("STT provider failed to initialize: %s", exc)
+    logger.warning("Transcription will be unavailable until a provider is configured.")
 
 # Shared API key for backend→AI authentication
 API_KEY = os.getenv("API_KEY", "")
@@ -192,15 +189,18 @@ async def evaluate_audio(
         if len(audio_bytes) == 0:
             raise HTTPException(status_code=400, detail="Empty audio file")
 
-        if not stt_client:
-            raise HTTPException(status_code=503, detail="STT service not configured")
+        if not stt_provider:
+            raise HTTPException(
+                status_code=503,
+                detail="STT service not configured. Set STT_BACKEND=local (default), "
+                       "or set GROQ_API_KEY / OPENAI_API_KEY."
+            )
 
-        # Perform STT transcription using OpenAI Whisper API
-        transcription = stt_client.audio.transcriptions.create(
-            model=stt_model,
-            file=(audio.filename or "audio.webm", audio_bytes, audio.content_type or "audio/webm")
+        # Perform STT transcription using the configured provider
+        transcription_text = stt_provider.transcribe(
+            audio_bytes,
+            audio.content_type or "audio/webm"
         )
-        transcription_text = transcription.text
 
         # Truncate transcription to prevent abuse
         transcription_text = transcription_text[:5000]

@@ -25,7 +25,7 @@ const InterviewSetup: React.FC = () => {
 				setOrganizations(data.data || []);
 				if (data.data?.length > 0) setSelectedOrgId(data.data[0]._id);
 			})
-			.catch(() => {});
+			.catch((err) => console.error("Failed to fetch organizations:", err));
 	}, [navigate]);
 
 	const addQuestion = () => setQuestions([...questions, ""]);

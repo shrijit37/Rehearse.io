@@ -14,7 +14,7 @@ const AuditLogSchema = new mongoose.Schema({
       'account_delete', 'account_export', 'consent_update',
       'interview_create', 'interview_invite', 'interview_start', 'interview_submit',
       'org_create', 'org_update', 'org_member_invite',
-      'data_access', 'data_modify',
+      'data_access', 'data_modify', 'profile_update',
     ],
   },
   details: {

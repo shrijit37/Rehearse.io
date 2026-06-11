@@ -16,3 +16,12 @@ test-results/
 # Review/fix notes
 review-*.md
 fix-*.md
+
+# Auto-generated codemap files
+**/codemap.md
+
+# Claude Code local state
+.claude/
+
+# SLIM tool state
+.slim/

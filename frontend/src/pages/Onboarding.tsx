@@ -57,7 +57,7 @@ const Onboarding = () => {
 		onClick: () => {
 			const input = document.createElement("input");
 			input.type = "file";
-			input.accept = ".pdf,.docx,.doc";
+			input.accept = ".pdf";
 			input.onchange = (e) => {
 				const files = (e.target as HTMLInputElement).files;
 				if (files && files.length > 0) setResumeFile(files[0]);
@@ -372,7 +372,7 @@ const Onboarding = () => {
 												Upload your resume
 											</h3>
 											<p className="text-[12px] text-muted-foreground max-w-xs">
-												PDF or Word document, up to 5 MB
+												PDF document, up to 5 MB
 											</p>
 										</div>
 									)}

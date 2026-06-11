@@ -1,12 +1,19 @@
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
+import axios from "axios";
 import InterviewSession from "../db/InterviewSession.js";
 import CandidateInvite from "../db/CandidateInvite.js";
 import Organization from "../db/Organization.js";
 import User from "../db/User.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { logAudit } from "../middleware/auditLog.js";
+
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
+const AI_SERVICE_API_KEY = process.env.AI_SERVICE_API_KEY;
+const aiAuthHeaders = AI_SERVICE_API_KEY
+	? { Authorization: `Bearer ${AI_SERVICE_API_KEY}` }
+	: {};
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -281,12 +288,113 @@ export const acceptInvite = asyncHandler(async (req, res) => {
 });
 
 /**
- * Candidate submits an answer.
- * Score and feedback are NOT accepted from the client — they must be generated
- * server-side via the AI evaluation endpoint (evaluateAnswer).
+ * Evaluate a candidate's audio answer via AI and save the result to DB.
+ * Score/feedback/transcription are persisted immediately so they survive
+ * page reloads and are visible to recruiters in candidate results.
+ */
+export const evaluateCandidateAnswer = asyncHandler(async (req, res) => {
+	if (!req.file) {
+		return res.status(400).json({ message: "No audio file uploaded" });
+	}
+
+	const { question, inviteId } = req.body;
+	if (!question) {
+		return res
+			.status(400)
+			.json({ message: "No question provided for evaluation" });
+	}
+	if (!inviteId) {
+		return res.status(400).json({ message: "inviteId is required" });
+	}
+
+	// Validate the invite belongs to this candidate
+	if (!mongoose.Types.ObjectId.isValid(inviteId)) {
+		return res.status(400).json({ message: "Invalid inviteId format" });
+	}
+
+	const invite = await CandidateInvite.findById(inviteId);
+	if (!invite) return res.status(404).json({ message: "Invite not found" });
+	if (invite.candidate.toString() !== req.user._id.toString()) {
+		return res.status(403).json({ message: "Not authorized for this invite" });
+	}
+	if (invite.status !== "started") {
+		return res.status(400).json({ message: "Invite is not active" });
+	}
+
+	// Verify question belongs to this interview
+	const interview = await InterviewSession.findById(invite.interview);
+	if (!interview) return res.status(404).json({ message: "Interview not found" });
+
+	const questionIndex = interview.questions.indexOf(question);
+	if (questionIndex === -1) {
+		return res
+			.status(400)
+			.json({ message: "Question not found in this interview" });
+	}
+
+	// Forward audio to AI service
+	const formData = new FormData();
+	const blob = new Blob([req.file.buffer], { type: req.file.mimetype });
+	formData.append("audio", blob, req.file.originalname || "answer.webm");
+	formData.append("question", question);
+
+	let aiResponse;
+	try {
+		aiResponse = await axios.post(
+			`${AI_SERVICE_URL}/api/evaluate-audio`,
+			formData,
+			{
+				headers: aiAuthHeaders,
+				// No manual Content-Type — axios sets multipart boundary automatically
+			},
+		);
+	} catch (aiErr) {
+		console.error("AI evaluation service error:", aiErr.message);
+		return res.status(502).json({
+			message: "AI service failed to evaluate your answer. Please try again.",
+			error: aiErr.message,
+		});
+	}
+
+	const transcription = aiResponse.data.transcription || "";
+	const score = aiResponse.data.score;
+	const feedback = aiResponse.data.feedback || "";
+
+	// Save or update result in the invite
+	const existingIndex = invite.results.findIndex(
+		(r) => interview.questions.indexOf(r.question) === questionIndex,
+	);
+
+	if (existingIndex >= 0) {
+		invite.results[existingIndex].transcription = transcription;
+		invite.results[existingIndex].score = score;
+		invite.results[existingIndex].feedback = feedback;
+	} else {
+		invite.results.push({
+			question,
+			transcription,
+			score,
+			feedback,
+		});
+	}
+
+	await invite.save();
+
+	return res.json({
+		score,
+		feedback,
+		transcription: transcription || "No transcription available",
+	});
+});
+
+/**
+ * Candidate submits an answer to finalize the interview.
+ * Results (score/feedback/transcription) are already persisted by
+ * evaluateCandidateAnswer — this endpoint only marks completion
+ * and ensures a result entry exists for each answered question.
  */
 export const submitAnswer = asyncHandler(async (req, res) => {
-	const { inviteId, questionIndex, transcription } = req.body;
+	const { inviteId, questionIndex } = req.body;
 
 	if (!inviteId || questionIndex === undefined) {
 		return res
@@ -312,24 +420,19 @@ export const submitAnswer = asyncHandler(async (req, res) => {
 		return res.status(400).json({ message: "Invalid question index" });
 	}
 
-	// Check if this question already has an AI-evaluated result (from evaluateAnswer)
+	// Ensure a result entry exists (should already be saved by evaluateCandidateAnswer)
 	const existingIndex = invite.results.findIndex(
 		(r) => interview.questions.indexOf(r.question) === questionIndex,
 	);
 
-	if (existingIndex >= 0) {
-		// Update transcription only — preserve existing AI-generated score and feedback
-		invite.results[existingIndex].transcription =
-			transcription || invite.results[existingIndex].transcription;
-	} else {
-		// No AI evaluation exists yet — store transcription only; score/feedback come from evaluateAnswer
-		const result = {
+	if (existingIndex === -1) {
+		// Defensive: no evaluation result yet — create a placeholder
+		invite.results.push({
 			question: interview.questions[questionIndex],
-			transcription: transcription || "",
+			transcription: "",
 			score: null,
 			feedback: "",
-		};
-		invite.results.push(result);
+		});
 	}
 
 	// Check if all questions answered

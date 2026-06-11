@@ -82,10 +82,8 @@ export const evaluateAnswer = asyncHandler(async (req, res) => {
 			`${AI_SERVICE_URL}/api/evaluate-audio`,
 			formData,
 			{
-				headers: {
-					...aiAuthHeaders,
-					"Content-Type": "multipart/form-data",
-				},
+				headers: aiAuthHeaders,
+				// No manual Content-Type — axios sets multipart boundary automatically
 			},
 		);
 

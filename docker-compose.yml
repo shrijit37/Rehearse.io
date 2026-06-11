@@ -3,7 +3,10 @@ services:
     image: mongo:7.0
     container_name: rehearse-mongo
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"  # Localhost only — not exposed to network
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
     volumes:
       - mongo_data:/data/db
     networks:
@@ -21,10 +24,17 @@ services:
       - GROQ_API_KEY
       - ANTHROPIC_API_KEY
       - LITELLM_MODEL
+      - NVIDIA_NIM_API_KEY
+      - NVIDIA_NIM_API_BASE
       - STT_MODEL
+      - STT_BACKEND=${STT_BACKEND:-local}
+      - STT_LOCAL_MODEL=${STT_LOCAL_MODEL:-distil-large-v3}
+      - STT_LOCAL_DEVICE=${STT_LOCAL_DEVICE:-cpu}
       - SERVER_IP=${SERVER_IP:-161.118.179.12}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,http://161.118.179.12:3000,http://161.118.179.12:9000}
       - API_KEY=${AI_SERVICE_API_KEY:-}  # Shared secret for backend→AI auth
+    volumes:
+      - whisper_cache:/root/.cache/huggingface/  # Persist Whisper model across restarts
     networks:
       - rehearse-network
 
@@ -36,7 +46,7 @@ services:
     ports:
       - "9000:9000"
     environment:
-      - MONGO_URI=mongodb://mongo:27017/rehearse
+      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongo:27017/rehearse?authSource=admin
       - JWT_SECRET=${JWT_SECRET}  # REQUIRED — no default; fails fast if unset
       - PORT=9000
       - NODE_ENV=production
@@ -74,3 +84,4 @@ networks:
 
 volumes:
   mongo_data:
+  whisper_cache:

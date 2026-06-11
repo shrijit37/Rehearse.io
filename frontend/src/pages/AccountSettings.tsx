@@ -65,7 +65,7 @@ const AccountSettings: React.FC = () => {
 				consentVersion: string;
 			}>("/api/auth/consent")
 			.then(setConsent)
-			.catch(() => {});
+			.catch((err) => console.error("Failed to fetch consent status:", err));
 	}, [navigate]);
 
 	// Camera functions
@@ -132,7 +132,7 @@ const AccountSettings: React.FC = () => {
 		setPhotoSaving(true);
 		setCameraError(null);
 		try {
-			await api.post("/api/auth/onboard", { photo });
+			await api.patch("/api/auth/profile", { photo });
 			setPhotoSaved(true);
 			setTimeout(() => setPhotoSaved(false), 3000);
 		} catch (err: any) {
@@ -192,7 +192,7 @@ const AccountSettings: React.FC = () => {
 				reader.onerror = reject;
 				reader.readAsDataURL(audioBlob);
 			});
-			await api.post("/api/auth/onboard", { audio: audioBase64 });
+			await api.patch("/api/auth/profile", { audio: audioBase64 });
 			setVoiceSaved(true);
 			setTimeout(() => setVoiceSaved(false), 3000);
 		} catch (err: any) {

@@ -28,6 +28,8 @@ const RecruiterDashboard: React.FC = () => {
 		null,
 	);
 	const [showInviteModal, setShowInviteModal] = useState(false);
+	const [generatedLink, setGeneratedLink] = useState<string | null>(null);
+	const [copied, setCopied] = useState(false);
 
 	useEffect(() => {
 		fetchData();
@@ -73,13 +75,39 @@ const RecruiterDashboard: React.FC = () => {
 				{ candidateEmail: inviteEmail.trim() },
 			);
 			const link = `${window.location.origin}/interview/accept/${data.inviteToken}`;
-			navigator.clipboard.writeText(link);
+			setGeneratedLink(link);
+			setCopied(false);
+			// Try clipboard silently — if unavailable or rejected, the modal still shows the link
+			try {
+				if (navigator.clipboard) {
+					await navigator.clipboard.writeText(link);
+					setCopied(true);
+				}
+			} catch {
+				// Clipboard unavailable or permission denied — link is shown in modal
+			}
 			setInviteEmail("");
-			setInviteInterviewId(null);
-			setShowInviteModal(false);
 			fetchData();
 		} catch (err: any) {
 			setError(err.message || "Failed to generate invite");
+		}
+	};
+
+	const handleCopyLink = async () => {
+		if (!generatedLink) return;
+		try {
+			if (navigator.clipboard) {
+				await navigator.clipboard.writeText(generatedLink);
+				setCopied(true);
+				setTimeout(() => setCopied(false), 2000);
+			}
+		} catch {
+			// Fallback: select the input text for manual copy
+			const input = document.getElementById("invite-link-input") as HTMLInputElement;
+			if (input) {
+				input.select();
+				input.setSelectionRange(0, 99999);
+			}
 		}
 	};
 
@@ -368,42 +396,89 @@ const RecruiterDashboard: React.FC = () => {
 			{showInviteModal && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
 					<div className="bg-card border border-border rounded-[20px]  p-6 w-full max-w-sm space-y-4">
-						<h3 className="text-[14px] font-bold text-foreground">
-							Invite Candidate
-						</h3>
-						<input
-							type="email"
-							placeholder="candidate@example.com"
-							value={inviteEmail}
-							onChange={(e) => setInviteEmail(e.target.value)}
-							onKeyDown={(e) => {
-								if (e.key === "Enter") handleGenerateInvite();
-							}}
-							className="w-full h-9 px-3 rounded-[20px] border border-border bg-background text-[13px] focus:border-primary/50 focus:outline-none"
-							autoFocus
-						/>
-						<div className="flex gap-2 justify-end">
-							<Button
-								variant="ghost"
-								size="sm"
-								onClick={() => {
-									setShowInviteModal(false);
-									setInviteEmail("");
-									setInviteInterviewId(null);
-								}}
-								className="font-medium"
-							>
-								Cancel
-							</Button>
-							<Button
-								size="sm"
-								onClick={handleGenerateInvite}
-								disabled={!inviteEmail.trim()}
-								className="font-medium"
-							>
-								Send Invite
-							</Button>
-						</div>
+						{generatedLink ? (
+							<>
+								<h3 className="text-[14px] font-bold text-foreground">
+									Invite Generated
+								</h3>
+								<p className="text-[12px] text-muted-foreground">
+									Share this link with the candidate to start their interview.
+								</p>
+								<div className="flex gap-2">
+									<input
+										id="invite-link-input"
+										type="text"
+										readOnly
+										value={generatedLink}
+										className="flex-1 h-9 px-3 rounded-[20px] border border-border bg-background text-[12px] focus:border-primary/50 focus:outline-none cursor-text"
+										onClick={(e) => e.currentTarget.select()}
+									/>
+									<Button
+										size="sm"
+										variant="outline"
+										onClick={handleCopyLink}
+										className="font-medium shrink-0"
+									>
+										{copied ? "Copied!" : "Copy"}
+									</Button>
+								</div>
+								<div className="flex gap-2 justify-end">
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={() => {
+											setShowInviteModal(false);
+											setInviteEmail("");
+											setInviteInterviewId(null);
+											setGeneratedLink(null);
+											setCopied(false);
+										}}
+										className="font-medium"
+									>
+										Done
+									</Button>
+								</div>
+							</>
+						) : (
+							<>
+								<h3 className="text-[14px] font-bold text-foreground">
+									Invite Candidate
+								</h3>
+								<input
+									type="email"
+									placeholder="candidate@example.com"
+									value={inviteEmail}
+									onChange={(e) => setInviteEmail(e.target.value)}
+									onKeyDown={(e) => {
+										if (e.key === "Enter") handleGenerateInvite();
+									}}
+									className="w-full h-9 px-3 rounded-[20px] border border-border bg-background text-[13px] focus:border-primary/50 focus:outline-none"
+									autoFocus
+								/>
+								<div className="flex gap-2 justify-end">
+									<Button
+										variant="ghost"
+										size="sm"
+										onClick={() => {
+											setShowInviteModal(false);
+											setInviteEmail("");
+											setInviteInterviewId(null);
+										}}
+										className="font-medium"
+									>
+										Cancel
+									</Button>
+									<Button
+										size="sm"
+										onClick={handleGenerateInvite}
+										disabled={!inviteEmail.trim()}
+										className="font-medium"
+									>
+										Send Invite
+									</Button>
+								</div>
+							</>
+						)}
 					</div>
 				</div>
 			)}

@@ -10,10 +10,12 @@ import {
 	Loader2,
 	AlertCircle,
 	Volume2,
+	VolumeX,
 	ArrowLeft,
 	Briefcase,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { useSpeak } from "@/hooks/useSpeak";
 
 interface ResultItem {
 	question: string;
@@ -52,6 +54,8 @@ const RehearsalRoom: React.FC = () => {
 	const [sessionResults, setSessionResults] = useState<ResultItem[]>([]);
 	const [error, setError] = useState<string | null>(null);
 	const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
+
+	const { speak, stop, speaking, supported: ttsSupported } = useSpeak();
 
 	const streamRef = useRef<MediaStream | null>(null);
 	const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -99,7 +103,19 @@ const RehearsalRoom: React.FC = () => {
 			.toString()
 			.padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
 
+	const handleSpeakQuestion = () => {
+		if (speaking) {
+			stop();
+		} else {
+			if (questions[currentQuestionIndex]) {
+				speak(questions[currentQuestionIndex]);
+			}
+		}
+	};
+
+	// Stop TTS when starting recording
 	const handleToggleRecording = async () => {
+		if (speaking) stop();
 		if (isRecording) {
 			if (
 				mediaRecorderRef.current &&
@@ -188,6 +204,7 @@ const RehearsalRoom: React.FC = () => {
 	};
 
 	const handleNext = async () => {
+		if (speaking) stop();
 		if (isRecording) {
 			if (mediaRecorderRef.current?.state !== "inactive")
 				mediaRecorderRef.current?.stop();
@@ -401,11 +418,31 @@ const RehearsalRoom: React.FC = () => {
 						</div>
 
 						{/* Question */}
-						<div className="border-t border-border p-5 bg-background">
-							<span className="text-[10px] font-bold uppercase tracking-wider text-primary">
-								Question
-							</span>
-							<h2 className="text-[14px] font-semibold text-foreground leading-snug pt-1">
+						<div className="border-t border-border p-5 bg-background space-y-2">
+							<div className="flex items-center justify-between">
+								<span className="text-[10px] font-bold uppercase tracking-wider text-primary">
+									Question
+								</span>
+								{ttsSupported && (
+									<button
+										onClick={handleSpeakQuestion}
+										disabled={isRecording || isEvaluating}
+										title={speaking ? "Stop" : "Play question aloud"}
+										className={`p-1.5 rounded-full transition-all ${
+											speaking
+												? "bg-primary/15 text-primary animate-pulse"
+												: "text-muted-foreground hover:text-primary hover:bg-primary/10"
+										} disabled:opacity-30 disabled:cursor-not-allowed`}
+									>
+										{speaking ? (
+											<VolumeX className="h-4 w-4" />
+										) : (
+											<Volume2 className="h-4 w-4" />
+										)}
+									</button>
+								)}
+							</div>
+							<h2 className="text-[14px] font-semibold text-foreground leading-snug">
 								"{currentQuestion}"
 							</h2>
 						</div>

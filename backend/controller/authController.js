@@ -172,6 +172,18 @@ export const onboard = asyncHandler(async (req, res) => {
 	if (!validateBase64Field(photo, "photo", res)) return;
 	if (!validateBase64Field(audio, "audio", res)) return;
 
+	// Validate that resume starts with PDF magic number (%PDF)
+	const rawResume = resume.includes(",") ? resume.split(",")[1] : resume;
+	const resumeBuffer = Buffer.from(rawResume, "base64");
+	if (
+		resumeBuffer.length < 4 ||
+		resumeBuffer.toString("utf8", 0, 4) !== "%PDF"
+	) {
+		return res.status(400).json({
+			message: "Invalid file format. Please upload a valid PDF document.",
+		});
+	}
+
 	const user = await User.findByIdAndUpdate(
 		req.user._id,
 		{ resumeName, resume, photo, audio, onboardingCompleted: true },
@@ -195,5 +207,49 @@ export const onboard = asyncHandler(async (req, res) => {
 	res.json({
 		message: "Onboarding completed successfully",
 		user: { ...userData, onboarded: Boolean(user.resume) },
+	});
+});
+
+/**
+ * Update profile fields (photo, audio) for already-onboarded users.
+ * Only provided fields are updated — resume is untouched.
+ */
+export const updateProfile = asyncHandler(async (req, res) => {
+	const { photo, audio } = req.body;
+
+	if (photo === undefined && audio === undefined) {
+		return res
+			.status(400)
+			.json({ message: "Provide at least one field to update: photo or audio" });
+	}
+
+	// Validate provided base64 fields
+	if (photo !== undefined && !validateBase64Field(photo, "photo", res)) return;
+	if (audio !== undefined && !validateBase64Field(audio, "audio", res)) return;
+
+	// Build update object with only provided fields (no undefined values)
+	const update = {};
+	if (photo !== undefined) update.photo = photo;
+	if (audio !== undefined) update.audio = audio;
+
+	const user = await User.findByIdAndUpdate(req.user._id, { $set: update }, { new: true });
+	if (!user) return res.status(404).json({ message: "User not found" });
+
+	await logAudit({
+		userId: user._id,
+		action: "profile_update",
+		details: `Updated profile fields: ${Object.keys(update).join(", ")}`,
+		req,
+	});
+
+	// Strip large blobs from response
+	const userData = user.toObject();
+	delete userData.resume;
+	delete userData.photo;
+	delete userData.audio;
+
+	res.json({
+		message: "Profile updated successfully",
+		user: userData,
 	});
 });

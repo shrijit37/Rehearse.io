@@ -13,6 +13,7 @@ import {
 	Trash2,
 	Volume2,
 } from "lucide-react";
+import { api } from "@/lib/api";
 
 interface OnboardingStep {
 	step: number;
@@ -185,25 +186,33 @@ const Onboarding = () => {
 		setError("");
 		setIsSubmitting(true);
 		try {
-			const formData = new FormData();
-			if (resumeFile) formData.append("resume", resumeFile);
-			if (photo) formData.append("photo", photo);
-			if (audioBlob) formData.append("audio", audioBlob, "calibration.webm");
+			const payload: Record<string, string> = {};
 
-			const token = localStorage.getItem("token");
-			const apiBase = import.meta.env.VITE_API_URL || "http://localhost:9000";
-			const response = await fetch(`${apiBase}/api/auth/onboard`, {
-				method: "POST",
-				headers: { Authorization: `Bearer ${token}` },
-				body: formData,
-			});
-
-			if (!response.ok) {
-				const data = await response.json().catch(() => ({}));
-				throw new Error(data.message || "Onboarding failed");
+			if (resumeFile) {
+				const base64 = await new Promise<string>((resolve, reject) => {
+					const reader = new FileReader();
+					reader.onload = () => resolve(reader.result as string);
+					reader.onerror = reject;
+					reader.readAsDataURL(resumeFile);
+				});
+				payload.resume = base64;
+				payload.resumeName = resumeFile.name;
+			}
+			if (photo) payload.photo = photo;
+			if (audioBlob) {
+				const audioBase64 = await new Promise<string>((resolve, reject) => {
+					const reader = new FileReader();
+					reader.onload = () => resolve(reader.result as string);
+					reader.onerror = reject;
+					reader.readAsDataURL(audioBlob);
+				});
+				payload.audio = audioBase64;
 			}
 
-			const data = await response.json();
+			const data = await api.post<{ message: string; user: any }>(
+				"/api/auth/onboard",
+				payload,
+			);
 			if (data.user) localStorage.setItem("user", JSON.stringify(data.user));
 			window.dispatchEvent(new Event("storage"));
 			navigate("/dashboard");

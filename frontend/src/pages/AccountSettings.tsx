@@ -186,9 +186,13 @@ const AccountSettings: React.FC = () => {
 		setVoiceSaving(true);
 		setVoiceError(null);
 		try {
-			const formData = new FormData();
-			formData.append("audio", audioBlob, "calibration.webm");
-			await api.post("/api/auth/onboard", formData);
+			const audioBase64 = await new Promise<string>((resolve, reject) => {
+				const reader = new FileReader();
+				reader.onload = () => resolve(reader.result as string);
+				reader.onerror = reject;
+				reader.readAsDataURL(audioBlob);
+			});
+			await api.post("/api/auth/onboard", { audio: audioBase64 });
 			setVoiceSaved(true);
 			setTimeout(() => setVoiceSaved(false), 3000);
 		} catch (err: any) {

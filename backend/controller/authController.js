@@ -162,6 +162,11 @@ function validateBase64Field(value, fieldName, res) {
 export const onboard = asyncHandler(async (req, res) => {
 	const { resumeName, resume, photo, audio } = req.body;
 
+	// Resume is required
+	if (!resume) {
+		return res.status(400).json({ message: "Resume is required" });
+	}
+
 	// Validate base64 fields
 	if (!validateBase64Field(resume, "resume", res)) return;
 	if (!validateBase64Field(photo, "photo", res)) return;
@@ -169,7 +174,7 @@ export const onboard = asyncHandler(async (req, res) => {
 
 	const user = await User.findByIdAndUpdate(
 		req.user._id,
-		{ resumeName, resume, photo, audio },
+		{ resumeName, resume, photo, audio, onboardingCompleted: true },
 		{ new: true },
 	);
 	if (!user) return res.status(404).json({ message: "User not found" });

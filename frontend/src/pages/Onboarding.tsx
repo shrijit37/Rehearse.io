@@ -219,9 +219,9 @@ const Onboarding = () => {
 			case 1:
 				return !resumeFile;
 			case 2:
-				return !photo;
+				return false; // Camera step is optional
 			case 3:
-				return !audioUrl;
+				return false; // Voice step is optional
 			default:
 				return true;
 		}
@@ -418,6 +418,16 @@ const Onboarding = () => {
 												<Camera className="w-4 h-4 mr-1.5" />
 												Capture
 											</Button>
+											<Button
+												variant="ghost"
+												onClick={handleNext}
+												className="text-muted-foreground font-medium text-[13px]"
+											>
+												Skip for now
+											</Button>
+											<p className="text-[11px] text-muted-foreground text-center max-w-xs">
+												A profile photo helps recruiters verify your identity. You can add one later in account settings.
+											</p>
 										</div>
 									)}
 								</div>
@@ -474,6 +484,16 @@ const Onboarding = () => {
 												{isRecording
 													? "Recording..."
 													: "Click to record calibration"}
+											</p>
+											<Button
+												variant="ghost"
+												onClick={handleFinish}
+												className="text-muted-foreground font-medium text-[13px]"
+											>
+												Skip for now
+											</Button>
+											<p className="text-[11px] text-muted-foreground text-center max-w-xs">
+												Microphone calibration helps the AI evaluate your responses more accurately. You can complete this later in account settings.
 											</p>
 										</div>
 									)}

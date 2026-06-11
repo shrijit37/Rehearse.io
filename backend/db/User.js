@@ -52,6 +52,11 @@ const UserSchema = new mongoose.Schema({
   consentVersion: {
     type: String, // e.g. "1.0" — version of privacy policy accepted
   },
+  // Onboarding status
+  onboardingCompleted: {
+    type: Boolean,
+    default: false,
+  },
   // Account status
   isDeleted: {
     type: Boolean,

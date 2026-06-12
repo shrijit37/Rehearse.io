@@ -4,93 +4,9 @@
  * Tests designed to surface bugs, edge cases, and behavioral issues
  * across all pages, flows, and API interactions.
  */
-import { chromium } from "playwright";
+import { wait, go, register, login, dismissCookieConsent, createTestRunner, BASE, API } from "./helpers.js";
 
-const BASE = "http://localhost:3000";
-const API = "http://localhost:9000";
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-async function wait(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-async function dismissCookieConsent(page) {
-  try {
-    const acceptBtn = page.locator("button", { hasText: "Accept All" });
-    if (await acceptBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await acceptBtn.click();
-      await wait(300);
-    }
-  } catch { /* banner may not appear */ }
-}
-
-async function go(page, path) {
-  await page.goto(`${BASE}${path}`);
-  await page.waitForLoadState("networkidle");
-  await wait(500);
-  await dismissCookieConsent(page);
-}
-
-async function register(page, { name, email, password, role }) {
-  await go(page, "/signup");
-  const toggleBtn = page.locator("button", { hasText: "Create an account" });
-  if (await toggleBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await toggleBtn.click({ force: true });
-    await wait(500);
-  }
-  const roleBtn = page.locator("button", { hasText: role === "recruiter" ? "Recruiter" : "Candidate" }).first();
-  await roleBtn.click();
-  await wait(200);
-  await page.fill('input[name="firstName"]', name.split(" ")[0]);
-  await page.fill('input[name="lastName"]', name.split(" ")[1] || "Test");
-  await page.fill('input[name="email"]', email);
-  await page.fill('input[name="password"]', password);
-  await page.fill('input[name="confirmPassword"]', password);
-  await page.locator('input[type="checkbox"]').first().check({ force: true });
-  await wait(200);
-  await page.locator('button[type="submit"]').click();
-  await wait(2000);
-  await dismissCookieConsent(page);
-}
-
-async function login(page, { email, password }) {
-  await go(page, "/signup");
-  await wait(500);
-  await page.fill('input[name="email"]', email);
-  await page.fill('input[name="password"]', password);
-  await page.locator('button[type="submit"]').click();
-  await wait(2000);
-  await dismissCookieConsent(page);
-}
-
-// ── Test runner ──────────────────────────────────────────────────────────────
-let passed = 0;
-let failed = 0;
-const errors = [];
-const warnings = [];
-
-async function test(name, fn) {
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  try {
-    await fn(page, browser);
-    console.log(`  ✅ ${name}`);
-    passed++;
-  } catch (err) {
-    console.log(`  ❌ ${name}`);
-    console.log(`     ${err.message.split("\n")[0]}`);
-    errors.push({ name, error: err.message.split("\n")[0] });
-    failed++;
-  } finally {
-    await browser.close();
-  }
-}
-
-function warn(name, msg) {
-  console.log(`  ⚠️  ${name}: ${msg}`);
-  warnings.push({ name, message: msg });
-}
+const { test, warn, state } = createTestRunner();
 
 // ══════════════════════════════════════════════════════════════════════════════
 // SECTION 1: Landing Page & Static Pages
@@ -282,8 +198,6 @@ await test("SU-6: Password visibility toggle works", async (page) => {
   // Should start as password type
   const type1 = await passwordInput.getAttribute("type");
   if (type1 !== "password") throw new Error(`Password starts as type "${type1}", expected "password"`);
-  // Click toggle
-  const toggleBtn = page.locator("button").filter({ has: page.locator("svg") }).nth(0);
   // Find the eye icon button near the password field
   const eyeBtn = page.locator('input[name="password"]').locator("..").locator("button");
   if (await eyeBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
@@ -1222,11 +1136,12 @@ console.log("\n🔷 SECTION 11: Candidate Results Page\n");
 
 await test("CR-1: Results page loads for interview with no candidates", async (page) => {
   // We need to get an interview ID first
+  const crEmail = `cr-rec-${Date.now()}@test.com`;
   await page.goto(BASE);
   await page.waitForLoadState("networkidle");
 
   const signupRes = await page.request.post(`${API}/api/auth/signup`, {
-    data: { name: "CR Recruiter", email: `cr-rec-${Date.now()}@test.com`, password: "TestPass123!", role: "recruiter", consentGiven: true, consentVersion: "1.0" },
+    data: { name: "CR Recruiter", email: crEmail, password: "TestPass123!", role: "recruiter", consentGiven: true, consentVersion: "1.0" },
   });
   const { token: recToken } = await signupRes.json();
 
@@ -1246,7 +1161,7 @@ await test("CR-1: Results page loads for interview with no candidates", async (p
   if (!interviewId) throw new Error("Interview creation failed");
 
   // Login as recruiter and navigate to results page
-  await login(page, { email: `cr-rec-${Date.now()}@test.com`.replace(`-${Date.now()}@`, `-${interviewData.interview?._id}@`), password: "TestPass123!" });
+  await login(page, { email: crEmail, password: "TestPass123!" });
   // Use direct token
   await page.evaluate((token) => {
     localStorage.setItem("token", token);
@@ -1475,17 +1390,17 @@ await test("GDPR-3: Delete account requires password", async (page) => {
 // Summary
 // ══════════════════════════════════════════════════════════════════════════════
 console.log("\n═══════════════════════════════════════════════════════════════════");
-console.log(`  Results: ${passed} passed, ${failed} failed, ${warnings.length} warnings, ${passed + failed} total`);
+console.log(`  Results: ${state.passed} passed, ${state.failed} failed, ${state.warnings.length} warnings, ${state.passed + state.failed} total`);
 console.log("═══════════════════════════════════════════════════════════════════");
 
-if (errors.length > 0) {
+if (state.errors.length > 0) {
   console.log("\n❌ Failed tests:");
-  errors.forEach(({ name, error }) => console.log(`  ❌ ${name}: ${error}`));
+  state.errors.forEach(({ name, error }) => console.log(`  ❌ ${name}: ${error}`));
 }
 
-if (warnings.length > 0) {
+if (state.warnings.length > 0) {
   console.log("\n⚠️  Warnings:");
-  warnings.forEach(({ name, message }) => console.log(`  ⚠️  ${name}: ${message}`));
+  state.warnings.forEach(({ name, message }) => console.log(`  ⚠️  ${name}: ${message}`));
 }
 
-process.exit(failed > 0 ? 1 : 0);
+process.exit(state.failed > 0 ? 1 : 0);

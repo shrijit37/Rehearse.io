@@ -1,100 +1,6 @@
-import { chromium } from "playwright";
+import { wait, go, register, login, dismissCookieConsent, createTestRunner, BASE, API } from "./helpers.js";
 
-const BASE = "http://localhost:3000";
-const API = "http://localhost:9000";
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-async function wait(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-/** Dismiss the cookie consent banner if visible */
-async function dismissCookieConsent(page) {
-  try {
-    const acceptBtn = page.locator("button", { hasText: "Accept All" });
-    if (await acceptBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await acceptBtn.click();
-      await wait(300);
-    }
-  } catch { /* banner may not appear */ }
-}
-
-/** Navigate and wait, then dismiss cookie banner */
-async function go(page, path) {
-  await page.goto(`${BASE}${path}`);
-  await page.waitForLoadState("networkidle");
-  await wait(500);
-  await dismissCookieConsent(page);
-}
-
-async function register(page, { name, email, password, role }) {
-  await go(page, "/signup");
-
-  // Switch to signup if on login
-  const toggleBtn = page.locator("button", { hasText: "Create an account" });
-  if (await toggleBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await toggleBtn.click({ force: true });
-    await wait(500);
-  }
-
-  // Select role
-  const roleBtn = page.locator("button", { hasText: role === "recruiter" ? "Recruiter" : "Candidate" }).first();
-  await roleBtn.click();
-  await wait(200);
-
-  // Fill name
-  await page.fill('input[name="firstName"]', name.split(" ")[0]);
-  await page.fill('input[name="lastName"]', name.split(" ")[1] || "Test");
-
-  // Fill email + password
-  await page.fill('input[name="email"]', email);
-  await page.fill('input[name="password"]', password);
-  await page.fill('input[name="confirmPassword"]', password);
-
-  // Check consent
-  await page.locator('input[type="checkbox"]').first().check({ force: true });
-  await wait(200);
-
-  // Submit
-  await page.locator('button[type="submit"]').click();
-  await wait(2000);
-  await dismissCookieConsent(page);
-}
-
-async function login(page, { email, password }) {
-  await go(page, "/signup");
-  await wait(500);
-
-  // Already on login tab by default
-  await page.fill('input[name="email"]', email);
-  await page.fill('input[name="password"]', password);
-  await page.locator('button[type="submit"]').click();
-  await wait(2000);
-  await dismissCookieConsent(page);
-}
-
-// ── Test runner ──────────────────────────────────────────────────────────────
-let passed = 0;
-let failed = 0;
-const errors = [];
-
-async function test(name, fn) {
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext();
-  const page = await context.newPage();
-  try {
-    await fn(page, browser);
-    console.log(`  ✅ ${name}`);
-    passed++;
-  } catch (err) {
-    console.log(`  ❌ ${name}`);
-    console.log(`     ${err.message.split('\n')[0]}`);
-    errors.push({ name, error: err.message.split('\n')[0] });
-    failed++;
-  } finally {
-    await browser.close();
-  }
-}
+const { test, warn, state } = createTestRunner();
 
 // ══════════════════════════════════════════════════════════════════════════════
 // FLOW 1: Recruiter Flow
@@ -618,12 +524,12 @@ await test("D2: Dashboard shows stats or empty state", async (page) => {
 // Summary
 // ══════════════════════════════════════════════════════════════════════════════
 console.log("\n═══════════════════════════════════════════════════════════════════");
-console.log(`  Results: ${passed} passed, ${failed} failed, ${passed + failed} total`);
+console.log(`  Results: ${state.passed} passed, ${state.failed} failed, ${state.passed + state.failed} total`);
 console.log("═══════════════════════════════════════════════════════════════════");
 
-if (errors.length > 0) {
+if (state.errors.length > 0) {
   console.log("\nFailed tests:");
-  errors.forEach(({ name, error }) => console.log(`  ❌ ${name}: ${error}`));
+  state.errors.forEach(({ name, error }) => console.log(`  ❌ ${name}: ${error}`));
 }
 
-process.exit(failed > 0 ? 1 : 0);
+process.exit(state.failed > 0 ? 1 : 0);

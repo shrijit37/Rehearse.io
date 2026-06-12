@@ -61,6 +61,7 @@ const RehearsalRoom: React.FC = () => {
 	const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 	const audioChunksRef = useRef<Blob[]>([]);
 	const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+	const isMovingNext = useRef(false);
 
 	const startInterview = async (role: string) => {
 		setTargetRole(role);
@@ -144,6 +145,10 @@ const RehearsalRoom: React.FC = () => {
 					if (e.data?.size > 0) audioChunksRef.current.push(e.data);
 				};
 				mediaRecorder.onstop = async () => {
+					if (isMovingNext.current) {
+						isMovingNext.current = false;
+						return;
+					}
 					const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
 					await handleEvaluate(blob);
 				};
@@ -205,6 +210,7 @@ const RehearsalRoom: React.FC = () => {
 
 	const handleNext = async () => {
 		if (speaking) stop();
+		isMovingNext.current = true;
 		if (isRecording) {
 			if (mediaRecorderRef.current?.state !== "inactive")
 				mediaRecorderRef.current?.stop();
@@ -223,6 +229,7 @@ const RehearsalRoom: React.FC = () => {
 			if (answered.length === 0) navigate("/dashboard");
 			else await handleFinishSession(answered);
 		}
+		isMovingNext.current = false;
 	};
 
 	useEffect(

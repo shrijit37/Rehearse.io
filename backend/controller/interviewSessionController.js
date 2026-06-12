@@ -142,6 +142,10 @@ export const getInterview = asyncHandler(async (req, res) => {
  * Update an interview session.
  */
 export const updateInterview = asyncHandler(async (req, res) => {
+	if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+		return res.status(400).json({ message: "Invalid interview ID format" });
+	}
+
 	const interview = await InterviewSession.findById(req.params.id);
 	if (!interview)
 		return res.status(404).json({ message: "Interview not found" });
@@ -172,6 +176,10 @@ export const updateInterview = asyncHandler(async (req, res) => {
  * Generate an invite link for a candidate.
  */
 export const generateInvite = asyncHandler(async (req, res) => {
+	if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+		return res.status(400).json({ message: "Invalid interview ID format" });
+	}
+
 	const interview = await InterviewSession.findById(req.params.id);
 	if (!interview)
 		return res.status(404).json({ message: "Interview not found" });

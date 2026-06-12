@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Organization from "../db/Organization.js";
 import User from "../db/User.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
@@ -59,6 +60,7 @@ export const getMyOrganizations = asyncHandler(async (req, res) => {
 	const [organizations, total] = await Promise.all([
 		Organization.find(filter)
 			.populate("members.user", "name email role")
+			.sort({ createdAt: -1 })
 			.skip(skip)
 			.limit(limit),
 		Organization.countDocuments(filter),
@@ -71,6 +73,10 @@ export const getMyOrganizations = asyncHandler(async (req, res) => {
  * Get a specific organization by ID.
  */
 export const getOrganization = asyncHandler(async (req, res) => {
+	if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+		return res.status(400).json({ message: "Invalid organization ID format" });
+	}
+
 	const organization = await Organization.findById(req.params.id).populate(
 		"members.user",
 		"name email role",
@@ -97,6 +103,10 @@ export const getOrganization = asyncHandler(async (req, res) => {
  * Update organization name.
  */
 export const updateOrganization = asyncHandler(async (req, res) => {
+	if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+		return res.status(400).json({ message: "Invalid organization ID format" });
+	}
+
 	const organization = await Organization.findById(req.params.id);
 	if (!organization) {
 		return res.status(404).json({ message: "Organization not found" });
@@ -129,6 +139,10 @@ export const updateOrganization = asyncHandler(async (req, res) => {
  * Invite a member to organization by email.
  */
 export const inviteMember = asyncHandler(async (req, res) => {
+	if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+		return res.status(400).json({ message: "Invalid organization ID format" });
+	}
+
 	const organization = await Organization.findById(req.params.id);
 	if (!organization) {
 		return res.status(404).json({ message: "Organization not found" });

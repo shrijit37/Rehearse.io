@@ -162,7 +162,11 @@ def generate_scenario(payload: ScenarioRequest, _auth=Depends(verify_api_key)):
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "stt_available": stt_provider is not None,
+        "stt_backend": os.getenv("STT_BACKEND", "local"),
+    }
 
 
 @app.post("/api/evaluate-audio")
@@ -197,10 +201,17 @@ async def evaluate_audio(
             )
 
         # Perform STT transcription using the configured provider
-        transcription_text = stt_provider.transcribe(
-            audio_bytes,
-            audio.content_type or "audio/webm"
-        )
+        try:
+            transcription_text = stt_provider.transcribe(
+                audio_bytes,
+                audio.content_type or "audio/webm"
+            )
+        except Exception:
+            logger.exception("STT transcription failed")
+            raise HTTPException(
+                status_code=503,
+                detail="Speech-to-text processing failed. Please try again with clearer audio.",
+            )
 
         # Truncate transcription to prevent abuse
         transcription_text = transcription_text[:5000]

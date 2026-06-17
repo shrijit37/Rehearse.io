@@ -19,8 +19,7 @@ const CookieConsent = () => {
 	const handleAcceptAll = () => {
 		setAnalytics(true);
 		setMarketing(true);
-		saveConsent("analytics", true);
-		saveConsent("marketing", true);
+		saveConsent("essential", true);
 		localStorage.setItem(
 			CONSENT_KEY,
 			JSON.stringify({
@@ -36,8 +35,7 @@ const CookieConsent = () => {
 	const handleEssentialOnly = () => {
 		setAnalytics(false);
 		setMarketing(false);
-		saveConsent("analytics", false);
-		saveConsent("marketing", false);
+		saveConsent("essential", false);
 		localStorage.setItem(
 			CONSENT_KEY,
 			JSON.stringify({
@@ -51,8 +49,7 @@ const CookieConsent = () => {
 	};
 
 	const handleSavePreferences = () => {
-		saveConsent("analytics", analytics);
-		saveConsent("marketing", marketing);
+		saveConsent("essential", analytics);
 		localStorage.setItem(
 			CONSENT_KEY,
 			JSON.stringify({

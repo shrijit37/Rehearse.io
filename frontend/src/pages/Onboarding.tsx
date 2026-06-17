@@ -47,11 +47,14 @@ const Onboarding = () => {
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [stream, setStream] = useState<MediaStream | null>(null);
 	const [error, setError] = useState<string>("");
+	const [resumeError, setResumeError] = useState<string>("");
 	const [cameraLoading, setCameraLoading] = useState(false);
 
 	const videoRef = useRef<HTMLVideoElement>(null);
 	const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 	const audioChunksRef = useRef<Blob[]>([]);
+
+	const MAX_RESUME_SIZE = 5 * 1024 * 1024; // 5 MB
 
 	const getRootProps = () => ({
 		onClick: () => {
@@ -60,7 +63,15 @@ const Onboarding = () => {
 			input.accept = ".pdf";
 			input.onchange = (e) => {
 				const files = (e.target as HTMLInputElement).files;
-				if (files && files.length > 0) setResumeFile(files[0]);
+				if (files && files.length > 0) {
+					const file = files[0];
+					if (file.size > MAX_RESUME_SIZE) {
+						setResumeError("File size exceeds 5 MB limit. Please choose a smaller file.");
+						return;
+					}
+					setResumeError("");
+					setResumeFile(file);
+				}
 			};
 			input.click();
 		},
@@ -340,6 +351,12 @@ const Onboarding = () => {
 
 							{currentStep === 1 && (
 								<div className="flex flex-col items-center">
+									{resumeError && (
+										<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-[20px] border border-destructive/20 mb-4 flex items-center gap-2 animate-in fade-in duration-200 w-full max-w-md">
+											<AlertCircle className="w-4 h-4 shrink-0" />
+											<span>{resumeError}</span>
+										</div>
+									)}
 									{resumeFile ? (
 										<div className="w-full max-w-md bg-surface border border-border rounded-[20px] p-4 flex items-center gap-4 animate-in zoom-in-95 duration-200">
 											<div className="w-10 h-10 bg-primary/10 border border-primary/15 text-primary rounded-[20px] flex items-center justify-center shrink-0">
@@ -354,7 +371,10 @@ const Onboarding = () => {
 												</p>
 											</div>
 											<button
-												onClick={() => setResumeFile(null)}
+												onClick={() => {
+													setResumeFile(null);
+													setResumeError("");
+												}}
 												className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
 											>
 												<Trash2 className="h-4 w-4" />

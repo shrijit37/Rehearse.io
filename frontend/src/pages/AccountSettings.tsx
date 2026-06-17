@@ -30,6 +30,7 @@ const AccountSettings: React.FC = () => {
 	const [deleteError, setDeleteError] = useState<string | null>(null);
 	const [deleteLoading, setDeleteLoading] = useState(false);
 	const [exportLoading, setExportLoading] = useState(false);
+	const [consentError, setConsentError] = useState<string | null>(null);
 
 	// Photo state
 	const [photo, setPhoto] = useState<string | null>(null);
@@ -255,6 +256,7 @@ const AccountSettings: React.FC = () => {
 
 	const handleConsentToggle = async (given: boolean) => {
 		try {
+			setConsentError(null);
 			const data = await api.post<Record<string, unknown>>(
 				"/api/auth/consent",
 				{ consentGiven: given, consentVersion: "1.0" },
@@ -264,6 +266,7 @@ const AccountSettings: React.FC = () => {
 			}
 		} catch (err) {
 			console.error("Failed to update consent:", err);
+			setConsentError(err instanceof Error ? err.message : "Failed to update consent settings");
 		}
 	};
 
@@ -526,6 +529,11 @@ const AccountSettings: React.FC = () => {
 							Control your data processing consent preferences.
 						</p>
 					</div>
+					{consentError && (
+						<div className="bg-destructive/10 text-destructive text-[12px] font-medium p-2.5 rounded-md border border-destructive/20 flex items-center gap-2">
+							<AlertCircle className="h-3.5 w-3.5 shrink-0" /> {consentError}
+						</div>
+					)}
 					<div className="flex items-center justify-between p-4 bg-surface rounded-[20px] border border-border">
 						<div>
 							<p className="text-[13px] font-semibold text-foreground">

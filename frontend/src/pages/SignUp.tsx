@@ -306,6 +306,7 @@ const SignUp: React.FC = () => {
 									{isLogin && (
 										<button
 											type="button"
+											onClick={() => alert("Password reset is not yet available. Please contact support.")}
 											className="text-[11px] text-primary font-medium hover:underline focus:outline-none"
 										>
 											Forgot password?

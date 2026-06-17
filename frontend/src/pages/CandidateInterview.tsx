@@ -49,6 +49,7 @@ const CandidateInterview: React.FC = () => {
 	const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 	const audioChunksRef = useRef<Blob[]>([]);
 	const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+	const isMovingNext = useRef(false);
 
 	useEffect(() => {
 		if (!token) {
@@ -148,6 +149,10 @@ const CandidateInterview: React.FC = () => {
 					if (e.data?.size > 0) audioChunksRef.current.push(e.data);
 				};
 				mediaRecorder.onstop = async () => {
+					if (isMovingNext.current) {
+						isMovingNext.current = false;
+						return;
+					}
 					const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
 					await handleEvaluate(blob);
 				};
@@ -194,6 +199,7 @@ const CandidateInterview: React.FC = () => {
 
 	const handleNext = async () => {
 		if (speaking) stop();
+		isMovingNext.current = true;
 		if (isRecording) {
 			if (mediaRecorderRef.current?.state !== "inactive")
 				mediaRecorderRef.current?.stop();
@@ -211,6 +217,7 @@ const CandidateInterview: React.FC = () => {
 			// All questions answered — submit results to backend
 			await submitAllResults();
 		}
+		isMovingNext.current = false;
 	};
 
 	const submitAllResults = async () => {

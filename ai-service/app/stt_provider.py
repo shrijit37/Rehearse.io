@@ -145,9 +145,9 @@ class LocalWhisperProvider(STTProvider):
             return " ".join(text_parts)
         finally:
             try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
+                os.unlink(tmp.name)
+            except Exception:
+                pass  # Temp file cleanup is best-effort
 
 
 

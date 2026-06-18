@@ -33,6 +33,7 @@ services:
       - SERVER_IP=${SERVER_IP:-161.118.179.12}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,http://161.118.179.12:3000,http://161.118.179.12:9000}
       - API_KEY=${AI_SERVICE_API_KEY:-}  # Shared secret for backend→AI auth
+      - APP_ENV=${APP_ENV:-development}
     volumes:
       - whisper_cache:/root/.cache/huggingface/  # Persist Whisper model across restarts
     networks:

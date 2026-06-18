@@ -2,6 +2,7 @@ import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import axios from "axios";
+import bcrypt from "bcryptjs";
 import InterviewSession from "../db/InterviewSession.js";
 import CandidateInvite from "../db/CandidateInvite.js";
 import Organization from "../db/Organization.js";
@@ -202,11 +203,10 @@ export const generateInvite = asyncHandler(async (req, res) => {
 	if (!candidate) {
 		// Auto-create candidate account with random password
 		const randomPassword = crypto.randomBytes(32).toString("hex");
-		const bcrypt = await import("bcryptjs");
 		candidate = await User.create({
 			name: normalizedEmail.split("@")[0],
 			email: normalizedEmail,
-			password: await bcrypt.default.hash(randomPassword, 12),
+			password: await bcrypt.hash(randomPassword, 12),
 			role: "candidate",
 		});
 	}

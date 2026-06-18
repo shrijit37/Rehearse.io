@@ -56,7 +56,7 @@ API_KEY = os.getenv("API_KEY", "")
 
 if not API_KEY:
     logger.warning("WARNING: API_KEY is not set. The AI service is running without authentication!")
-    if os.environ.get("NODE_ENV") == "production":
+    if os.environ.get("APP_ENV") == "production":
         logger.error("CRITICAL: Running in production without API_KEY is a security risk!")
 
 

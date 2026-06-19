@@ -4,6 +4,7 @@ import { protect } from "../middleware/auth.js";
 import User from "../db/User.js";
 import RehearsalSession from "../db/RehearsalSession.js";
 import CandidateInvite from "../db/CandidateInvite.js";
+import InterviewSession from "../db/InterviewSession.js";
 import { logAudit } from "../middleware/auditLog.js";
 
 const router = express.Router();
@@ -133,6 +134,9 @@ router.delete("/delete-account", protect, asyncHandler(async (req, res) => {
 
   // Delete candidate invites (cannot set candidate to null due to required field)
   await CandidateInvite.deleteMany({ candidate: req.user._id });
+
+  // Delete interview sessions created by the user
+  await InterviewSession.deleteMany({ createdBy: req.user._id });
 
   await logAudit({
     userId: req.user._id,

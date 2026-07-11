@@ -111,7 +111,7 @@ export const login = asyncHandler(async (req, res) => {
 			name: user.name,
 			email: user.email,
 			role: user.role,
-			onboarded: Boolean(user.resume),
+			onboarded: user.onboardingCompleted === true,
 		},
 		token,
 	});
@@ -123,7 +123,7 @@ export const getUser = asyncHandler(async (req, res) => {
 	if (!user || user.isDeleted)
 		return res.status(404).json({ message: "User not found" });
 
-	const onboarded = Boolean(user.resume);
+	const onboarded = user.onboardingCompleted === true;
 
 	// Strip large base64 blobs from response — they should be fetched separately if needed
 	const userData = user.toObject();
@@ -167,6 +167,12 @@ export const onboard = asyncHandler(async (req, res) => {
 		return res.status(400).json({ message: "Resume is required" });
 	}
 
+	// Idempotency guard — prevent overwriting once onboarded
+	const existingUser = await User.findById(req.user._id);
+	if (existingUser.onboardingCompleted) {
+		return res.status(400).json({ message: "Onboarding has already been completed. Use profile update instead." });
+	}
+
 	// Validate base64 fields
 	if (!validateBase64Field(resume, "resume", res)) return;
 	if (!validateBase64Field(photo, "photo", res)) return;
@@ -182,6 +188,31 @@ export const onboard = asyncHandler(async (req, res) => {
 		return res.status(400).json({
 			message: "Invalid file format. Please upload a valid PDF document.",
 		});
+	}
+
+	// Validate photo is a valid image if provided
+	if (photo) {
+		const rawPhoto = photo.includes(",") ? photo.split(",")[1] : photo;
+		const photoBuffer = Buffer.from(rawPhoto, "base64");
+		const photoHeader = photoBuffer.toString("utf8", 0, 3);
+		if (photoHeader !== "\xff\xd8\xff" && photoHeader !== "\x89PN") {
+			return res.status(400).json({
+				message: "Invalid photo format. Please upload a JPEG or PNG image.",
+			});
+		}
+	}
+
+	// Validate audio is a valid audio file if provided
+	if (audio) {
+		const rawAudio = audio.includes(",") ? audio.split(",")[1] : audio;
+		const audioBuffer = Buffer.from(rawAudio, "base64");
+		const audioHeader = audioBuffer.toString("hex", 0, 4);
+		// WAV: RIFF, WebM: 1a45dfa3, MP3: 494433 or fff?
+		if (!audioHeader.match(/^(52494646|1a45dfa3|494433)/)) {
+			return res.status(400).json({
+				message: "Invalid audio format. Please upload a WAV, WebM, or MP3 file.",
+			});
+		}
 	}
 
 	const user = await User.findByIdAndUpdate(
@@ -226,6 +257,29 @@ export const updateProfile = asyncHandler(async (req, res) => {
 	// Validate provided base64 fields
 	if (photo !== undefined && !validateBase64Field(photo, "photo", res)) return;
 	if (audio !== undefined && !validateBase64Field(audio, "audio", res)) return;
+
+	// Validate file formats
+	if (photo) {
+		const rawPhoto = photo.includes(",") ? photo.split(",")[1] : photo;
+		const photoBuffer = Buffer.from(rawPhoto, "base64");
+		const photoHeader = photoBuffer.toString("utf8", 0, 3);
+		if (photoHeader !== "\xff\xd8\xff" && photoHeader !== "\x89PN") {
+			return res.status(400).json({
+				message: "Invalid photo format. Please upload a JPEG or PNG image.",
+			});
+		}
+	}
+
+	if (audio) {
+		const rawAudio = audio.includes(",") ? audio.split(",")[1] : audio;
+		const audioBuffer = Buffer.from(rawAudio, "base64");
+		const audioHeader = audioBuffer.toString("hex", 0, 4);
+		if (!audioHeader.match(/^(52494646|1a45dfa3|494433)/)) {
+			return res.status(400).json({
+				message: "Invalid audio format. Please upload a WAV, WebM, or MP3 file.",
+			});
+		}
+	}
 
 	// Build update object with only provided fields (no undefined values)
 	const update = {};

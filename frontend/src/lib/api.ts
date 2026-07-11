@@ -32,7 +32,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     if (res.status === 401 && !tokenOverride) {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
-      window.location.href = "/signup";
+      // Don't redirect if already on signup or login pages
+      if (!window.location.pathname.startsWith("/signup") && !window.location.pathname.startsWith("/login")) {
+        window.location.href = "/signup";
+      }
     }
     throw new Error(data.message || `Request failed (${res.status})`);
   }

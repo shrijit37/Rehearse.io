@@ -2,6 +2,8 @@ import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import axios from "axios";
+import bcrypt from "bcryptjs";
+import FormData from "form-data";
 import InterviewSession from "../db/InterviewSession.js";
 import CandidateInvite from "../db/CandidateInvite.js";
 import Organization from "../db/Organization.js";
@@ -35,6 +37,13 @@ export const createInterview = asyncHandler(async (req, res) => {
 		return res
 			.status(400)
 			.json({ message: "title, targetRole, and expiresAt are required" });
+	}
+
+	// Validate organizationId format
+	if (!organizationId || !mongoose.Types.ObjectId.isValid(organizationId)) {
+		return res
+			.status(400)
+			.json({ message: "Valid organizationId is required" });
 	}
 
 	// Validate organization membership
@@ -202,11 +211,10 @@ export const generateInvite = asyncHandler(async (req, res) => {
 	if (!candidate) {
 		// Auto-create candidate account with random password
 		const randomPassword = crypto.randomBytes(32).toString("hex");
-		const bcrypt = await import("bcryptjs");
 		candidate = await User.create({
 			name: normalizedEmail.split("@")[0],
 			email: normalizedEmail,
-			password: await bcrypt.default.hash(randomPassword, 12),
+			password: await bcrypt.hash(randomPassword, 12),
 			role: "candidate",
 		});
 	}
@@ -220,12 +228,12 @@ export const generateInvite = asyncHandler(async (req, res) => {
 		return res.status(400).json({ message: "Candidate already invited" });
 	}
 
-	const inviteToken = crypto.randomBytes(32).toString("hex");
+	const rawToken = crypto.randomBytes(32).toString("hex");
 
-	const invite = await CandidateInvite.create({
+	await CandidateInvite.create({
 		interview: interview._id,
 		candidate: candidate._id,
-		inviteToken,
+		inviteToken: rawToken,
 	});
 
 	await logAudit({
@@ -238,7 +246,7 @@ export const generateInvite = asyncHandler(async (req, res) => {
 
 	res.status(201).json({
 		message: "Invite generated",
-		inviteToken,
+		inviteToken: rawToken,
 		candidateEmail: normalizedEmail,
 	});
 });
@@ -249,7 +257,7 @@ export const generateInvite = asyncHandler(async (req, res) => {
  */
 export const acceptInvite = asyncHandler(async (req, res) => {
 	const { token } = req.params;
-	const invite = await CandidateInvite.findOne({ inviteToken: token })
+	const invite = await CandidateInvite.findByRawToken(token)
 		.populate(
 			"interview",
 			"title targetRole description questions expiresAt status",
@@ -334,8 +342,10 @@ export const evaluateCandidateAnswer = asyncHandler(async (req, res) => {
 
 	// Forward audio to AI service
 	const formData = new FormData();
-	const blob = new Blob([req.file.buffer], { type: req.file.mimetype });
-	formData.append("audio", blob, req.file.originalname || "answer.webm");
+	formData.append("audio", req.file.buffer, {
+		filename: req.file.originalname || "answer.webm",
+		contentType: req.file.mimetype,
+	});
 	formData.append("question", question);
 
 	let aiResponse;

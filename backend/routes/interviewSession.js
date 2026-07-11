@@ -31,7 +31,7 @@ router.get("/candidate/accept/:token", acceptInvite);
 // Recruiter routes — require authentication + recruiter role
 router.post("/", protect, authorize("recruiter"), createInterview);
 router.get("/", protect, authorize("recruiter"), listInterviews);
-router.get("/:id", protect, getInterview);
+router.get("/:id", protect, authorize("recruiter"), getInterview);
 router.put("/:id", protect, authorize("recruiter"), updateInterview);
 router.post("/:id/invite", protect, authorize("recruiter"), generateInvite);
 

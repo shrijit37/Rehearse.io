@@ -9,12 +9,41 @@ import rehearsalRoutes from "./routes/rehearsal.js";
 import dataRightsRoutes from "./routes/dataRights.js";
 import organizationRoutes from "./routes/organization.js";
 import interviewSessionRoutes from "./routes/interviewSession.js";
+import ttsRoutes from "./routes/tts.js";
 import morgan from "morgan";
 import cors from "cors";
 
 dotenv.config();
 
 const app = express();
+
+// CORS — first middleware so preflight and error responses always include CORS headers
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+	? process.env.ALLOWED_ORIGINS.split(",").map((s) => s.trim())
+	: [
+			"http://localhost:5173",
+			"http://localhost:3000",
+			"http://127.0.0.1:5173",
+			"http://127.0.0.1:3000",
+		];
+
+app.use(
+	cors({
+		origin: (origin, callback) => {
+			// Allow requests with no origin (mobile apps, curl, server-to-server)
+			if (!origin) return callback(null, true);
+			if (allowedOrigins.includes("*")) {
+				return callback(null, true);
+			}
+			if (allowedOrigins.includes(origin)) {
+				return callback(null, true);
+			}
+			// Reject without throwing — avoids 500 responses missing CORS headers
+			return callback(null, false);
+		},
+		credentials: !allowedOrigins.includes("*"),
+	}),
+);
 
 // Security headers — omit deprecated browsing-topics (removed in Chrome 100+)
 app.use(
@@ -25,35 +54,19 @@ app.use(
 	}),
 );
 
-// Sanitize data — prevent NoSQL injection via query params/body (e.g., ?key[$ne]=)
-// mongo-sanitize strips keys starting with $ from objects
+// Express 5: req.query and req.params are read-only getters — mongo-sanitize mutates in place
 app.use((req, res, next) => {
-	if (req.body) req.body = sanitize(req.body);
 	if (req.query) sanitize(req.query);
 	if (req.params) sanitize(req.params);
 	next();
 });
 
-// CORS configuration — must come before rate limiters so 429 responses include CORS headers
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-	? process.env.ALLOWED_ORIGINS.split(",").map((s) => s.trim())
-	: ["http://localhost:5173", "http://localhost:3000"];
-
-app.use(
-	cors({
-		origin: (origin, callback) => {
-			// Allow requests with no origin (mobile apps, curl, server-to-server)
-			if (!origin) return callback(null, true);
-			if (allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
-				return callback(null, true);
-			}
-			return callback(new Error("Not allowed by CORS"));
-		},
-		credentials: true,
-	}),
-);
-
 app.use(express.json({ limit: "10mb" }));
+
+app.use((req, res, next) => {
+	if (req.body) sanitize(req.body);
+	next();
+});
 app.use(morgan("combined"));
 
 // Rate limiting - general (after CORS so 429 responses have proper headers)
@@ -87,6 +100,7 @@ app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/rehearsal", rehearsalRoutes);
 app.use("/api/org", organizationRoutes);
 app.use("/api/interviews", interviewSessionRoutes);
+app.use("/api/tts", ttsRoutes);
 
 const PORT = process.env.PORT || 9000;
 

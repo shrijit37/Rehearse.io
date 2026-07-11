@@ -41,6 +41,7 @@ const InterviewSetup: React.FC = () => {
 
 	const handleSubmit = async () => {
 		if (!title || !targetRole || !selectedOrgId || !expiresAt) {
+			console.log(title, targetRole, selectedOrgId, expiresAt);
 			setError(
 				"Please fill in title, role, organization, and expiration date.",
 			);

@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { api } from "@/lib/api";
 
 interface UseSpeakOptions {
 	rate?: number;
 	pitch?: number;
 	voice?: SpeechSynthesisVoice;
 	onEnd?: () => void;
+	/** Use Groq TTS API instead of browser SpeechSynthesis */
+	useGroqTts?: boolean;
 }
 
 interface UseSpeakReturn {
@@ -17,11 +20,11 @@ interface UseSpeakReturn {
 }
 
 /**
- * A custom hook for the browser's SpeechSynthesis API.
+ * A custom hook for text-to-speech.
  *
- * - Falls back gracefully when SpeechSynthesis is unavailable.
- * - Cancels previous speech when speak() is called again.
- * - Prefers voices matching `navigator.language` (e.g. "en-US").
+ * Supports two modes:
+ * 1. Browser SpeechSynthesis API (default) — works offline, free
+ * 2. Groq TTS API — higher quality voices, requires backend AI service running
  *
  * @example
  * const { speak, stop, speaking, supported } = useSpeak();
@@ -33,6 +36,7 @@ export function useSpeak(): UseSpeakReturn {
 	const [supported, setSupported] = useState(false);
 	const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
 	const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+	const audioElementRef = useRef<HTMLAudioElement | null>(null);
 	const mountedRef = useRef(true);
 
 	useEffect(() => {
@@ -65,78 +69,157 @@ export function useSpeak(): UseSpeakReturn {
 
 		return () => {
 			mountedRef.current = false;
-			synth.removeEventListener("voiceschanged", loadVoices);
 			synth.cancel();
+			if (audioElementRef.current) {
+				audioElementRef.current.pause();
+				audioElementRef.current = null;
+			}
+		};
+	}, []);
+
+	// Cleanup audio on unmount
+	useEffect(() => {
+		return () => {
+			if (audioElementRef.current) {
+				audioElementRef.current.pause();
+				audioElementRef.current.remove();
+				audioElementRef.current = null;
+			}
 		};
 	}, []);
 
 	const speak = useCallback(
-		(text: string, options?: UseSpeakOptions) => {
-			if (!supported || !window.speechSynthesis) return;
-
-			const synth = window.speechSynthesis;
-
-			// Cancel any ongoing speech
-			synth.cancel();
-			currentUtteranceRef.current = null;
-
+		async (text: string, options?: UseSpeakOptions) => {
 			if (!text.trim()) return;
 
-			const utterance = new SpeechSynthesisUtterance(text);
-			utterance.rate = options?.rate ?? 1.0;
-			utterance.pitch = options?.pitch ?? 1.0;
+			// Stop any ongoing playback
+			if (window.speechSynthesis) {
+				window.speechSynthesis.cancel();
+			}
+			if (audioElementRef.current) {
+				audioElementRef.current.pause();
+				audioElementRef.current.remove();
+				audioElementRef.current = null;
+			}
+			currentUtteranceRef.current = null;
 
-			// Use specified voice, or the first one matching our language, or default
-			if (options?.voice) {
-				utterance.voice = options.voice;
-			} else {
-				const lang = navigator.language;
-				const preferred = voices.find((v) => v.lang.startsWith(lang));
-				if (preferred) utterance.voice = preferred;
+			// Use Groq TTS if requested
+			if (options?.useGroqTts) {
+				try {
+					setSpeaking(true);
+					const formData = new FormData();
+					formData.append("text", text);
+					formData.append("voice", "alloy");
+
+					// Call backend proxy → AI service TTS
+					const response = await api.post<Blob>(
+						"/api/tts",
+						formData,
+						{ raw: true },
+					);
+
+					const audioBlob = response as unknown as Blob;
+					const audioUrl = URL.createObjectURL(audioBlob);
+					const audio = new Audio(audioUrl);
+					audioElementRef.current = audio;
+
+					audio.onended = () => {
+						URL.revokeObjectURL(audioUrl);
+						if (mountedRef.current) {
+							setSpeaking(false);
+						}
+						options?.onEnd?.();
+					};
+
+					audio.onerror = () => {
+						URL.revokeObjectURL(audioUrl);
+						if (mountedRef.current) {
+							setSpeaking(false);
+						}
+					};
+
+					await audio.play();
+				} catch {
+					// Fall back to browser TTS on error
+					if (mountedRef.current) {
+						setSpeaking(false);
+					}
+					if (supported && window.speechSynthesis) {
+						useBrowserTTS(text, options);
+					}
+				}
+				return;
 			}
 
-			utterance.onstart = () => {
-				if (mountedRef.current) setSpeaking(true);
-			};
-
-			utterance.onend = () => {
-				if (mountedRef.current) {
-					setSpeaking(false);
-					setPaused(false);
-				}
-				options?.onEnd?.();
-			};
-
-			utterance.onerror = () => {
-				if (mountedRef.current) {
-					setSpeaking(false);
-					setPaused(false);
-				}
-			};
-
-			utterance.onpause = () => {
-				if (mountedRef.current) setPaused(true);
-			};
-
-			utterance.onresume = () => {
-				if (mountedRef.current) setPaused(false);
-			};
-
-			currentUtteranceRef.current = utterance;
-			synth.speak(utterance);
+			// Default: use browser SpeechSynthesis
+			useBrowserTTS(text, options);
 		},
 		[supported, voices],
 	);
 
-	const stop = useCallback(() => {
+	const useBrowserTTS = (text: string, options?: UseSpeakOptions) => {
 		if (!supported || !window.speechSynthesis) return;
-		window.speechSynthesis.cancel();
+
+		const synth = window.speechSynthesis;
+
+		const utterance = new SpeechSynthesisUtterance(text);
+		utterance.rate = options?.rate ?? 1.0;
+		utterance.pitch = options?.pitch ?? 1.0;
+
+		if (options?.voice) {
+			utterance.voice = options.voice;
+		} else {
+			const lang = navigator.language;
+			const preferred = voices.find((v) => v.lang.startsWith(lang));
+			if (preferred) utterance.voice = preferred;
+		}
+
+		utterance.onstart = () => {
+			if (mountedRef.current) setSpeaking(true);
+		};
+
+		utterance.onend = () => {
+			if (mountedRef.current) {
+				setSpeaking(false);
+				setPaused(false);
+			}
+			options?.onEnd?.();
+		};
+
+		utterance.onerror = () => {
+			if (mountedRef.current) {
+				setSpeaking(false);
+				setPaused(false);
+			}
+		};
+
+		utterance.onpause = () => {
+			if (mountedRef.current) setPaused(true);
+		};
+
+		utterance.onresume = () => {
+			if (mountedRef.current) setPaused(false);
+		};
+
+		currentUtteranceRef.current = utterance;
+		synth.speak(utterance);
+	};
+
+	const stop = useCallback(() => {
+		if (window.speechSynthesis) {
+			window.speechSynthesis.cancel();
+		}
+		if (audioElementRef.current) {
+			audioElementRef.current.pause();
+			audioElementRef.current.remove();
+			audioElementRef.current = null;
+		}
 		currentUtteranceRef.current = null;
 		if (mountedRef.current) {
 			setSpeaking(false);
 			setPaused(false);
 		}
-	}, [supported]);
+	}, []);
 
 	return { speak, stop, speaking, supported, voices, paused };
 }

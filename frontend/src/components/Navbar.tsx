@@ -234,7 +234,7 @@ const Navbar = () => {
               </>
             ) : (
               <div className="flex flex-col gap-2 pt-1">
-                <Button variant="outline" className="w-full justify-center" onClick={() => { navigate("/signup"); setIsMenuOpen(false); }}>Sign in</Button>
+                <Button variant="outline" className="w-full justify-center" onClick={() => { navigate("/signup"); setIsMenuOpen(false); }}>bitch in</Button>
                 <Button className="w-full justify-center" onClick={() => { navigate("/signup"); setIsMenuOpen(false); }}>Get started</Button>
               </div>
             )}

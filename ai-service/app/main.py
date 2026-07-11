@@ -2,12 +2,16 @@ import os
 import json
 import re
 import logging
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Header
+import time
+from collections import defaultdict
+from datetime import datetime, timedelta
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import litellm
-# OpenAI import moved to stt_provider.py
+from openai import OpenAI
 
 load_dotenv()
 
@@ -26,7 +30,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["POST"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -39,17 +43,30 @@ ALLOWED_AUDIO_TYPES = {
 
 MODEL_NAME = os.getenv("LITELLM_MODEL", "gpt-4o-mini")
 
-# Speech-to-Text provider — local faster-whisper by default (free, unlimited)
-# Override with STT_BACKEND=groq or STT_BACKEND=openai or STT_BACKEND=auto
+# Speech-to-Text via Groq
 from stt_provider import create_stt_provider
 
 stt_provider = None
 try:
     stt_provider = create_stt_provider()
-    logger.info("STT provider initialized: %s", os.getenv("STT_BACKEND", "local"))
+    if stt_provider:
+        logger.info("STT provider initialized with Groq")
 except Exception as exc:
     logger.warning("STT provider failed to initialize: %s", exc)
-    logger.warning("Transcription will be unavailable until a provider is configured.")
+    logger.warning("Transcription will be unavailable until GROQ_API_KEY is set.")
+
+# TTS via Groq
+groq_api_key = os.getenv("GROQ_API_KEY")
+tts_client = None
+if groq_api_key:
+    try:
+        tts_client = OpenAI(
+            api_key=groq_api_key,
+            base_url="https://api.groq.com/openai/v1",
+        )
+        logger.info("Groq TTS client initialized")
+    except Exception as exc:
+        logger.warning("Groq TTS client failed to initialize: %s", exc)
 
 # Shared API key for backend→AI authentication
 API_KEY = os.getenv("API_KEY", "")
@@ -59,6 +76,53 @@ if not API_KEY:
     if os.environ.get("NODE_ENV") == "production":
         logger.error("CRITICAL: Running in production without API_KEY is a security risk!")
 
+
+
+# ---------------------------------------------------------------------------
+# Simple in-memory rate limiter
+# ---------------------------------------------------------------------------
+
+class RateLimiter:
+    """In-memory sliding-window rate limiter per client IP."""
+
+    def __init__(self, max_requests: int = 60, window_seconds: int = 60):
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self._clients: dict[str, list[float]] = defaultdict(list)
+
+    def check(self, request: Request) -> bool:
+        ip = request.client.host if request.client else "unknown"
+        now = time.time()
+        window_start = now - self.window_seconds
+
+        # Prune old entries
+        self._clients[ip] = [t for t in self._clients[ip] if t > window_start]
+
+        if len(self._clients[ip]) >= self.max_requests:
+            return False
+
+        self._clients[ip].append(now)
+        return True
+
+
+# Apply rate limiting — 60 requests per minute per IP
+rate_limiter = RateLimiter(max_requests=60, window_seconds=60)
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    if request.url.path in ("/", "/health"):
+        # Skip rate limiting for health/root endpoints
+        return await call_next(request)
+
+    if not rate_limiter.check(request):
+        return Response(
+            content=json.dumps({"detail": "Rate limit exceeded. Try again later."}),
+            status_code=429,
+            media_type="application/json",
+        )
+
+    return await call_next(request)
 
 
 async def verify_api_key(authorization: str = Header(None)):
@@ -135,7 +199,8 @@ def generate_scenario(payload: ScenarioRequest, _auth=Depends(verify_api_key)):
                 {"role": "system", "content": "You are a professional HR assistant that outputs JSON format only."},
                 {"role": "user", "content": prompt}
             ],
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
+            timeout=30,
         )
 
         content = response.choices[0].message.content or ""
@@ -165,7 +230,9 @@ def health_check():
     return {
         "status": "ok",
         "stt_available": stt_provider is not None,
-        "stt_backend": os.getenv("STT_BACKEND", "local"),
+        "stt_backend": "groq" if stt_provider else None,
+        "tts_available": tts_client is not None,
+        "tts_backend": "groq" if tts_client else None,
     }
 
 
@@ -196,8 +263,7 @@ async def evaluate_audio(
         if not stt_provider:
             raise HTTPException(
                 status_code=503,
-                detail="STT service not configured. Set STT_BACKEND=local (default), "
-                       "or set GROQ_API_KEY / OPENAI_API_KEY."
+                detail="STT service not configured. Set GROQ_API_KEY."
             )
 
         # Perform STT transcription using the configured provider
@@ -235,7 +301,8 @@ async def evaluate_audio(
                 {"role": "system", "content": "You are a professional HR assistant that outputs JSON format only."},
                 {"role": "user", "content": prompt}
             ],
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
+            timeout=30,
         )
 
         content = response.choices[0].message.content or ""
@@ -264,4 +331,60 @@ async def evaluate_audio(
         raise HTTPException(
             status_code=500,
             detail="An error occurred during audio evaluation"
+        )
+
+
+@app.post("/api/tts")
+async def text_to_speech(
+    text: str = Form(...),
+    voice: str = Form("alloy"),
+    _auth=Depends(verify_api_key),
+):
+    """
+    Convert text to speech using Groq's TTS API.
+    
+    Returns audio/mpeg bytes.
+    Voices: alloy, echo, fable, onyx, nova, shimmer
+    """
+    if not tts_client:
+        raise HTTPException(
+            status_code=503,
+            detail="TTS service not configured. Set GROQ_API_KEY."
+        )
+
+    if not text or len(text) > 5000:
+        raise HTTPException(
+            status_code=400,
+            detail="Text must be between 1 and 5000 characters."
+        )
+
+    allowed_voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
+    if voice not in allowed_voices:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid voice. Must be one of: {', '.join(allowed_voices)}"
+        )
+
+    try:
+        response = tts_client.audio.speech.create(
+            model="whisper-large-v3",
+            voice=voice,
+            input=text,
+        )
+
+        audio_bytes = response.content
+
+        return Response(
+            content=audio_bytes,
+            media_type="audio/mpeg",
+            headers={
+                "Content-Disposition": "inline; filename=\"speech.mp3\"",
+                "Content-Length": str(len(audio_bytes)),
+            }
+        )
+    except Exception as e:
+        logger.exception("TTS generation failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Text-to-speech generation failed."
         )

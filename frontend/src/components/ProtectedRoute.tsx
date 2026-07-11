@@ -1,10 +1,11 @@
+import type { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 
 export function ProtectedRoute({
 	children,
 	requireOnboarded = false,
 }: {
-	children: React.ReactNode;
+	children: ReactNode;
 	requireOnboarded?: boolean;
 }) {
 	let user = null;

@@ -56,6 +56,13 @@ const CandidateInterview: React.FC = () => {
 			navigate("/");
 			return;
 		}
+
+		// Restore candidate auth token from sessionStorage on mount/refresh
+		const storedAuthToken = sessionStorage.getItem("candidateAuthToken");
+		if (storedAuthToken) {
+			setAuthToken(storedAuthToken);
+		}
+
 		fetchInvite();
 	}, [token]);
 
@@ -69,12 +76,25 @@ const CandidateInterview: React.FC = () => {
 				token?: string;
 				user?: any;
 			}>(`/api/interviews/candidate/accept/${token}`);
+
+			// Check if we already have invite data from session storage
+			// (page refresh scenario) — skip reinitializing if already loaded
+			const storedToken = sessionStorage.getItem("candidateAuthToken");
+			if (storedToken && data.invite?.results?.length > 0) {
+				setInvite(data.invite);
+				setInterview(data.interview);
+				setQuestions(data.interview.questions || []);
+				setSessionResults(data.invite.results);
+				return;
+			}
+
 			setInvite(data.invite);
 			setInterview(data.interview);
 			setQuestions(data.interview.questions || []);
-			// Keep invite token in component state only — never overwrite localStorage
+			// Store candidate auth token in sessionStorage so it survives page refresh
 			if (data.token) {
 				setAuthToken(data.token);
+				sessionStorage.setItem("candidateAuthToken", data.token);
 			}
 			// Restore any previous results
 			if (data.invite?.results?.length > 0) {
@@ -224,18 +244,21 @@ const CandidateInterview: React.FC = () => {
 		setIsSubmitting(true);
 		try {
 			if (invite?._id) {
-				for (let i = 0; i < sessionResults.length; i++) {
-					const result = sessionResults[i];
-					if (!result) continue;
-					await api.post(
-						"/api/interviews/candidate/submit",
-						{
-							inviteId: invite._id,
-							questionIndex: i,
-						},
-						{ tokenOverride: authToken || undefined },
-					);
-				}
+				const submissions = sessionResults
+					.map((result, i) => {
+						if (!result) return null;
+						return api.post(
+							"/api/interviews/candidate/submit",
+							{
+								inviteId: invite._id,
+								questionIndex: i,
+							},
+							{ tokenOverride: authToken || undefined },
+						);
+					})
+					.filter(Boolean);
+
+				await Promise.allSettled(submissions);
 			}
 			setCompleted(true);
 		} catch (err: any) {

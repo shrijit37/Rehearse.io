@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import mongoose from 'mongoose';
 
 const CandidateInviteSchema = new mongoose.Schema({
@@ -39,6 +40,30 @@ const CandidateInviteSchema = new mongoose.Schema({
     feedback: { type: String, default: '' },
   }],
 }, { timestamps: true });
+
+/**
+ * Hash a token for storage/comparison.
+ */
+function hashToken(token) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+/**
+ * Hash the raw inviteToken before saving so the raw value is never stored.
+ */
+CandidateInviteSchema.pre('save', function (next) {
+  if (this.isModified('inviteToken')) {
+    this.inviteToken = hashToken(this.inviteToken);
+  }
+  next();
+});
+
+/**
+ * Query helper to find by raw token (hashes it automatically).
+ */
+CandidateInviteSchema.statics.findByRawToken = function (rawToken) {
+  return this.findOne({ inviteToken: hashToken(rawToken) });
+};
 
 CandidateInviteSchema.index({ interview: 1, status: 1 });
 CandidateInviteSchema.index({ candidate: 1 });

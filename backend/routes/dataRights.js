@@ -1,4 +1,5 @@
 import express from "express";
+import bcrypt from "bcryptjs";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import { protect } from "../middleware/auth.js";
 import User from "../db/User.js";
@@ -110,7 +111,7 @@ router.delete("/delete-account", protect, asyncHandler(async (req, res) => {
   const user = await User.findById(req.user._id).select("+password");
   if (!user) return res.status(404).json({ message: "User not found" });
 
-  const isMatch = await (await import("bcryptjs")).default.compare(password, user.password);
+  const isMatch = await bcrypt.compare(password, user.password);
   if (!isMatch) {
     return res.status(400).json({ message: "Incorrect password" });
   }

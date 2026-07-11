@@ -1,4 +1,5 @@
 import axios from "axios";
+import FormData from "form-data";
 import { extractTextFromBase64Pdf } from "../utils/pdfParser.js";
 import RehearsalSession from "../db/RehearsalSession.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
@@ -73,8 +74,10 @@ export const evaluateAnswer = asyncHandler(async (req, res) => {
 	}
 
 	const formData = new FormData();
-	const blob = new Blob([req.file.buffer], { type: req.file.mimetype });
-	formData.append("audio", blob, req.file.originalname || "answer.webm");
+	formData.append("audio", req.file.buffer, {
+		filename: req.file.originalname || "answer.webm",
+		contentType: req.file.mimetype,
+	});
 	formData.append("question", question);
 
 	try {

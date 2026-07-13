@@ -31,5 +31,9 @@
   "homepage": "https://github.com/shrijit37/Rehearse.io#readme",
   "devDependencies": {
     "concurrently": "^10.0.3"
+  },
+  "dependencies": {
+    "@types/mongoose": "^5.11.97",
+    "mongoose": "^9.7.4"
   }
 }

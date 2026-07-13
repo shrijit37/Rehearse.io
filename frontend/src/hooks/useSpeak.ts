@@ -88,6 +88,57 @@ export function useSpeak(): UseSpeakReturn {
 		};
 	}, []);
 
+	const speakBrowserTTS = useCallback(
+		(text: string, options?: UseSpeakOptions) => {
+			if (!supported || !window.speechSynthesis) return;
+
+			const synth = window.speechSynthesis;
+
+			const utterance = new SpeechSynthesisUtterance(text);
+			utterance.rate = options?.rate ?? 1.0;
+			utterance.pitch = options?.pitch ?? 1.0;
+
+			if (options?.voice) {
+				utterance.voice = options.voice;
+			} else {
+				const lang = navigator.language;
+				const preferred = voices.find((v) => v.lang.startsWith(lang));
+				if (preferred) utterance.voice = preferred;
+			}
+
+			utterance.onstart = () => {
+				if (mountedRef.current) setSpeaking(true);
+			};
+
+			utterance.onend = () => {
+				if (mountedRef.current) {
+					setSpeaking(false);
+					setPaused(false);
+				}
+				options?.onEnd?.();
+			};
+
+			utterance.onerror = () => {
+				if (mountedRef.current) {
+					setSpeaking(false);
+					setPaused(false);
+				}
+			};
+
+			utterance.onpause = () => {
+				if (mountedRef.current) setPaused(true);
+			};
+
+			utterance.onresume = () => {
+				if (mountedRef.current) setPaused(false);
+			};
+
+			currentUtteranceRef.current = utterance;
+			synth.speak(utterance);
+		},
+		[supported, voices],
+	);
+
 	const speak = useCallback(
 		async (text: string, options?: UseSpeakOptions) => {
 			if (!text.trim()) return;
@@ -109,7 +160,7 @@ export function useSpeak(): UseSpeakReturn {
 					setSpeaking(true);
 					const formData = new FormData();
 					formData.append("text", text);
-					formData.append("voice", "alloy");
+					formData.append("voice", "Fritz-PlayAI");
 
 					// Call backend proxy → AI service TTS
 					const response = await api.post<Blob>(
@@ -145,65 +196,18 @@ export function useSpeak(): UseSpeakReturn {
 						setSpeaking(false);
 					}
 					if (supported && window.speechSynthesis) {
-						useBrowserTTS(text, options);
+						speakBrowserTTS(text, options);
 					}
 				}
 				return;
 			}
 
 			// Default: use browser SpeechSynthesis
-			useBrowserTTS(text, options);
+			speakBrowserTTS(text, options);
 		},
-		[supported, voices],
+		[supported, speakBrowserTTS],
 	);
 
-	const useBrowserTTS = (text: string, options?: UseSpeakOptions) => {
-		if (!supported || !window.speechSynthesis) return;
-
-		const synth = window.speechSynthesis;
-
-		const utterance = new SpeechSynthesisUtterance(text);
-		utterance.rate = options?.rate ?? 1.0;
-		utterance.pitch = options?.pitch ?? 1.0;
-
-		if (options?.voice) {
-			utterance.voice = options.voice;
-		} else {
-			const lang = navigator.language;
-			const preferred = voices.find((v) => v.lang.startsWith(lang));
-			if (preferred) utterance.voice = preferred;
-		}
-
-		utterance.onstart = () => {
-			if (mountedRef.current) setSpeaking(true);
-		};
-
-		utterance.onend = () => {
-			if (mountedRef.current) {
-				setSpeaking(false);
-				setPaused(false);
-			}
-			options?.onEnd?.();
-		};
-
-		utterance.onerror = () => {
-			if (mountedRef.current) {
-				setSpeaking(false);
-				setPaused(false);
-			}
-		};
-
-		utterance.onpause = () => {
-			if (mountedRef.current) setPaused(true);
-		};
-
-		utterance.onresume = () => {
-			if (mountedRef.current) setPaused(false);
-		};
-
-		currentUtteranceRef.current = utterance;
-		synth.speak(utterance);
-	};
 
 	const stop = useCallback(() => {
 		if (window.speechSynthesis) {

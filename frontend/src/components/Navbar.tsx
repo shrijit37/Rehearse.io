@@ -1,4 +1,4 @@
-import { Menu, X, LogOut, LayoutDashboard, Settings, Building2, Users } from "lucide-react";
+import { Menu, X, LogOut, LayoutDashboard, Settings, Building2, Users, Code2 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "./ui/button";
@@ -91,10 +91,6 @@ const Navbar = () => {
                     <Building2 className="inline h-3.5 w-3.5 mr-1.5 -mt-0.5" />
                     Recruiter
                   </button>
-                  <button onClick={() => navigate("/dashboard")}
-                    className={`px-3 py-1.5 rounded-[4px] transition-colors ${isActive("/dashboard") ? activeMintUnderline : inactiveNavLink}`}>
-                    Dashboard
-                  </button>
                 </>
               ) : (
                 <>
@@ -107,6 +103,11 @@ const Navbar = () => {
                     className={`px-3 py-1.5 rounded-[4px] transition-colors flex items-center gap-1.5 ${isActive("/rehearsal") ? activeMintUnderline : inactiveNavLink}`}>
                     <Users className="h-3.5 w-3.5" />
                     Practice
+                  </button>
+                  <button onClick={() => navigate("/practice/dsa")}
+                    className={`px-3 py-1.5 rounded-[4px] transition-colors flex items-center gap-1.5 ${isActive("/practice/dsa") ? activeMintUnderline : inactiveNavLink}`}>
+                    <Code2 className="h-3.5 w-3.5" />
+                    DSA
                   </button>
                 </>
               )}
@@ -204,10 +205,6 @@ const Navbar = () => {
                         onClick={() => { navigate("/recruiter"); setIsMenuOpen(false); }}>
                         <Building2 className="inline h-4 w-4 mr-2 -mt-0.5" />Recruiter Dashboard
                       </button>
-                      <button className={`text-left w-full px-3 py-2 rounded-[4px] transition-colors ${isActive("/dashboard") ? activeMintUnderline : inactiveNavLink}`}
-                        onClick={() => { navigate("/dashboard"); setIsMenuOpen(false); }}>
-                        Dashboard
-                      </button>
                     </>
                   ) : (
                     <>
@@ -218,6 +215,10 @@ const Navbar = () => {
                       <button className={`text-left w-full px-3 py-2 rounded-[4px] transition-colors ${isActive("/rehearsal") ? activeMintUnderline : inactiveNavLink}`}
                         onClick={() => { navigate("/rehearsal"); setIsMenuOpen(false); }}>
                         <Users className="inline h-4 w-4 mr-2 -mt-0.5" />Practice
+                      </button>
+                      <button className={`text-left w-full px-3 py-2 rounded-[4px] transition-colors ${isActive("/practice/dsa") ? activeMintUnderline : inactiveNavLink}`}
+                        onClick={() => { navigate("/practice/dsa"); setIsMenuOpen(false); }}>
+                        <Code2 className="inline h-4 w-4 mr-2 -mt-0.5" />DSA Practice
                       </button>
                     </>
                   )}
@@ -234,7 +235,7 @@ const Navbar = () => {
               </>
             ) : (
               <div className="flex flex-col gap-2 pt-1">
-                <Button variant="outline" className="w-full justify-center" onClick={() => { navigate("/signup"); setIsMenuOpen(false); }}>bitch in</Button>
+                <Button variant="outline" className="w-full justify-center" onClick={() => { navigate("/signup"); setIsMenuOpen(false); }}>Sign in</Button>
                 <Button className="w-full justify-center" onClick={() => { navigate("/signup"); setIsMenuOpen(false); }}>Get started</Button>
               </div>
             )}

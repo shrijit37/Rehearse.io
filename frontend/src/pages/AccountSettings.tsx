@@ -16,10 +16,11 @@ import {
 	CheckCircle2,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import type { User } from "@/types";
 
 const AccountSettings: React.FC = () => {
 	const navigate = useNavigate();
-	const [user, setUser] = useState<any>(null);
+	const [user, setUser] = useState<User | null>(null);
 	const [consent, setConsent] = useState({
 		consentGiven: false,
 		consentDate: "",
@@ -136,8 +137,8 @@ const AccountSettings: React.FC = () => {
 			await api.patch("/api/auth/profile", { photo });
 			setPhotoSaved(true);
 			setTimeout(() => setPhotoSaved(false), 3000);
-		} catch (err: any) {
-			setCameraError(err.message || "Failed to save photo");
+		} catch (err: unknown) {
+			setCameraError(err instanceof Error ? err.message : "Failed to save photo");
 		} finally {
 			setPhotoSaving(false);
 		}
@@ -196,8 +197,8 @@ const AccountSettings: React.FC = () => {
 			await api.patch("/api/auth/profile", { audio: audioBase64 });
 			setVoiceSaved(true);
 			setTimeout(() => setVoiceSaved(false), 3000);
-		} catch (err: any) {
-			setVoiceError(err.message || "Failed to save voice calibration");
+		} catch (err: unknown) {
+			setVoiceError(err instanceof Error ? err.message : "Failed to save voice calibration");
 		} finally {
 			setVoiceSaving(false);
 		}
@@ -247,8 +248,8 @@ const AccountSettings: React.FC = () => {
 			localStorage.removeItem("token");
 			localStorage.removeItem("user");
 			navigate("/");
-		} catch (err: any) {
-			setDeleteError(err.message || "Failed to delete account");
+		} catch (err: unknown) {
+			setDeleteError(err instanceof Error ? err.message : "Failed to delete account");
 		} finally {
 			setDeleteLoading(false);
 		}

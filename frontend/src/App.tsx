@@ -5,6 +5,7 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Onboarding from "@/pages/Onboarding";
 import SignUp from "./pages/SignUp";
 import RehearsalRoom from "./pages/RehearsalRoom";
+import DsaPractice from "./pages/DsaPractice";
 import Dashboard from "./pages/Dashboard";
 import RecruiterDashboard from "./pages/RecruiterDashboard";
 import InterviewSetup from "./pages/InterviewSetup";
@@ -13,6 +14,7 @@ import CandidateResults from "./pages/CandidateResults";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import AccountSettings from "./pages/AccountSettings";
+import NotFound from "./pages/NotFound";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
 function App() {
@@ -34,15 +36,23 @@ function App() {
 					<Route
 						path="/rehearsal"
 						element={
-							<ProtectedRoute requireOnboarded>
+							<ProtectedRoute role="candidate" requireOnboarded>
 								<RehearsalRoom />
+							</ProtectedRoute>
+						}
+					/>
+					<Route
+						path="/practice/dsa"
+						element={
+							<ProtectedRoute role="candidate" requireOnboarded>
+								<DsaPractice />
 							</ProtectedRoute>
 						}
 					/>
 					<Route
 						path="/dashboard"
 						element={
-							<ProtectedRoute requireOnboarded>
+							<ProtectedRoute role="candidate" requireOnboarded>
 								<Dashboard />
 							</ProtectedRoute>
 						}
@@ -52,7 +62,7 @@ function App() {
 					<Route
 						path="/recruiter"
 						element={
-							<ProtectedRoute>
+							<ProtectedRoute role="recruiter">
 								<RecruiterDashboard />
 							</ProtectedRoute>
 						}
@@ -60,7 +70,7 @@ function App() {
 					<Route
 						path="/recruiter/interviews/new"
 						element={
-							<ProtectedRoute>
+							<ProtectedRoute role="recruiter">
 								<InterviewSetup />
 							</ProtectedRoute>
 						}
@@ -68,7 +78,7 @@ function App() {
 					<Route
 						path="/recruiter/interviews/:id"
 						element={
-							<ProtectedRoute>
+							<ProtectedRoute role="recruiter">
 								<CandidateResults />
 							</ProtectedRoute>
 						}
@@ -89,6 +99,9 @@ function App() {
 					/>
 					<Route path="/privacy" element={<PrivacyPolicy />} />
 					<Route path="/terms" element={<TermsOfService />} />
+
+					{/* 404 catch-all */}
+					<Route path="*" element={<NotFound />} />
 				</Routes>
 				<CookieConsent />
 			</Router>

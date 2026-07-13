@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Turn off bytecode generation and python stdout buffering
 ENV PYTHONDONTWRITEBYTECODE=1

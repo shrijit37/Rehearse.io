@@ -1,7 +1,7 @@
 const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:9000";
 
 interface RequestOptions extends Omit<RequestInit, "body"> {
-  body?: any;
+  body?: unknown;
   tokenOverride?: string;
   /** Return raw Response instead of parsed JSON (for blob downloads). */
   raw?: boolean;
@@ -44,8 +44,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
 export const api = {
   get: <T>(path: string, opts?: RequestOptions) => request<T>(path, opts),
-  post: <T>(path: string, body?: any, opts?: RequestOptions) => request<T>(path, { ...opts, method: "POST", body }),
-  put: <T>(path: string, body?: any, opts?: RequestOptions) => request<T>(path, { ...opts, method: "PUT", body }),
-  patch: <T>(path: string, body?: any, opts?: RequestOptions) => request<T>(path, { ...opts, method: "PATCH", body }),
-  delete: <T>(path: string, body?: any, opts?: RequestOptions) => request<T>(path, { ...opts, method: "DELETE", body }),
+  post: <T>(path: string, body?: unknown, opts?: RequestOptions) => request<T>(path, { ...opts, method: "POST", body }),
+  put: <T>(path: string, body?: unknown, opts?: RequestOptions) => request<T>(path, { ...opts, method: "PUT", body }),
+  patch: <T>(path: string, body?: unknown, opts?: RequestOptions) => request<T>(path, { ...opts, method: "PATCH", body }),
+  delete: <T>(path: string, body?: unknown, opts?: RequestOptions) => request<T>(path, { ...opts, method: "DELETE", body }),
 };

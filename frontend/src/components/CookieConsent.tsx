@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { api } from "@/lib/api";
 import { ShieldCheck, X } from "lucide-react";
 
 type ConsentLevel = "essential" | "analytics" | "marketing";
@@ -19,7 +20,7 @@ const CookieConsent = () => {
 	const handleAcceptAll = () => {
 		setAnalytics(true);
 		setMarketing(true);
-		saveConsent("essential", true);
+		saveConsent("marketing", true);
 		localStorage.setItem(
 			CONSENT_KEY,
 			JSON.stringify({
@@ -49,7 +50,7 @@ const CookieConsent = () => {
 	};
 
 	const handleSavePreferences = () => {
-		saveConsent("essential", analytics);
+		saveConsent(marketing ? "marketing" : analytics ? "analytics" : "essential", analytics || marketing);
 		localStorage.setItem(
 			CONSENT_KEY,
 			JSON.stringify({
@@ -64,19 +65,10 @@ const CookieConsent = () => {
 
 	const saveConsent = (level: ConsentLevel, granted: boolean) => {
 		const token = localStorage.getItem("token");
-		if (token) {
-			fetch(
-				`${import.meta.env.VITE_API_URL || "http://localhost:9000"}/api/auth/consent`,
-				{
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-						Authorization: `Bearer ${token}`,
-					},
-					body: JSON.stringify({ consentGiven: granted, consentLevel: level }),
-				},
-			).catch(() => {});
-		}
+		if (!token) return;
+		api
+			.post("/api/auth/consent", { consentGiven: granted, consentLevel: level })
+			.catch(() => {});
 	};
 
 	if (!visible) return null;

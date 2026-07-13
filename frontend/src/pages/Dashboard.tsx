@@ -2,62 +2,25 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
-	Calendar,
 	Award,
-	ChevronRight,
 	Play,
 	History,
 	AlertCircle,
 	TrendingUp,
-	BarChart3,
-	MessageSquare,
 	Users,
 } from "lucide-react";
 import { api } from "@/lib/api";
-
-interface ResultItem {
-	_id: string;
-	question: string;
-	transcription: string;
-	score: number | null;
-	feedback: string;
-}
-
-interface RehearsalSession {
-	_id: string;
-	targetRole: string;
-	results: ResultItem[];
-	createdAt: string;
-}
-
-interface InvitedInterview {
-	_id: string;
-	status: string;
-	interview: {
-		_id: string;
-		title: string;
-		targetRole: string;
-		status: string;
-		expiresAt: string;
-		organization: { name: string } | null;
-	} | null;
-	results: ResultItem[];
-	startedAt?: string;
-	completedAt?: string;
-	createdAt: string;
-}
-
-/** Normalize both session types into a common shape for shared rendering. */
-interface NormalizedSession {
-	_id: string;
-	title: string;
-	targetRole: string;
-	status?: string;
-	organization?: string;
-	dateStr: string;
-	avg: string;
-	results: ResultItem[];
-	scoreSum: number;
+import ResultDetailPanel from "@/components/ResultDetailPanel";
+import SessionListItem from "@/components/SessionListItem";
+import type {
+	RehearsalSession,
+	CandidateInvite as InvitedInterview,
+	NormalizedSession,
+} from "@/types";
+function scoresFrom(results: { score?: number | null }[] = []) {
+	return results.filter(
+		(r): r is { score: number } => r.score != null,
+	);
 }
 
 function normalizeSessions(
@@ -71,9 +34,10 @@ function normalizeSessions(
 	};
 
 	const practiceSessions: NormalizedSession[] = history.map((s) => {
-		const validResults = s.results.filter(
-			(r): r is ResultItem & { score: number } => r.score != null,
-		);
+		const isDsa = s.sessionType === "dsa";
+		const validResults = isDsa
+			? scoresFrom(s.dsaResults)
+			: scoresFrom(s.results);
 		const avg =
 			validResults.length > 0
 				? (
@@ -83,196 +47,56 @@ function normalizeSessions(
 				: "—";
 		return {
 			_id: s._id,
-			title: s.targetRole,
+			title: isDsa ? `DSA · ${s.targetRole}` : s.targetRole,
 			targetRole: s.targetRole,
 			dateStr: new Date(s.createdAt).toLocaleDateString(undefined, fmt),
 			avg,
-			results: s.results,
+			results: isDsa
+				? (s.dsaResults || []).map((d) => ({
+						question: d.problemTitle,
+						transcription: d.code || "",
+						score: d.score,
+						feedback: d.feedback || "",
+					}))
+				: s.results,
+			dsaResults: s.dsaResults,
+			sessionKind: isDsa ? "dsa" : "behavioral",
 			scoreSum: validResults.reduce((acc, r) => acc + r.score, 0),
 		};
 	});
 
 	const inviteSessions: NormalizedSession[] = invited.map((inv) => {
-		const results = inv.results || [];
-		const validResults = results.filter(
-			(r): r is ResultItem & { score: number } => r.score != null,
-		);
+		const behavioral = scoresFrom(inv.results);
+		const dsa = scoresFrom(inv.dsaResults);
+		const all = [...behavioral, ...dsa];
 		const avg =
-			validResults.length > 0
-				? (
-						validResults.reduce((acc: number, r) => acc + r.score, 0) /
-						validResults.length
-					).toFixed(1)
+			all.length > 0
+				? (all.reduce((acc, r) => acc + r.score, 0) / all.length).toFixed(1)
 				: "—";
+		const interviewObj = inv.interview && typeof inv.interview === "object" ? inv.interview : null;
+		const type = interviewObj?.interviewType || "behavioral";
+		const orgObj = interviewObj?.organization && typeof interviewObj.organization === "object" ? interviewObj.organization : null;
 		return {
 			_id: inv._id,
-			title: inv.interview?.title || "Interview",
-			targetRole: inv.interview?.targetRole || "—",
+			title: interviewObj?.title || "Interview",
+			targetRole: interviewObj?.targetRole || "—",
 			status: inv.status,
-			organization: inv.interview?.organization?.name,
+			organization: orgObj?.name,
 			dateStr: new Date(inv.createdAt).toLocaleDateString(undefined, fmt),
 			avg,
-			results,
-			scoreSum: validResults.reduce((acc: number, r) => acc + r.score, 0),
+			results: inv.results || [],
+			dsaResults: inv.dsaResults,
+			sessionKind:
+				type === "dsa" || type === "mixed" || type === "behavioral"
+					? (type as "behavioral" | "dsa" | "mixed")
+					: "behavioral",
+			scoreSum: all.reduce((acc, r) => acc + r.score, 0),
 		};
 	});
 
 	return [...inviteSessions, ...practiceSessions];
 }
 
-// ── Shared sub-components ──────────────────────────────────────────────────────
-
-const ResultDetailPanel: React.FC<{
-	title: string;
-	targetRole: string;
-	results: ResultItem[];
-}> = ({ title, targetRole, results }) => {
-	const avg =
-		results.length > 0
-			? (() => {
-					const valid = results.filter(
-						(r): r is ResultItem & { score: number } => r.score != null,
-					);
-					return valid.length > 0
-						? (
-								valid.reduce((acc, r) => acc + r.score, 0) / valid.length
-							).toFixed(1)
-						: "—";
-				})()
-			: "—";
-
-	return (
-		<div className="border border-border/80 rounded-[20px] bg-card overflow-hidden animate-in fade-in duration-200">
-			<div className="border-b border-border/60 bg-secondary/15 px-6 py-4 flex items-center justify-between">
-				<div className="space-y-1">
-					<span className="text-[10px] font-bold bg-primary/10 text-primary border border-primary/15 rounded px-2 py-0.5 uppercase tracking-wider">
-						{targetRole}
-					</span>
-					<h3 className="text-base font-bold text-foreground flex items-center gap-1.5 pt-1">
-						<BarChart3 className="h-4 w-4 text-primary" />
-						{title}
-					</h3>
-				</div>
-				<div className="text-right">
-					<span className="text-[9px] font-bold text-muted-foreground uppercase block">
-						Score
-					</span>
-					<span className="text-xl font-bold">
-						{avg}
-						<span className="text-[11px] text-muted-foreground">/10</span>
-					</span>
-				</div>
-			</div>
-			<div className="p-6 space-y-4 max-h-[500px] overflow-y-auto">
-				{results.map((result: ResultItem, idx: number) => (
-					<div
-						key={result._id || idx}
-						className="border border-border/50 rounded-[20px] p-4 space-y-3"
-					>
-						<div className="flex items-start justify-between gap-3 border-b border-border/40 pb-2.5">
-							<div className="flex items-start gap-2">
-								<span className="text-[11px] font-bold text-primary pt-px">
-									{idx + 1}.
-								</span>
-								<h4 className="text-[13px] font-semibold text-foreground leading-snug">
-									{result.question}
-								</h4>
-							</div>
-							<span className="shrink-0 px-2 py-0.5 bg-secondary text-[11px] font-bold rounded border border-border">
-								{result.score != null ? `${result.score}/10` : "—"}
-							</span>
-						</div>
-						{result.transcription && (
-							<div className="space-y-1">
-								<span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-									<MessageSquare className="h-3 w-3" /> Transcription
-								</span>
-								<div className="bg-secondary/40 border-l-2 border-l-primary text-[12px] text-foreground/80 italic p-2.5 rounded-r-md leading-relaxed">
-									{result.transcription}
-								</div>
-							</div>
-						)}
-						<div className="space-y-1">
-							<span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-								AI Feedback
-							</span>
-							<p className="text-[13px] text-foreground leading-relaxed">
-								{result.feedback}
-							</p>
-						</div>
-					</div>
-				))}
-			</div>
-		</div>
-	);
-};
-
-const SessionListItem: React.FC<{
-	session: NormalizedSession;
-	isSelected: boolean;
-	onClick: () => void;
-	showStatus?: boolean;
-}> = ({ session, isSelected, onClick, showStatus }) => {
-	const statusColor =
-		session.status === "completed"
-			? "bg-success/10 text-success border-success/20"
-			: session.status === "started"
-				? "bg-warning/10 text-warning border-warning/20"
-				: "bg-secondary text-muted-foreground border-border";
-
-	return (
-		<button
-			onClick={onClick}
-			className={`w-full text-left p-3.5 border rounded-[20px] transition-all flex items-center justify-between select-none ${
-				isSelected
-					? "bg-card border-primary/60 "
-					: "bg-card border-border/60 hover:border-primary/30"
-			}`}
-		>
-			<div className="space-y-1 min-w-0 pr-3">
-				<p className="text-[13px] font-semibold text-foreground truncate">
-					{session.title}
-				</p>
-				<div className="flex items-center gap-2">
-					<span className="inline-block px-2 py-0.5 text-[10px] font-bold bg-primary/10 text-primary border border-primary/15 rounded">
-						{session.targetRole}
-					</span>
-					{showStatus && session.status && (
-						<span
-							className={`inline-block px-1.5 py-0.5 text-[9px] font-bold rounded uppercase tracking-wider border ${statusColor}`}
-						>
-							{session.status}
-						</span>
-					)}
-				</div>
-				<div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-					<Calendar className="w-3 h-3" />
-					<span>{session.dateStr}</span>
-					{session.organization && (
-						<>
-							<span>·</span>
-							<span>{session.organization}</span>
-						</>
-					)}
-				</div>
-			</div>
-			<div className="flex items-center gap-2 shrink-0">
-				<div className="text-right">
-					<p className="text-[9px] font-bold text-muted-foreground uppercase">
-						Avg
-					</p>
-					<p className="text-sm font-bold text-foreground">
-						{session.avg}
-						<span className="text-[10px] text-muted-foreground">/10</span>
-					</p>
-				</div>
-				<ChevronRight
-					className={`h-3.5 w-3.5 transition-transform ${isSelected ? "text-primary translate-x-0.5" : "text-muted-foreground/50"}`}
-				/>
-			</div>
-		</button>
-	);
-};
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
@@ -311,8 +135,8 @@ const Dashboard: React.FC = () => {
 					setSelectedId(historyItems[0]._id);
 					setActiveTab("practice");
 				}
-			} catch (err: any) {
-				setError(err.message || "An error occurred.");
+			} catch (err: unknown) {
+				setError(err instanceof Error ? err.message : "An error occurred.");
 			} finally {
 				setIsLoading(false);
 			}
@@ -320,28 +144,27 @@ const Dashboard: React.FC = () => {
 		fetchData();
 	}, []);
 
-	// Single-pass stats computation
+	// Single-pass stats computation (includes DSA scores)
 	const { totalSessions, averageScore, highestScore } = useMemo(() => {
 		let scoreSum = 0,
 			count = 0,
 			peak = 0;
-		for (const s of history) {
-			for (const r of s.results) {
+		const absorb = (items: { score?: number | null }[] = []) => {
+			for (const r of items) {
 				if (r.score != null) {
 					scoreSum += r.score;
 					count++;
 					if (r.score > peak) peak = r.score;
 				}
 			}
+		};
+		for (const s of history) {
+			absorb(s.results);
+			absorb(s.dsaResults);
 		}
 		for (const inv of invitedInterviews) {
-			for (const r of inv.results || []) {
-				if (r.score != null) {
-					scoreSum += r.score;
-					count++;
-					if (r.score > peak) peak = r.score;
-				}
-			}
+			absorb(inv.results);
+			absorb(inv.dsaResults);
 		}
 		return {
 			totalSessions: history.length + invitedInterviews.length,
@@ -430,13 +253,22 @@ const Dashboard: React.FC = () => {
 							Your interview history, transcriptions, and AI evaluation scores.
 						</p>
 					</div>
-					<Button
-						onClick={() => navigate("/rehearsal")}
-						className="font-semibold  gap-2"
-					>
-						<Play className="w-3.5 h-3.5 fill-primary-foreground" />
-						Start Interview
-					</Button>
+					<div className="flex gap-2 flex-wrap">
+						<Button
+							variant="outline"
+							onClick={() => navigate("/practice/dsa")}
+							className="font-semibold gap-2"
+						>
+							DSA Practice
+						</Button>
+						<Button
+							onClick={() => navigate("/rehearsal")}
+							className="font-semibold gap-2"
+						>
+							<Play className="w-3.5 h-3.5 fill-primary-foreground" />
+							Voice Practice
+						</Button>
+					</div>
 				</div>
 
 				{/* Stats */}
@@ -578,7 +410,9 @@ const Dashboard: React.FC = () => {
 
 						{/* Detail */}
 						<div className="lg:col-span-7">
-							{selectedSession && selectedSession.results.length > 0 ? (
+							{selectedSession &&
+							(selectedSession.results.length > 0 ||
+								(selectedSession.dsaResults?.length ?? 0) > 0) ? (
 								<ResultDetailPanel
 									title={
 										selectedSession.status
@@ -587,6 +421,7 @@ const Dashboard: React.FC = () => {
 									}
 									targetRole={selectedSession.targetRole}
 									results={selectedSession.results}
+									dsaResults={selectedSession.dsaResults}
 								/>
 							) : selectedSession ? (
 								<div className="h-96 border border-border/80 rounded-[20px] bg-card flex flex-col items-center justify-center text-center p-6">

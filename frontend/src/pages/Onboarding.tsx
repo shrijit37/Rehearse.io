@@ -14,6 +14,7 @@ import {
 	Volume2,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import type { User } from "@/types";
 
 interface OnboardingStep {
 	step: number;
@@ -220,15 +221,15 @@ const Onboarding = () => {
 				payload.audio = audioBase64;
 			}
 
-			const data = await api.post<{ message: string; user: any }>(
+			const data = await api.post<{ message: string; user: User }>(
 				"/api/auth/onboard",
 				payload,
 			);
 			if (data.user) localStorage.setItem("user", JSON.stringify(data.user));
 			window.dispatchEvent(new Event("storage"));
 			navigate("/dashboard");
-		} catch (err: any) {
-			setError(err.message || "An error occurred.");
+		} catch (err: unknown) {
+			setError(err instanceof Error ? err.message : "An error occurred.");
 		} finally {
 			setIsSubmitting(false);
 		}

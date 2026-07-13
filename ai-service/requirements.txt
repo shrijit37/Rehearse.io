@@ -1,7 +1,7 @@
-fastapi
-uvicorn[standard]
-litellm
-python-dotenv
-pydantic
-python-multipart
-openai
+fastapi>=0.139.0
+uvicorn[standard]>=0.50.2
+litellm>=1.91.0
+python-dotenv>=1.2.2
+pydantic>=2.13.4
+python-multipart>=0.0.32
+openai>=2.44.0

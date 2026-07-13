@@ -4,19 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-	Mic,
-	MicOff,
-	ArrowRight,
 	Loader2,
 	AlertCircle,
-	Volume2,
-	VolumeX,
-	ArrowLeft,
 	Briefcase,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSpeak } from "@/hooks/useSpeak";
-
+import BehavioralRound from "@/components/BehavioralRound";
 interface ResultItem {
 	question: string;
 	transcription: string;
@@ -74,8 +68,8 @@ const RehearsalRoom: React.FC = () => {
 			if (data.questions?.length > 0) setQuestions(data.questions);
 			else throw new Error("No interview questions were returned.");
 			setStep("interview");
-		} catch (err: any) {
-			setError(err.message || "An error occurred.");
+		} catch (err: unknown) {
+			setError(err instanceof Error ? err.message : "An error occurred.");
 		} finally {
 			setIsLoading(false);
 		}
@@ -99,10 +93,6 @@ const RehearsalRoom: React.FC = () => {
 		};
 	}, [isRecording]);
 
-	const formatTimer = (seconds: number) =>
-		`${Math.floor(seconds / 60)
-			.toString()
-			.padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
 
 	const handleSpeakQuestion = () => {
 		if (speaking) {
@@ -186,8 +176,8 @@ const RehearsalRoom: React.FC = () => {
 				return u;
 			});
 			setEvaluation({ score: data.score, feedback: data.feedback });
-		} catch (err: any) {
-			setError(err.message || "Evaluation failed.");
+		} catch (err: unknown) {
+			setError(err instanceof Error ? err.message : "Evaluation failed.");
 		} finally {
 			setIsEvaluating(false);
 		}
@@ -358,242 +348,33 @@ const RehearsalRoom: React.FC = () => {
 	}
 
 	const currentQuestion = questions[currentQuestionIndex];
-	const progressPercent = ((currentQuestionIndex + 1) / questions.length) * 100;
 	const isLastQuestion = currentQuestionIndex === questions.length - 1;
 
 	return (
-		<div className="min-h-screen bg-background flex flex-col pt-14">
-			{/* Progress bar */}
-			<div className="border-b border-border bg-surface/80  sticky top-14 z-30 py-3 px-4 sm:px-6 lg:px-8">
-				<div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
-					<div className="flex items-center gap-3">
-						<button
-							onClick={() => navigate("/dashboard")}
-							className="p-1 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-						>
-							<ArrowLeft className="h-4 w-4" />
-						</button>
-						<div className="h-4 w-px bg-border/60" />
-						<span className="text-[12px] font-semibold text-foreground">
-							Question {currentQuestionIndex + 1} of {questions.length}
-						</span>
-					</div>
-					<div className="flex items-center gap-3 w-44 sm:w-56">
-						<div className="flex-1 bg-secondary h-1.5 rounded-full overflow-hidden">
-							<div
-								className="bg-primary h-full transition-all duration-300"
-								style={{ width: `${progressPercent}%` }}
-							/>
-						</div>
-						<span className="text-[11px] font-bold text-muted-foreground">
-							{Math.round(progressPercent)}%
-						</span>
-					</div>
-				</div>
-			</div>
-
-			{/* Main content */}
-			<div className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col md:grid md:grid-cols-12 gap-5">
-				{/* Interviewer panel */}
-				<div className="md:col-span-5 flex flex-col">
-					<div className="border border-border  bg-card rounded-[20px] flex-1 flex flex-col overflow-hidden min-h-[280px]">
-						{/* Header */}
-						<div className="border-b border-border px-5 py-3 bg-secondary/15 flex items-center justify-between">
-							<div className="flex items-center gap-2">
-								<div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-								<span className="text-[12px] font-semibold text-foreground">
-									Elena &middot; AI Evaluator
-								</span>
-							</div>
-							<span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground bg-background border border-border px-2 py-0.5 rounded">
-								Practice
-							</span>
-						</div>
-
-						{/* Viewport */}
-						<div className="flex-1 bg-secondary/20 p-5 flex flex-col justify-center items-center relative select-none">
-							<div className="w-20 h-20 rounded-full bg-primary/10 border border-primary/15 flex items-center justify-center relative mb-5">
-								<span
-									className="absolute inset-0 rounded-full border border-primary/20 animate-ping opacity-40"
-									style={{ animationDuration: "3s" }}
-								/>
-								<Volume2 className="h-7 w-7 text-primary" />
-							</div>
-							<p className="text-[12px] text-muted-foreground text-center max-w-xs leading-relaxed">
-								Listen, think, and click record when ready.
-							</p>
-						</div>
-
-						{/* Question */}
-						<div className="border-t border-border p-5 bg-background space-y-2">
-							<div className="flex items-center justify-between">
-								<span className="text-[10px] font-bold uppercase tracking-wider text-primary">
-									Question
-								</span>
-								{ttsSupported && (
-									<button
-										onClick={handleSpeakQuestion}
-										disabled={isRecording || isEvaluating}
-										title={speaking ? "Stop" : "Play question aloud"}
-										className={`p-1.5 rounded-full transition-all ${
-											speaking
-												? "bg-primary/15 text-primary animate-pulse"
-												: "text-muted-foreground hover:text-primary hover:bg-primary/10"
-										} disabled:opacity-30 disabled:cursor-not-allowed`}
-									>
-										{speaking ? (
-											<VolumeX className="h-4 w-4" />
-										) : (
-											<Volume2 className="h-4 w-4" />
-										)}
-									</button>
-								)}
-							</div>
-							<h2 className="text-[14px] font-semibold text-foreground leading-snug">
-								"{currentQuestion}"
-							</h2>
-						</div>
-					</div>
-				</div>
-
-				{/* Recording panel */}
-				<div className="md:col-span-7 flex flex-col relative">
-					{error && (
-						<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-[20px] border border-destructive/20 mb-3 flex items-center gap-2 animate-in fade-in duration-200">
-							<AlertCircle className="w-4 h-4 shrink-0" />
-							<span>{error}</span>
-						</div>
-					)}
-
-					<div className="border border-border  bg-card rounded-[20px] flex-1 flex flex-col overflow-hidden relative min-h-[340px]">
-						{/* Viewfinder */}
-						<div className="flex-1 bg-black relative flex flex-col justify-center items-center overflow-hidden">
-							{isEvaluating ? (
-								<div className="absolute inset-0 bg-background/95  z-20 flex flex-col items-center justify-center gap-3 animate-in fade-in duration-200">
-									<Loader2 className="w-8 h-8 text-primary animate-spin" />
-									<div className="text-center space-y-1">
-										<p className="text-[13px] font-semibold text-foreground">
-											AI Speech Evaluation
-										</p>
-										<p className="text-[11px] text-muted-foreground max-w-xs">
-											Transcribing, scoring, and analyzing...
-										</p>
-									</div>
-								</div>
-							) : evaluation ? (
-								<div className="absolute inset-0 bg-background/95  z-20 flex flex-col justify-between p-5 overflow-y-auto animate-in fade-in duration-200">
-									<div className="space-y-3">
-										<div className="flex items-center justify-between border-b border-border pb-3">
-											<div>
-												<span className="text-[10px] font-bold text-success bg-success/10 border border-success/20 px-2 py-0.5 rounded uppercase tracking-wider">
-													Ready
-												</span>
-												<h3 className="text-base font-bold pt-1 flex items-center gap-1">
-													Elena's Review
-												</h3>
-											</div>
-											<div className="text-right">
-												<span className="text-[9px] font-bold text-muted-foreground uppercase block">
-													Score
-												</span>
-												<span className="text-xl font-bold">
-													{evaluation.score}
-													<span className="text-[11px] text-muted-foreground">
-														/10
-													</span>
-												</span>
-											</div>
-										</div>
-										<p className="text-[13px] text-foreground leading-relaxed">
-											{evaluation.feedback}
-										</p>
-									</div>
-									<div className="border-t border-border pt-3 flex justify-end gap-2">
-										<Button
-											variant="outline"
-											size="sm"
-											onClick={() => setEvaluation(null)}
-											className="font-medium"
-										>
-											Re-record
-										</Button>
-										<Button
-											onClick={handleNext}
-											size="sm"
-											className="font-medium gap-1"
-										>
-											{isLastQuestion ? "Finish" : "Next"}{" "}
-											<ArrowRight className="h-3.5 w-3.5" />
-										</Button>
-									</div>
-								</div>
-							) : null}
-
-							{/* Simulated viewfinder */}
-							<div className="absolute inset-0 flex flex-col items-center justify-center p-5 select-none">
-								<div className="w-14 h-14 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-2">
-									<Mic className="h-6 w-6 text-white/30" />
-								</div>
-								<span className="text-[11px] text-white/40">
-									Simulated feed
-								</span>
-							</div>
-
-							<div className="absolute inset-4 border border-white/5 rounded-[20px] pointer-events-none" />
-
-							{/* Live indicators */}
-							{isRecording ? (
-								<>
-									<div className="absolute top-3 right-3 flex items-center gap-1.5 bg-destructive/10 border border-destructive/20 px-2.5 py-1 rounded-full">
-										<span className="w-1.5 h-1.5 bg-destructive rounded-full animate-pulse" />
-										<span className="text-[9px] font-bold uppercase tracking-wider text-white">
-											Live
-										</span>
-									</div>
-									<div className="absolute bottom-3 left-3 bg-black/50 border border-white/10 px-2.5 py-1 rounded-full text-white font-mono text-[11px]">
-										{formatTimer(recordingSeconds)}
-									</div>
-								</>
-							) : (
-								<div className="absolute top-3 right-3 flex items-center gap-1.5 bg-white/5 border border-white/10 px-2.5 py-1 rounded-full select-none">
-									<span className="w-1.5 h-1.5 bg-white/20 rounded-full" />
-									<span className="text-[9px] font-bold uppercase tracking-wider text-white/50">
-										Standby
-									</span>
-								</div>
-							)}
-						</div>
-
-						{/* Controls */}
-						{!evaluation && (
-							<div className="border-t border-border p-4 bg-background flex flex-col sm:flex-row items-center justify-between gap-3">
-								<p className="text-[12px] text-muted-foreground font-medium">
-									{isRecording
-										? "Speak clearly into your microphone."
-										: "Click record to start your answer."}
-								</p>
-								<Button
-									variant={isRecording ? "destructive" : "default"}
-									onClick={handleToggleRecording}
-									disabled={isEvaluating}
-									className="w-full sm:w-40 font-semibold shrink-0 h-9 rounded-full gap-2"
-								>
-									{isRecording ? (
-										<>
-											<MicOff className="h-3.5 w-3.5" /> Stop
-										</>
-									) : (
-										<>
-											<Mic className="h-3.5 w-3.5" /> Record
-										</>
-									)}
-								</Button>
-							</div>
-						)}
-					</div>
-				</div>
-			</div>
-		</div>
+		<BehavioralRound
+			interview={{ title: "Practice Rehearsal", targetRole }}
+			questions={questions}
+			currentQuestionIndex={currentQuestionIndex}
+			currentQuestion={currentQuestion}
+			isRecording={isRecording}
+			isEvaluating={isEvaluating}
+			evaluation={evaluation}
+			recordingSeconds={recordingSeconds}
+			isLastQuestion={isLastQuestion}
+			hasDsaAfter={false}
+			error={error}
+			speaking={speaking}
+			ttsSupported={ttsSupported}
+			onBack={() => {
+				setStep("role-picker");
+				setQuestions([]);
+				setError(null);
+			}}
+			onSpeakQuestion={handleSpeakQuestion}
+			onToggleRecording={handleToggleRecording}
+			onResetEvaluation={() => setEvaluation(null)}
+			onNext={handleNext}
+		/>
 	);
 };
 

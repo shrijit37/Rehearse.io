@@ -33,7 +33,7 @@ const HeroSection = () => {
 
             {/* Subhead */}
             <p className="text-base sm:text-lg text-muted-foreground max-w-xl mx-auto leading-relaxed">
-              Recruiters build sessions in minutes. Candidates interview on their schedule. Every answer scored consistently, with full transcription and feedback.
+              Recruiters build sessions in minutes — behavioral, DSA coding, or mixed rounds. Candidates interview on their schedule. Every answer and code submission scored consistently with AI.
             </p>
 
             {/* CTAs — Verge pill buttons */}

@@ -13,12 +13,13 @@ import {
 	PowerOff,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import type { Organization, Interview } from "@/types";
 
 const RecruiterDashboard: React.FC = () => {
 	const navigate = useNavigate();
-	const [organizations, setOrganizations] = useState<any[]>([]);
-	const [selectedOrg, setSelectedOrg] = useState<any>(null);
-	const [interviews, setInterviews] = useState<any[]>([]);
+	const [organizations, setOrganizations] = useState<Organization[]>([]);
+	const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
+	const [interviews, setInterviews] = useState<Interview[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [newOrgName, setNewOrgName] = useState("");
@@ -39,17 +40,17 @@ const RecruiterDashboard: React.FC = () => {
 		setIsLoading(true);
 		setError(null);
 		try {
-			const orgData = await api.get<{ data: any[]; total: number }>("/api/org");
+			const orgData = await api.get<{ data: Organization[]; total: number }>("/api/org");
 			setOrganizations(orgData.data || []);
 			if (orgData.data?.length > 0) {
 				setSelectedOrg(orgData.data[0]);
-				const interviewData = await api.get<{ data: any[]; total: number }>(
+				const interviewData = await api.get<{ data: Interview[]; total: number }>(
 					`/api/interviews?organizationId=${orgData.data[0]._id}`,
 				);
 				setInterviews(interviewData.data || []);
 			}
-		} catch (err: any) {
-			setError(err.message || "An error occurred");
+		} catch (err: unknown) {
+			setError(err instanceof Error ? err.message : "An error occurred");
 		} finally {
 			setIsLoading(false);
 		}
@@ -62,8 +63,8 @@ const RecruiterDashboard: React.FC = () => {
 			setNewOrgName("");
 			setShowNewOrgModal(false);
 			fetchData();
-		} catch (err: any) {
-			setError(err.message || "Failed to create organization");
+		} catch (err: unknown) {
+			setError(err instanceof Error ? err.message : "Failed to create organization");
 		}
 	};
 
@@ -88,8 +89,8 @@ const RecruiterDashboard: React.FC = () => {
 			}
 			setInviteEmail("");
 			fetchData();
-		} catch (err: any) {
-			setError(err.message || "Failed to generate invite");
+		} catch (err: unknown) {
+			setError(err instanceof Error ? err.message : "Failed to generate invite");
 		}
 	};
 
@@ -115,8 +116,8 @@ const RecruiterDashboard: React.FC = () => {
 		try {
 			await api.put(`/api/interviews/${interviewId}`, { status: newStatus });
 			fetchData();
-		} catch (err: any) {
-			alert(err.message || "Failed to update status");
+		} catch (err: unknown) {
+			alert(err instanceof Error ? err.message : "Failed to update status");
 		}
 	};
 
@@ -279,16 +280,31 @@ const RecruiterDashboard: React.FC = () => {
 											</div>
 											<p className="text-[12px] text-muted-foreground">
 												Role: {interview.targetRole}
+												{interview.interviewType && (
+													<span className="ml-2 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded border border-border">
+														{interview.interviewType}
+													</span>
+												)}
 											</p>
-											<div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-												<span className="flex items-center gap-1">
-													<FileText className="h-3 w-3" />
-													{interview.questions?.length || 0} questions
-												</span>
+											<div className="flex items-center gap-3 text-[11px] text-muted-foreground flex-wrap">
+												{(interview.interviewType !== "dsa") && (
+													<span className="flex items-center gap-1">
+														<FileText className="h-3 w-3" />
+														{interview.questions?.length || 0} questions
+													</span>
+												)}
+												{(interview.interviewType === "dsa" ||
+													interview.interviewType === "mixed" ||
+													(interview.dsaProblems?.length || 0) > 0) && (
+													<span className="flex items-center gap-1">
+														<BarChart3 className="h-3 w-3" />
+														{interview.dsaProblems?.length || 0} DSA
+													</span>
+												)}
 												<span className="flex items-center gap-1">
 													<Calendar className="h-3 w-3" />
 													Expires{" "}
-													{new Date(interview.expiresAt).toLocaleDateString()}
+													{interview.expiresAt ? new Date(interview.expiresAt).toLocaleDateString() : ""}
 												</span>
 											</div>
 										</div>

@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import type { Request, Response, NextFunction } from "express";
 import { env } from "../config/env";
+import { User } from "../modules/user/user.model";
 
 export async function authenticateToken(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -21,10 +22,20 @@ export async function authenticateToken(req: Request, res: Response, next: NextF
             return;
         }
         const decodedToken = jwt.verify(token, secret);
-        const user = decodedToken as { id: string, role: string };
+        const user = decodedToken as { _id: string, role: string };
+        //check if user valid
+
+        const isValid = await User.findById(user._id);
+        if (!isValid || isValid.isDeleted) {
+            res.status(401).json({
+                success: false,
+                message: "Unauthorized",
+            });
+            return;
+        }
         // @ts-ignore
         req.user = {
-            id: user.id,
+            _id: user._id,
             role: user.role
         }
 

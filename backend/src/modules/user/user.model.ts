@@ -1,15 +1,6 @@
 import mongoose from 'mongoose';
-import { v4 as uuidv4 } from "uuid";
 
 const UserSchema = new mongoose.Schema({
-
-    id: {
-        type: String,
-        required: true,
-        trim: true,
-        unique: true,
-        default: () => uuidv4()
-    },
     name: {
         type: String,
         required: true,
@@ -33,11 +24,11 @@ const UserSchema = new mongoose.Schema({
         enum: ['recruiter', 'candidate'],
         default: 'candidate',
     },
-    // organization: {
-    //     type: mongoose.Schema.Types.ObjectId,
-    //     ref: 'Organization',
-    //     default: null,
-    // },
+    organization: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Organization',
+        default: null,
+    },
     resumeName: {
         type: String,
     },
@@ -83,13 +74,12 @@ const UserSchema = new mongoose.Schema({
     },
 }, { timestamps: true });
 
-// // Defense-in-depth: strip HTML tags from name before saving
-// UserSchema.pre('save', function (next: NextFunction) {
-//     if (this.isModified('name') && typeof this.name === 'string') {
-//         this.name = this.name.replace(/<[^>]*>/g, '').trim();
-//     }
-//     next();
-// });
+// Defense-in-depth: strip HTML tags from name before saving
+UserSchema.pre('save', async function () {
+    if (this.isModified('name') && typeof this.name === 'string') {
+        this.name = this.name.replace(/<[^>]*>/g, '').trim();
+    }
+});
 
 const User = mongoose.model('User', UserSchema);
 

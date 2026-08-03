@@ -58,15 +58,16 @@ ALLOWED_AUDIO_TYPES = {
 
 MODEL_NAME = os.getenv("LITELLM_MODEL", "groq/llama-3.3-70b-versatile")
 
-# Groq PlayAI text-to-speech configuration
-TTS_MODEL = os.getenv("TTS_MODEL", "playai-tts")
-DEFAULT_TTS_VOICE = os.getenv("TTS_VOICE", "Fritz-PlayAI")
+# Groq text-to-speech configuration.
+# NOTE: Groq decommissioned `playai-tts`; the current TTS models are Canopy Labs
+# Orpheus (e.g. canopylabs/orpheus-v1-english). These require the Groq org admin
+# to accept model terms in the console before they will generate audio. Until
+# then the AI service returns 400/500 and the frontend falls back to the browser
+# SpeechSynthesis API automatically.
+TTS_MODEL = os.getenv("TTS_MODEL", "canopylabs/orpheus-v1-english")
+DEFAULT_TTS_VOICE = os.getenv("TTS_VOICE", "tara")
 ALLOWED_TTS_VOICES = [
-    "Arista-PlayAI", "Atlas-PlayAI", "Basil-PlayAI", "Briggs-PlayAI",
-    "Calum-PlayAI", "Celeste-PlayAI", "Cheyenne-PlayAI", "Chip-PlayAI",
-    "Cillian-PlayAI", "Deedee-PlayAI", "Fritz-PlayAI", "Gail-PlayAI",
-    "Indigo-PlayAI", "Mamaw-PlayAI", "Mason-PlayAI", "Mikail-PlayAI",
-    "Mitch-PlayAI", "Quinn-PlayAI", "Thunder-PlayAI",
+    "tara", "leah", "jess", "leo", "dan", "mia", "zac", "zoe",
 ]
 
 # Speech-to-Text via Groq
@@ -306,10 +307,10 @@ async def text_to_speech(
     _auth=Depends(verify_api_key),
 ):
     """
-    Convert text to speech using Groq's PlayAI TTS API.
+    Convert text to speech using Groq's OpenAI-compatible TTS API (Orpheus).
 
     Returns audio/mpeg bytes.
-    Voices: Groq PlayAI voices, e.g. Fritz-PlayAI, Arista-PlayAI, Atlas-PlayAI.
+    Voices: Canopy Labs Orpheus voices, e.g. tara, leah, jess, leo, dan, mia, zac, zoe.
     """
     if not tts_client:
         raise HTTPException(

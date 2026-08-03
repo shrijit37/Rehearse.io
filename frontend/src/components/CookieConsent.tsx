@@ -67,7 +67,7 @@ const CookieConsent = () => {
 		const token = localStorage.getItem("token");
 		if (!token) return;
 		api
-			.post("/api/auth/consent", { consentGiven: granted, consentLevel: level })
+			.post("/api/users/consent", { consentGiven: granted, consentLevel: level })
 			.catch(() => {});
 	};
 

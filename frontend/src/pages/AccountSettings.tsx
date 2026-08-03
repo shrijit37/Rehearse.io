@@ -65,11 +65,10 @@ const AccountSettings: React.FC = () => {
 				consentGiven: boolean;
 				consentDate: string;
 				consentVersion: string;
-			}>("/api/auth/consent")
+			}>("/api/users/consent")
 			.then(setConsent)
 			.catch((err) => console.error("Failed to fetch consent status:", err));
 	}, [navigate]);
-
 	// Camera functions
 	const startCamera = useCallback(async () => {
 		try {
@@ -134,7 +133,7 @@ const AccountSettings: React.FC = () => {
 		setPhotoSaving(true);
 		setCameraError(null);
 		try {
-			await api.patch("/api/auth/profile", { photo });
+			await api.patch("/api/users/profile", { photo });
 			setPhotoSaved(true);
 			setTimeout(() => setPhotoSaved(false), 3000);
 		} catch (err: unknown) {
@@ -194,7 +193,7 @@ const AccountSettings: React.FC = () => {
 				reader.onerror = reject;
 				reader.readAsDataURL(audioBlob);
 			});
-			await api.patch("/api/auth/profile", { audio: audioBase64 });
+			await api.patch("/api/users/profile", { audio: audioBase64 });
 			setVoiceSaved(true);
 			setTimeout(() => setVoiceSaved(false), 3000);
 		} catch (err: unknown) {
@@ -216,7 +215,7 @@ const AccountSettings: React.FC = () => {
 		setExportLoading(true);
 		try {
 			const response = await api.post<Response>(
-				"/api/auth/export-data",
+				"/api/users/export-data",
 				undefined,
 				{ raw: true },
 			);
@@ -242,7 +241,7 @@ const AccountSettings: React.FC = () => {
 		setDeleteLoading(true);
 		setDeleteError(null);
 		try {
-			await api.delete("/api/auth/delete-account", {
+			await api.delete("/api/users/delete-account", {
 				password: deletePassword,
 			});
 			localStorage.removeItem("token");
@@ -259,7 +258,7 @@ const AccountSettings: React.FC = () => {
 		try {
 			setConsentError(null);
 			const data = await api.post<Record<string, unknown>>(
-				"/api/auth/consent",
+				"/api/users/consent",
 				{ consentGiven: given, consentVersion: "1.0" },
 			);
 			if (data && typeof data === "object" && "consent" in data) {

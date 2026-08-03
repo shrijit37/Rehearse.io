@@ -160,16 +160,17 @@ export function useSpeak(): UseSpeakReturn {
 					setSpeaking(true);
 					const formData = new FormData();
 					formData.append("text", text);
-					formData.append("voice", "Fritz-PlayAI");
+					formData.append("voice", "tara");
 
 					// Call backend proxy → AI service TTS
-					const response = await api.post<Blob>(
+					const response = await api.post<Response>(
 						"/api/tts",
 						formData,
 						{ raw: true },
 					);
 
-					const audioBlob = response as unknown as Blob;
+					// api client returns the raw Response when `raw: true`
+					const audioBlob = await response.blob();
 					const audioUrl = URL.createObjectURL(audioBlob);
 					const audio = new Audio(audioUrl);
 					audioElementRef.current = audio;

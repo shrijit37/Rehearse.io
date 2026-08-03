@@ -222,7 +222,7 @@ const Onboarding = () => {
 			}
 
 			const data = await api.post<{ message: string; user: User }>(
-				"/api/auth/onboard",
+				"/api/users/onboard",
 				payload,
 			);
 			if (data.user) localStorage.setItem("user", JSON.stringify(data.user));

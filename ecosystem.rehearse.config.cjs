@@ -40,6 +40,7 @@ module.exports = {
       cwd: path.join(dir, "ai-service/app"),
       script: path.join(dir, "ai-service/.venv/bin/uvicorn"),
       args: "main:app --host 127.0.0.1 --port 8000",
+      interpreter: "none",
       ...common,
     },
   ],

@@ -1,0 +1,58 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "ai-service/**"
+      - "scripts/**"
+      - "ecosystem.rehearse.config.cjs"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run remote deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 30m
+          script: |
+            set -e
+            cd /home/ubuntu/projects/Rehearse.io
+            bash scripts/deploy-on-server.sh
+
+      - name: Smoke test — API health
+        run: |
+          code=000
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 https://api.rehearseio.triptribe.info/health || echo 000)
+            echo "api health attempt $i: $code"
+            [ "$code" = "200" ] && break
+            sleep 10
+          done
+          [ "$code" = "200" ] || { echo "API health check failed"; exit 1; }
+
+      - name: Smoke test — Frontend
+        run: |
+          code=000
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 https://rehearseio.triptribe.info/ || echo 000)
+            echo "frontend attempt $i: $code"
+            [ "$code" = "200" ] && break
+            sleep 10
+          done
+          [ "$code" = "200" ] || { echo "Frontend check failed"; exit 1; }

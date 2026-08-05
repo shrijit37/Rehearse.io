@@ -46,11 +46,15 @@ services:
     ports:
       - "9000:9000"
     environment:
+      - MONGODB_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongo:27017/rehearse?authSource=admin
       - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongo:27017/rehearse?authSource=admin
       - JWT_SECRET=${JWT_SECRET}  # REQUIRED — no default; fails fast if unset
       - PORT=9000
+      - APP_ENV=production
       - NODE_ENV=production
+      - CLIENT_URL=${CLIENT_URL:-http://localhost:5173}
       - SERVER_IP=${SERVER_IP:-161.118.179.12}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
       - AUTH_RATE_MAX=${AUTH_RATE_MAX:-200}
       - AUTH_RATE_WINDOW_MS=${AUTH_RATE_WINDOW_MS:-900000}
       - RATE_MAX=${RATE_MAX:-5000}

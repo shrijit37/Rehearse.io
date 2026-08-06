@@ -1,19 +1,27 @@
 import z from "zod";
 
+// DSA problems come from the AI service and their example inputs/outputs may
+// arrive as strings, arrays, or objects. Coerce anything non-string to a JSON
+// string so one oddly-shaped field can't reject an entire interview.
+const asString = z.preprocess(
+    (v) => (typeof v === "string" ? v : v === undefined || v === null ? "" : JSON.stringify(v)),
+    z.string()
+);
+
 const dsaExampleSchema = z.object({
-    input: z.string().default(""),
-    output: z.string().default(""),
-    explanation: z.string().optional().default(""),
+    input: asString.default(""),
+    output: asString.default(""),
+    explanation: asString.optional().default(""),
 });
 
 const dsaProblemSchema = z.object({
     title: z.string().min(1),
     description: z.string().min(1),
     difficulty: z.enum(["easy", "medium", "hard"]).optional().default("medium"),
-    constraints: z.string().optional().default(""),
+    constraints: asString.optional().default(""),
     examples: z.array(dsaExampleSchema).optional().default([]),
-    topics: z.array(z.string()).optional().default([]),
-    expectedApproach: z.string().optional().default(""),
+    topics: z.array(asString).optional().default([]),
+    expectedApproach: asString.optional().default(""),
     starterCode: z.object({
         python: z.string().optional(),
         javascript: z.string().optional(),

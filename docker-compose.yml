@@ -17,8 +17,7 @@ services:
       context: ./ai-service
       dockerfile: Dockerfile
     container_name: rehearse-ai-service
-    ports:
-      - "8000:8000"
+    # Internal only — reached by backend at http://ai-service:8000
     environment:
       - OPENAI_API_KEY
       - GROQ_API_KEY
@@ -30,8 +29,8 @@ services:
       - STT_BACKEND=${STT_BACKEND:-local}
       - STT_LOCAL_MODEL=${STT_LOCAL_MODEL:-distil-large-v3}
       - STT_LOCAL_DEVICE=${STT_LOCAL_DEVICE:-cpu}
-      - SERVER_IP=${SERVER_IP:-161.118.179.12}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,http://161.118.179.12:3000,http://161.118.179.12:9000}
+      - SERVER_IP=${SERVER_IP:-130.210.29.215}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,https://rehearseio.triptribe.info,https://api.rehearseio.triptribe.info}
       - API_KEY=${AI_SERVICE_API_KEY:-}  # Shared secret for backend→AI auth
     volumes:
       - whisper_cache:/root/.cache/huggingface/  # Persist Whisper model across restarts
@@ -44,7 +43,7 @@ services:
       dockerfile: Dockerfile
     container_name: rehearse-backend
     ports:
-      - "9000:9000"
+      - "127.0.0.1:9000:9000"
     environment:
       - MONGODB_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongo:27017/rehearse?authSource=admin
       - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongo:27017/rehearse?authSource=admin
@@ -52,8 +51,8 @@ services:
       - PORT=9000
       - APP_ENV=production
       - NODE_ENV=production
-      - CLIENT_URL=${CLIENT_URL:-http://localhost:5173}
-      - SERVER_IP=${SERVER_IP:-161.118.179.12}
+      - CLIENT_URL=${CLIENT_URL:-https://rehearseio.triptribe.info}
+      - SERVER_IP=${SERVER_IP:-130.210.29.215}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
       - AUTH_RATE_MAX=${AUTH_RATE_MAX:-200}
       - AUTH_RATE_WINDOW_MS=${AUTH_RATE_WINDOW_MS:-900000}
@@ -61,7 +60,7 @@ services:
       - RATE_WINDOW_MS=${RATE_WINDOW_MS:-900000}
       - AI_SERVICE_URL=http://ai-service:8000
       - AI_SERVICE_API_KEY=${AI_SERVICE_API_KEY:-}  # Shared secret for backend→AI auth
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,http://161.118.179.12:3000,http://161.118.179.12:9000}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,https://rehearseio.triptribe.info,https://api.rehearseio.triptribe.info}
     depends_on:
       - mongo
       - ai-service
@@ -73,10 +72,10 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - VITE_API_URL=${VITE_API_URL:-http://161.118.179.12:9000}
+        - VITE_API_URL=${VITE_API_URL:-https://api.rehearseio.triptribe.info}
     container_name: rehearse-frontend
     ports:
-      - "3000:80"
+      - "127.0.0.1:3000:80"
     depends_on:
       - backend
     networks:

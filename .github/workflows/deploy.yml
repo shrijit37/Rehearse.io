@@ -21,16 +21,13 @@ jobs:
     name: Deploy to production
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
       - name: Run remote deploy
-        uses: appleboy/ssh-action@v1.2.0
+        uses: shrijit37/server-deploy/.github/actions/deploy-server@main
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          command_timeout: 30m
-          script: |
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          ssh-host: ${{ secrets.DEPLOY_HOST }}
+          ssh-user: ${{ secrets.DEPLOY_USER }}
+          command: |
             set -e
             cd /home/ubuntu/projects/Rehearse.io
             bash scripts/deploy-on-server.sh

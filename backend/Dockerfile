@@ -18,8 +18,8 @@ COPY package.json bun.lock ./
 COPY tsconfig.json ./
 COPY src ./src
 
-# Create non-root user
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+# Create non-root user (oven/bun:1.3 is Debian-based; use groupadd/useradd)
+RUN groupadd -r appgroup && useradd -r -g appgroup -d /app appuser
 USER appuser
 
 # Expose backend port

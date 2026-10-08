@@ -1,0 +1,37 @@
+# Manual server diagnostics: SSHes to the deploy host using the existing
+# DEPLOY_* secrets and prints container/serv state. workflow_dispatch only,
+# runs on demand, prints no secret values.
+name: server-debug
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH diagnose
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -uo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          SSH="ssh -i $HOME/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o BatchMode=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts"
+          echo "target: $USER@$HOST"
+          if ! $SSH "$USER@$HOST" 'echo SHELL_OK; whoami; hostname' 2>/tmp/ssh-err; then
+            echo "--- ssh failed, verbose retry ---"
+            $SSH -vv "$USER@$HOST" 'true' 2>&1 | grep -E 'Offering|denied|Authentications|identity file|Connection' | head -20
+            cat /tmp/ssh-err
+            exit 1
+          fi
+          $SSH "$USER@$HOST" 'bash -s' <<'EOF'
+          set -x
+          docker service ls --filter name=rehearse --format "{{.Name}} {{.Image}} {{.Replicas}}"
+          docker service ps rehearse-api-hftr4g --no-trunc --format "{{.ID}} {{.CurrentState}} {{.Error}}" | head -10
+          docker ps -a --format "{{.Names}} {{.Status}} {{.Image}}" | grep -i rehearse || echo "no rehearse containers"
+          docker images --format "{{.Repository}}:{{.Tag}}" | grep -i rehearse || echo "no rehearse images"
+          EOF

@@ -1,11 +1,12 @@
 # Rehearse.io API pipeline: test -> lint -> build (GHCR SHA) -> scan -> deploy prod.
 # Adapted from templates/deploy-dynamic.yml.
 # Required GitHub config:
-#   vars.INFISICAL_IDENTITY_ID   (org)  shared github-actions OIDC identity
+#   vars.INFISICAL_IDENTITY_ID   (repo) github-actions OIDC identity
+#                                 (per repo: OIDC subjects are repo-scoped)
 #   vars.INFISICAL_DOMAIN        (org)
 #   vars.INFISICAL_PROJECT_SLUG  (org)
 #   vars.DOKPLOY_URL             (org)
-#   vars.DOKPLOY_API_KEY         (repo) Dokploy API key (redeploy trigger only)
+#   secrets.DOKPLOY_API_KEY      (repo) Dokploy API key (redeploy trigger only)
 #   vars.DOKPLOY_APPLICATION_ID  (repo) backend application id
 #   vars.APP_URL                 (repo) https://api.rehearseio.triptribe.info
 #   vars.INFISICAL_SECRET_PREFIX (repo) REHEARSE
@@ -136,14 +137,17 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          # This Dokploy version serves its API under /api/<router>.<procedure>
+          # (dot notation). The slashed form 404s, so a slash here silently
+          # never redeploys.
           curl -fsS -X POST -H "x-api-key: $DOKPLOY_API_KEY" \
             -H 'Content-Type: application/json' \
             -d "{\"applicationId\":\"$APPLICATION_ID\",\"dockerImage\":\"$IMAGE_REF:$SHA\",\"username\":\"${{ github.actor }}\",\"password\":\"${{ secrets.GITHUB_TOKEN }}\",\"registryUrl\":\"ghcr.io\"}" \
-            "$DOKPLOY_URL/api/application/saveDockerProvider"
+            "$DOKPLOY_URL/api/application.saveDockerProvider"
           curl -fsS -X POST -H "x-api-key: $DOKPLOY_API_KEY" \
             -H 'Content-Type: application/json' \
             -d "{\"applicationId\":\"$APPLICATION_ID\"}" \
-            "$DOKPLOY_URL/api/application/redeploy" >/dev/null
+            "$DOKPLOY_URL/api/application.redeploy" >/dev/null
           echo "redeploy triggered for $IMAGE_REF:$SHA"
       - name: Health check
         env:

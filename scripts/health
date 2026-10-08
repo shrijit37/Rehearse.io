@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Health gate. Checks liveness, then readiness (real DB check).
+set -euo pipefail
+: "${APP_URL:?APP_URL is required}"
+
+curl -fsS "$APP_URL/health" >/dev/null
+echo "healthy: $APP_URL/health"
+
+if curl -fsS "$APP_URL/ready" >/dev/null; then
+  echo "ready: $APP_URL/ready"
+else
+  echo "NOT READY: $APP_URL/ready" >&2
+  exit 1
+fi

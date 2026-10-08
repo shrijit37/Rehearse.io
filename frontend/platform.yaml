@@ -1,0 +1,12 @@
+# Rehearse.io frontend (static).
+name: rehearse-io-frontend
+
+type: static
+runtime: node
+
+deploy:
+  target: cloudflare-pages
+
+build:
+  command: npm run build
+  output: dist

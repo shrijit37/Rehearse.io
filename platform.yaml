@@ -1,0 +1,17 @@
+# Rehearse.io deployment descriptor (platform standard).
+# Monorepo: the API deploys from GHCR; the frontend is a static build on Pages.
+name: rehearse-io
+
+deploy:
+  target: dokploy
+
+type: api
+runtime: node
+
+service:
+  port: 9000
+  healthcheck: /health
+  readycheck: /ready
+
+# The React frontend is a separate static unit deployed to Cloudflare Pages.
+# See frontend/platform.yaml.

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Lint + format check.
+set -euo pipefail
+
+echo "==> frontend lint"
+(cd frontend && npm run lint)

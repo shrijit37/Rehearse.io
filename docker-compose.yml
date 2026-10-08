@@ -1,45 +1,26 @@
+# Local development only. Production runs as a Dokploy application built from
+# backend/Dockerfile (see platform.yaml) — not from this compose file.
+#
+# Postgres is NOT defined here: local dev uses the shared laptop Postgres and
+# points DATABASE_URL at it. Create the database once with:
+#   createdb rehearse_io_dev
 services:
-  mongo:
-    image: mongo:7.0
-    container_name: rehearse-mongo
-    ports:
-      - "127.0.0.1:27017:27017"  # Localhost only — not exposed to network
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
-    volumes:
-      - mongo_data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 20s
-    networks:
-      - rehearse-network
-
   ai-service:
     build:
       context: ./ai-service
       dockerfile: Dockerfile
     container_name: rehearse-ai-service
-    # Internal only — reached by backend at http://ai-service:8000
+    ports:
+      - "127.0.0.1:8000:8000"
     environment:
-      - OPENAI_API_KEY
       - GROQ_API_KEY
-      - ANTHROPIC_API_KEY
       - LITELLM_MODEL
-      - NVIDIA_NIM_API_KEY
-      - NVIDIA_NIM_API_BASE
       - STT_MODEL
       - STT_BACKEND=${STT_BACKEND:-local}
-      - STT_LOCAL_MODEL=${STT_LOCAL_MODEL:-distil-large-v3}
-      - STT_LOCAL_DEVICE=${STT_LOCAL_DEVICE:-cpu}
-      - SERVER_IP=${SERVER_IP:-130.210.29.215}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,https://rehearseio.triptribe.info,https://api.rehearseio.triptribe.info}
-      - API_KEY=${AI_SERVICE_API_KEY:-}  # Shared secret for backend→AI auth
+      - API_KEY=${AI_SERVICE_API_KEY:-}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173}
     volumes:
-      - whisper_cache:/root/.cache/huggingface/  # Persist Whisper model across restarts
+      - whisper_cache:/root/.cache/huggingface/
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
       interval: 30s
@@ -57,25 +38,18 @@ services:
     ports:
       - "127.0.0.1:9000:9000"
     environment:
-      - MONGODB_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongo:27017/rehearse?authSource=admin
-      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongo:27017/rehearse?authSource=admin
-      - JWT_SECRET=${JWT_SECRET}  # REQUIRED — no default; fails fast if unset
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres@host.docker.internal:5432/rehearse_io_dev}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
       - PORT=9000
-      - APP_ENV=production
-      - NODE_ENV=production
-      - CLIENT_URL=${CLIENT_URL:-https://rehearseio.triptribe.info}
-      - SERVER_IP=${SERVER_IP:-130.210.29.215}
+      - APP_ENV=${APP_ENV:-development}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
-      - AUTH_RATE_MAX=${AUTH_RATE_MAX:-200}
-      - AUTH_RATE_WINDOW_MS=${AUTH_RATE_WINDOW_MS:-900000}
-      - RATE_MAX=${RATE_MAX:-5000}
-      - RATE_WINDOW_MS=${RATE_WINDOW_MS:-900000}
       - AI_SERVICE_URL=http://ai-service:8000
-      - AI_SERVICE_API_KEY=${AI_SERVICE_API_KEY:-}  # Shared secret for backend→AI auth
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173,http://localhost:3000,https://rehearseio.triptribe.info,https://api.rehearseio.triptribe.info}
+      - AI_SERVICE_API_KEY=${AI_SERVICE_API_KEY:-}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173}
+    extra_hosts:
+      # Reach a Postgres running on the host from inside the container.
+      - "host.docker.internal:host-gateway"
     depends_on:
-      mongo:
-        condition: service_healthy
       ai-service:
         condition: service_healthy
     healthcheck:
@@ -87,31 +61,9 @@ services:
     networks:
       - rehearse-network
 
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        - VITE_API_URL=${VITE_API_URL:-https://api.rehearseio.triptribe.info}
-    container_name: rehearse-frontend
-    ports:
-      - "127.0.0.1:3002:80"  # 3000 is used by the Dokploy UI on this host
-    depends_on:
-      backend:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 10s
-    networks:
-      - rehearse-network
-
 networks:
   rehearse-network:
     driver: bridge
 
 volumes:
-  mongo_data:
   whisper_cache:

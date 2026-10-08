@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Idempotent Postgres migrations. Uses the external URL so CI can reach the
+# shared instance; falls back to DATABASE_URL for in-network runs.
+set -euo pipefail
+: "${DATABASE_URL:?DATABASE_URL is required}"
+
+MIGRATION_URL="${DATABASE_URL_EXTERNAL:-$DATABASE_URL}"
+
+echo "==> applying drizzle migrations"
+(cd backend && DATABASE_URL="$MIGRATION_URL" bunx drizzle-kit migrate)

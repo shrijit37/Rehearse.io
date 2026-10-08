@@ -1,16 +1,16 @@
 import crypto from "crypto";
 import type { Request } from "express";
-import { AuditLog } from "../modules/audit/audit.model";
-import mongoose from "mongoose";
+import { writeAuditLog, type AuditAction } from "../db/repositories/audit";
 
+/** Hashes the client IP so audit rows never store a raw address. */
 function hashIp(ip: string): string | null {
     if (!ip) return null;
     return crypto.createHash("sha256").update(ip).digest("hex");
 }
 
 interface LogAuditParams {
-    userId?: mongoose.Types.ObjectId | string | null;
-    action: string;
+    userId?: string | null;
+    action: AuditAction;
     details?: string;
     req?: Request | null;
     metadata?: Record<string, unknown>;
@@ -39,17 +39,7 @@ export async function logAudit({
             ipHash = hashIp(firstIp.trim());
         }
 
-        const userObjectId = userId 
-            ? (typeof userId === "string" ? new mongoose.Types.ObjectId(userId) : userId) 
-            : null;
-
-        await AuditLog.create({
-            user: userObjectId,
-            action,
-            details,
-            metadata,
-            ipHash,
-        });
+        await writeAuditLog({ userId, action, details, metadata, ipHash });
     } catch (err) {
         const message = err instanceof Error ? err.message : "unknown error";
         console.error("Audit log error:", message);

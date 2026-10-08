@@ -1,6 +1,6 @@
-import { RehearsalSession } from "./rehearsalSession.model";
-import { User } from "../user/user.model";
 import { decryptField } from "../../utils/encryption";
+import { findUserById } from "../../db/repositories/users";
+import { createRehearsalSession, listRehearsalSessions } from "../../db/repositories/rehearsals";
 import { extractTextFromBase64Pdf } from "../../utils/pdfParser";
 import {
     generateScenario,
@@ -9,6 +9,7 @@ import {
     evaluateDsa as aiEvaluateDsa,
 } from "../../utils/aiClient";
 import type { startDsaSchema, evaluateDsaSchema, saveSessionSchema } from "./rehearsal.validation";
+import type { DsaResultItem, ResultItem } from "../../db/schema";
 import type { z } from "zod";
 
 type StartDsaInput = z.infer<typeof startDsaSchema>;
@@ -23,7 +24,7 @@ export interface ServiceResult {
 
 export const startRehearsal = async (userId: string, targetRole: string): Promise<ServiceResult> => {
     try {
-        const user = await User.findById(userId).select("resume");
+        const user = await findUserById(userId);
         if (!user) return { status: 404, message: "User not found" };
 
         const resumePlain = decryptField(user.resume);
@@ -80,12 +81,12 @@ export const evaluateAnswer = async (params: {
 
 export const saveSession = async (userId: string, input: SaveSessionInput): Promise<ServiceResult> => {
     try {
-        const session = await RehearsalSession.create({
-            user: userId,
+        const session = await createRehearsalSession({
+            userId,
             targetRole: input.targetRole,
             sessionType: input.sessionType,
-            results: input.results || [],
-            dsaResults: input.dsaResults || [],
+            results: (input.results || []) as ResultItem[],
+            dsaResults: (input.dsaResults || []) as DsaResultItem[],
         });
         return {
             status: 201,
@@ -101,17 +102,9 @@ export const saveSession = async (userId: string, input: SaveSessionInput): Prom
 export const getHistory = async (userId: string, page: number, limit: number): Promise<ServiceResult> => {
     try {
         const skip = (page - 1) * limit;
-        const filter = { user: userId };
+        const { rows, total } = await listRehearsalSessions(userId, skip, limit);
 
-        const [history, total] = await Promise.all([
-            RehearsalSession.find(filter)
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit),
-            RehearsalSession.countDocuments(filter),
-        ]);
-
-        return { status: 200, message: "History fetched", data: { data: history, page, limit, total } };
+        return { status: 200, message: "History fetched", data: { data: rows, page, limit, total } };
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "unknown error";
         return { status: 500, message: `Internal server error: ${message}` };

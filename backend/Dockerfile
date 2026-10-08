@@ -1,29 +1,33 @@
-FROM oven/bun:1.3 AS build
+# Rehearse.io API. Multi-stage Bun build, non-root runtime.
+# Adapted from templates/Dockerfile.node per the platform Docker standard.
+FROM oven/bun:1-alpine AS deps
 WORKDIR /app
-
-# Copy dependency definition files
 COPY package.json bun.lock ./
-
-# Install all dependencies (dev deps are required for TS type resolution at runtime)
 RUN bun install --frozen-lockfile
 
-FROM oven/bun:1.3
+FROM deps AS build
 WORKDIR /app
+COPY tsconfig.json drizzle.config.ts ./
+COPY src ./src
+# Typecheck in the build so a broken image never reaches the registry.
+RUN bunx tsc --noEmit
 
+FROM oven/bun:1-alpine AS runtime
+WORKDIR /app
 ENV NODE_ENV=production
 
-# Copy installed dependencies and source
-COPY --from=build /app/node_modules ./node_modules
-COPY package.json bun.lock ./
-COPY tsconfig.json ./
-COPY src ./src
+# Migrations ship with the image so Dokploy can run them at release.
+COPY package.json bun.lock drizzle.config.ts tsconfig.json ./
+COPY drizzle ./drizzle
+RUN bun install --frozen-lockfile --production && \
+    addgroup -S rehearse && adduser -S -G rehearse rehearse
 
-# Create non-root user (oven/bun:1.3 is Debian-based; use groupadd/useradd)
-RUN groupadd -r appgroup && useradd -r -g appgroup -d /app appuser
-USER appuser
+COPY --from=build /app/src ./src
 
-# Expose backend port
+USER rehearse
 EXPOSE 9000
 
-# Start command
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+  CMD bun -e "fetch('http://127.0.0.1:9000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
 CMD ["bun", "src/server.ts"]

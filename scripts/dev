@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Local dev. Expects a reachable Postgres (shared laptop instance by default).
+set -euo pipefail
+
+export DATABASE_URL="${DATABASE_URL:-postgresql://postgres@localhost:5432/rehearse_io_dev}"
+
+echo "==> applying migrations"
+(cd backend && bun run migrate)
+
+echo "==> ai-service (8000)"
+(cd ai-service && uvicorn main:app --reload --port 8000 --app-dir app) &
+AI_PID=$!
+
+echo "==> backend (9000)"
+(cd backend && bun --watch src/server.ts) &
+BACKEND_PID=$!
+
+echo "==> frontend (5173)"
+(cd frontend && npm run dev) &
+FRONTEND_PID=$!
+
+cleanup() {
+  kill "$AI_PID" "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+wait

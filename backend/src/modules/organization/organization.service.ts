@@ -1,6 +1,13 @@
-import { Organization } from "./organization.model";
-import { User } from "../user/user.model";
-import mongoose from "mongoose";
+import { findUserByEmail, setUserOrganization } from "../../db/repositories/users";
+import {
+    addMember,
+    createOrganizationRow,
+    findMembership,
+    findOrganizationRowBySlug,
+    getOrganizationWithMembers,
+    listOrganizationsForUser,
+    updateOrganizationName,
+} from "../../db/repositories/organizations";
 
 export interface OrgResult {
     status: number;
@@ -13,18 +20,9 @@ export interface OrgResult {
     total?: number;
 }
 
-interface MemberData {
-    user: mongoose.Types.ObjectId | string;
-    role: "admin" | "recruiter";
-    email?: string;
-}
-
-function memberRole(org: any, userId: string): string | null {
-    const member = org.members?.find(
-        (m: any) => m.user.toString() === userId,
-    );
-    return member?.role ?? null;
-}
+/** True when the id looks like a UUID. Replaces ObjectId.isValid(). */
+const isValidId = (id: string): boolean =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
 export const createOrganization = async (
     userId: string,
@@ -41,23 +39,27 @@ export const createOrganization = async (
             .replace(/[^a-z0-9]+/g, "-")
             .replace(/^-|-$/g, "");
 
-        const existing = await Organization.findOne({ slug });
+        const existing = await findOrganizationRowBySlug(slug);
         const finalSlug = existing ? `${slug}-${Date.now()}` : slug;
 
-        const organization = await Organization.create({
+        const organization = await createOrganizationRow({
             name: name.trim(),
             slug: finalSlug,
             createdBy: userId,
-            members: [{ user: userId, role: "admin" }],
         });
+        if (!organization) {
+            return { status: 500, message: "Failed to create organization" };
+        }
 
-        // Link user to organization
-        await User.findByIdAndUpdate(userId, { organization: organization._id });
+        // Creator joins as admin.
+        await addMember(organization.id, userId, "admin");
+        await setUserOrganization(userId, organization.id);
 
+        const withMembers = await getOrganizationWithMembers(organization.id);
         return {
             status: 201,
             message: "Organization created",
-            organization: organization.toObject(),
+            organization: withMembers ?? organization,
         };
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "unknown error";
@@ -72,21 +74,11 @@ export const getMyOrganizations = async (
 ): Promise<OrgResult> => {
     try {
         const skip = (page - 1) * limit;
-        const filter = { "members.user": new mongoose.Types.ObjectId(userId) };
-
-        const [organizations, total] = await Promise.all([
-            Organization.find(filter)
-                .populate("members.user", "name email role")
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit),
-            Organization.countDocuments(filter),
-        ]);
-
+        const { orgs, total } = await listOrganizationsForUser(userId, skip, limit);
         return {
             status: 200,
             message: "Organizations fetched",
-            data: organizations,
+            data: orgs,
             page,
             limit,
             total,
@@ -102,24 +94,22 @@ export const getOrganization = async (
     orgId: string,
 ): Promise<OrgResult> => {
     try {
-        if (!mongoose.Types.ObjectId.isValid(orgId)) {
+        if (!isValidId(orgId)) {
             return { status: 400, message: "Invalid organization ID format" };
         }
 
-        const organization = await Organization.findById(orgId).populate(
-            "members.user",
-            "name email role",
-        );
+        const organization = await getOrganizationWithMembers(orgId);
         if (!organization) return { status: 404, message: "Organization not found" };
 
-        const isMember = organization.members.some(
-            (m) => m.user._id.toString() === userId,
-        );
+        const isMember = organization.members.some((m) => m.user.id === userId);
         if (!isMember) {
-            return { status: 403, message: "You are not a member of this organization" };
+            return {
+                status: 403,
+                message: "You are not a member of this organization",
+            };
         }
 
-        return { status: 200, message: "Organization fetched", organization: organization.toObject() };
+        return { status: 200, message: "Organization fetched", organization };
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "unknown error";
         return { status: 500, message: `Internal server error: ${message}` };
@@ -132,24 +122,23 @@ export const updateOrganization = async (
     name: string,
 ): Promise<OrgResult> => {
     try {
-        if (!mongoose.Types.ObjectId.isValid(orgId)) {
+        if (!isValidId(orgId)) {
             return { status: 400, message: "Invalid organization ID format" };
         }
 
-        const organization = await Organization.findById(orgId);
-        if (!organization) return { status: 404, message: "Organization not found" };
-
-        const membership = organization.members.find(
-            (m) => m.user.toString() === userId,
-        );
+        const membership = await findMembership(orgId, userId);
         if (!membership || membership.role !== "admin") {
+            // Distinguish "no such org" from "not allowed" for a clearer error.
+            const organization = membership
+                ? null
+                : await getOrganizationWithMembers(orgId);
+            if (!organization) return { status: 404, message: "Organization not found" };
             return { status: 403, message: "Only admins can update the organization" };
         }
 
-        if (name) organization.name = name.trim();
-        await organization.save();
-
-        return { status: 200, message: "Organization updated", organization: organization.toObject() };
+        if (name) await updateOrganizationName(orgId, name.trim());
+        const organization = await getOrganizationWithMembers(orgId);
+        return { status: 200, message: "Organization updated", organization };
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "unknown error";
         return { status: 500, message: `Internal server error: ${message}` };
@@ -163,16 +152,11 @@ export const inviteMember = async (
     role: string,
 ): Promise<OrgResult> => {
     try {
-        if (!mongoose.Types.ObjectId.isValid(orgId)) {
+        if (!isValidId(orgId)) {
             return { status: 400, message: "Invalid organization ID format" };
         }
 
-        const organization = await Organization.findById(orgId);
-        if (!organization) return { status: 404, message: "Organization not found" };
-
-        const membership = organization.members.find(
-            (m) => m.user.toString() === userId,
-        );
+        const membership = await findMembership(orgId, userId);
         if (!membership || !["admin", "recruiter"].includes(membership.role)) {
             return { status: 403, message: "Insufficient permissions" };
         }
@@ -189,22 +173,18 @@ export const inviteMember = async (
             return { status: 400, message: "Role must be either 'admin' or 'recruiter'" };
         }
 
-        const userToAdd = await User.findOne({ email: email.toLowerCase().trim() });
+        const userToAdd = await findUserByEmail(email.toLowerCase().trim());
         if (!userToAdd) return { status: 404, message: "User not found with that email" };
 
-        const alreadyMember = organization.members.some(
-            (m) => m.user.toString() === userToAdd._id.toString(),
-        );
+        const alreadyMember = await findMembership(orgId, userToAdd.id);
         if (alreadyMember) return { status: 400, message: "User is already a member" };
 
-        organization.members.push({ user: userToAdd._id, role: requestedRole as "admin" | "recruiter", joinedAt: new Date() });
-        await organization.save();
+        await addMember(orgId, userToAdd.id, requestedRole as "admin" | "recruiter");
+        await setUserOrganization(userToAdd.id, orgId);
 
-        await User.findByIdAndUpdate(userToAdd._id, { organization: organization._id });
-
-        const member: MemberData & { email: string } = {
-            user: userToAdd._id,
-            role: requestedRole as "admin" | "recruiter",
+        const member = {
+            user: { _id: userToAdd.id, id: userToAdd.id, name: userToAdd.name, email: userToAdd.email },
+            role: requestedRole,
             email,
         };
 

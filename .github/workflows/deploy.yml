@@ -1,7 +1,0 @@
-name: Dokploy deploy trigger
-
-on:
-  workflow_dispatch:
-
-# Production deployment is performed by Dokploy from its GitHub webhook.
-# This workflow intentionally contains no SSH deployment fallback.

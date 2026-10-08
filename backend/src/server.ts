@@ -13,7 +13,7 @@ import { errorHandler } from "./middleware/error.middleware";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import { connectS3 } from "./config/s3";
+import { checkDb, closeDb } from "./db";
 
 const port: number = env.PORT;
 const app: Express = express();
@@ -39,7 +39,8 @@ app.use(helmet({
     crossOriginEmbedderPolicy: false,
 }));
 
-// Lightweight mongo query sanitization — strip operator keys ($, $gt, __proto__, ...)
+// Strip prototype-pollution keys from query/params/body. The old Mongo
+// operator-key stripping is gone: there is no document query layer to poison.
 // Mutates in place because Express 5 exposes req.query/req.params as read-only getters.
 function sanitizeInPlace(value: unknown): void {
     if (Array.isArray(value)) {
@@ -49,7 +50,7 @@ function sanitizeInPlace(value: unknown): void {
     if (value && typeof value === "object") {
         const obj = value as Record<string, unknown>;
         for (const key of Object.keys(obj)) {
-            if (key.startsWith("$") || key === "__proto__" || key === "constructor" || key === "prototype") {
+            if (key === "__proto__" || key === "constructor" || key === "prototype") {
                 delete obj[key];
             } else {
                 sanitizeInPlace(obj[key]);
@@ -96,9 +97,20 @@ app.use("/api/org", organizationRoutes);
 app.use("/api/interviews", interviewRoutes);
 app.use("/api/tts", ttsRoutes);
 
-app.get("/health", (req: Request, res: Response) => {
+// Liveness: the process is up. Intentionally does not touch the database.
+app.get("/health", (_req: Request, res: Response) => {
     res.json({
         status: "ok",
+        timestamp: new Date().toISOString(),
+    });
+});
+
+// Readiness: Postgres is reachable. Dokploy/CI gate promotion on this.
+app.get("/ready", async (_req: Request, res: Response) => {
+    const ok = await checkDb();
+    res.status(ok ? 200 : 503).json({
+        status: ok ? "ready" : "not_ready",
+        database: ok ? "up" : "down",
         timestamp: new Date().toISOString(),
     });
 });
@@ -106,7 +118,7 @@ app.get("/health", (req: Request, res: Response) => {
 // Global error handler
 app.use(errorHandler);
 
-Promise.all([connectDB(), connectS3()])
+connectDB()
     .then((): void => {
         app.listen(port, () => {
             console.log(`Server is running on port ${port}`);
@@ -119,5 +131,10 @@ Promise.all([connectDB(), connectS3()])
 
 process.on("SIGTERM", async () => {
     console.log("SIGTERM received. Shutting down gracefully...");
+    try {
+        await closeDb();
+    } catch (err) {
+        console.error("Error closing Postgres pool:", err);
+    }
     process.exit(0);
 });

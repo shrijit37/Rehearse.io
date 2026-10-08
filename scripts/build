@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Production build. CI parity with the deployed artifact.
+set -euo pipefail
+
+echo "==> backend typecheck"
+(cd backend && bunx tsc --noEmit)
+
+echo "==> frontend build"
+(cd frontend && npm run build)
+
+echo "==> ai-service import check"
+(cd ai-service && python -m compileall -q app)

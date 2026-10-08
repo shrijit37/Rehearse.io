@@ -1,106 +1,34 @@
+# Backend agent notes
 
-Default to using Bun instead of Node.js.
+Backend is **Bun + Express 5 + TypeScript + Mongoose 8**. Entry:
+`src/server.ts`. Package manager: `bun` (`bun.lock` is the lockfile).
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Use `bunx <package> <command>` instead of `npx <package> <command>`
-- Bun automatically loads .env, so don't use dotenv.
+> A previous version of this file told agents not to use Express/Vite.
+> That was wrong — this project **is** Express + Vite. It was rewritten
+> 2026-10-09. Honest state: [STATE.md](../STATE.md).
 
-## APIs
+## Commands
 
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
-
-## Testing
-
-Use `bun test` to run tests.
-
-```ts#index.test.ts
-import { test, expect } from "bun:test";
-
-test("hello world", () => {
-  expect(1).toBe(1);
-});
+```bash
+bun install              # install deps
+bun --watch src/server.ts  # dev (`npm start` does the same)
+bunx tsc --noEmit        # typecheck (what CI runs)
 ```
 
-## Frontend
+Bun auto-loads `.env`, but this project also calls `dotenv.config()`
+explicitly — both work. No test suite exists; `e2e-test.ts` is not wired up.
 
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
+## Stack (do not fight it)
 
-Server:
+- HTTP: Express 5. Auth: `authenticateToken` → `authorize(...roles)` →
+  `requireOnboarded`, in that order.
+- DB: MongoDB via Mongoose. Password is `select: false`.
+- Validation: zod `*.validation.ts` files.
+- AI calls: `src/utils/aiClient.ts` (fetch JSON + FormData to the FastAPI
+  service).
+- Env: `src/config/env.ts` (zod-validated, fails fast on missing
+  `MONGODB_URI`/`JWT_SECRET`).
 
-```ts#index.ts
-import index from "./index.html"
-
-Bun.serve({
-  routes: {
-    "/": index,
-    "/api/users/:id": {
-      GET: (req) => {
-        return new Response(JSON.stringify({ id: req.params.id }));
-      },
-    },
-  },
-  // optional websocket support
-  websocket: {
-    open: (ws) => {
-      ws.send("Hello, world!");
-    },
-    message: (ws, message) => {
-      ws.send(message);
-    },
-    close: (ws) => {
-      // handle close
-    }
-  },
-  development: {
-    hmr: true,
-    console: true,
-  }
-})
-```
-
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
-
-```html#index.html
-<html>
-  <body>
-    <h1>Hello, world!</h1>
-    <script type="module" src="./frontend.tsx"></script>
-  </body>
-</html>
-```
-
-With the following `frontend.tsx`:
-
-```tsx#frontend.tsx
-import React from "react";
-import { createRoot } from "react-dom/client";
-
-// import .css files directly and it works
-import './index.css';
-
-const root = createRoot(document.body);
-
-export default function Frontend() {
-  return <h1>Hello, world!</h1>;
-}
-
-root.render(<Frontend />);
-```
-
-Then, run index.ts
-
-```sh
-bun --hot ./index.ts
-```
-
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+If you want Bun-native APIs (`Bun.serve`, `Bun.sql`) that is a rewrite
+proposal, not a drive-by refactor. The platform direction is shared Postgres,
+which is tracked as a decision in STATE.md.

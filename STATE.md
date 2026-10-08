@@ -1,27 +1,31 @@
 # STATE.md — Rehearse.io honest state
 
-Last verified: 2026-10-09 (probes + code read; no prod shell access).
-This file is the truth. If any other doc disagrees, this file wins.
+Last verified: 2026-10-09 (HTTP/DNS/TLS probes + code read; no prod shell
+access). This file is the truth. If any other doc disagrees, this file wins.
 
 ## One-line status
 
-Production is **broken**: the live frontend calls `localhost:9000` and the
-live API domain returns `404 page not found` on every route including
-`/health`. Dokploy reports the compose app as `done`, so the failure is in
-routing/config, not in code failing to build.
+Production is **broken and always was**: the live frontend bundle calls
+`localhost:9000`, and `api.rehearseio.triptribe.info` has **no Traefik
+router at all**, so every path 404s including `/health`. Prod has never
+worked; this is not a regression. No router means not a container
+problem, so Dokploy's `done` status is consistent, not contradictory.
 
 ## Live endpoints (probed 2026-10-09)
 
 | Endpoint | Result | Meaning |
 |---|---|---|
 | `https://rehearseio.triptribe.info/` | `200`, `server: Netlify`, DNS CNAME `*.netlify.app` | Frontend is served by **Netlify**, not Dokploy/VPS. |
-| Live JS bundle `assets/index-DLDTAD3Y.js` | Contains `localhost:9000`, contains **no** `rehearse` API URL | Netlify build had **no `VITE_API_URL` set**, so the live app calls localhost. Login/signup/interviews cannot work in prod. |
-| `https://api.rehearseio.triptribe.info/` | `404 page not found` (plain text) | Domain resolves to VPS `130.210.29.215` but no Express app answers. Express 404s look different, so this is the proxy/host, not the backend. |
-| `https://api.rehearseio.triptribe.info/health` | `404 page not found` | Same: backend unreachable through this domain. |
-| `POST /api/auth/login` on the API domain | `404 page not found` | Same. |
+| Live JS bundle `assets/index-DLDTAD3Y.js` | Contains `localhost:9000`, contains **no** `rehearse` API URL | Netlify build had **no `VITE_API_URL` set**, so the live app calls localhost. Signup, login and every authenticated flow cannot work in prod. |
+| `https://api.rehearseio.triptribe.info/health` | `404 page not found`, 19 bytes, `text/plain`, no router headers | **Traefik's unmatched-router 404.** No router is bound to this hostname. |
+| `http://130.210.29.215/` (bare IP, no Host) | **Identical** 19-byte 404 body | Proves the 404 comes from Traefik itself, not from a routed backend. |
+| `POST /api/auth/login` on the API domain | `404 page not found` | Same; even a dead container would give 502, never 404. |
+| TLS cert on API host | Valid LE cert, `CN=api.rehearseio.triptribe.info`, issued 2026-09-02 | A router **did** exist and got its cert; it has since been deleted. |
+| `https://rehearse.io` / `www` | **GoDaddy parked, for sale.** Redirects to `forsale.godaddy.com` | The product's namesake domain is **not yours**. Real estate is the `triptribe.info` subdomains. |
 
-Unknown (needs Dokploy/Traefik inspection or server access): the compose
-service's configured domains, container health, and env vars.
+Because the API 404 is Traefik's, not the app's, the failure is **not**
+recoverable from the repo. It cannot be fixed in code or compose; only
+Dokploy UI config (Domains tab) can restore a router.
 
 ## What this project is
 
@@ -87,10 +91,14 @@ Required in prod: `JWT_SECRET`, `MONGO_USERNAME`/`MONGO_PASSWORD`,
 
 ## Deploy truth
 
-- Dokploy project `rehearse.io`, compose `rehease.io` (name typo is real),
-  status `done`. Compose file builds all four services with health checks and
-  localhost-bound ports. Domains are **not** in the compose file, so they live
-  in Dokploy UI config (uninspected).
+- Dokploy project `rehearse.io` (`3bYAquVbbcw_wYDoa5VTZ`), env `production`
+  (`pkw9Y6NLJzRzQgVpe4944`), compose `rehease.io` (`nzPkuLqdeC91WWtPNyuH8`,
+  name typo is real), appName `rehearseio-reheaseio-otwu83`, status `done`.
+  Compose file builds all four services with health checks and
+  localhost-bound ports. Domains are **not** in the compose file, so they
+  live in Dokploy UI config (uninspected — owner pasting values 2026-10-09).
+  Because the API hostname returns Traefik's own 404, the compose Domains
+  tab currently has **no router** for `api.rehearseio.triptribe.info`.
 - Frontend prod is on **Netlify**, not Dokploy, and is misconfigured
   (missing `VITE_API_URL`). The compose `frontend` service (port 3002
   loopback) may be running but is not what the public domain serves.
@@ -134,10 +142,22 @@ Required in prod: `JWT_SECRET`, `MONGO_USERNAME`/`MONGO_PASSWORD`,
 
 ## Decisions needed (blocking standardization)
 
-1. Data layer: migrate Mongo → shared Postgres (platform standard, large
-   rewrite) or keep Mongo (off-standard)?
-2. Frontend target: Cloudflare Pages (platform standard for static) or keep
-   Netlify/Dokploy?
-3. Prod data: migrate existing Mongo volume, or start empty?
-4. PM2/Netlify remnants: remove after cutover, or keep?
-5. `GROQ_API_KEY` availability for staging/prod AI features.
+Decided 2026-10-09 by owner:
+
+1. Data layer: **migrate Mongo → shared Postgres now** (platform standard).
+   6 models + services + invite-token logic. Prod data: start empty.
+2. Frontend target: **Cloudflare Pages** (platform standard for static).
+3. Sequence: originally "fix live routing first, then standardize".
+   **Superseded 2026-10-09** once the root cause proved to be a missing
+   Traefik router on a stack that gets replaced anyway: owner chose to
+   **fold routing into a single cutover** (build → deploy once → attach
+   domain). Prod is already fully non-functional, so there is no working
+   site to preserve.
+4. Prod data: **start empty, ignore old volume** (never inspected).
+5. `GROQ_API_KEY` for prod: owner supplied a key this session. It is
+   **compromised-once** (appeared in chat logs) and must be rotated in the
+   Groq console. Never commit it; it belongs in Infisical.
+6. PM2/Netlify remnants: remove after cutover (implied by 2+3).
+7. IDs: switch Mongo ObjectIds → **UUIDs**. Frontend only consumes the
+   `_id` string key and Mongoose `populate()` shapes, so both are
+   reproduced in the Postgres layer rather than breaking the UI.

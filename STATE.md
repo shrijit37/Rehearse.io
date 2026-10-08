@@ -1,18 +1,42 @@
 # STATE.md — Rehearse.io honest state
 
-Last verified: 2026-10-09 (HTTP/DNS/TLS probes + code read; no prod shell
-access). This file is the truth. If any other doc disagrees, this file wins.
+Last verified: 2026-10-09 (HTTP/DNS/TLS probes, code read, plus direct
+Dokploy/Infisical/Postgres/GitHub API verification of the infra created
+this session). This file is the truth. If any other doc disagrees, this file
+wins.
 
 ## One-line status
 
-**Code is standardized and verified; production is still broken and awaiting
-the owner.** The backend is now Postgres/Drizzle (48 smoke assertions passing
-against a real database), platform files and CI exist, and repo hygiene is
-clean. But nothing is deployed: `api.rehearseio.triptribe.info` still has
-**no Traefik router**, so every path 404s, and the live frontend bundle still
-calls `localhost:9000`. Prod has never worked; this is not a regression. No
-router means not a container problem, so Dokploy's `done` status is
-consistent, not contradictory.
+**Code is standardized and verified; infrastructure is provisioned but the
+first deploy has not run.** The backend is Postgres/Drizzle (48 smoke
+assertions passing against a real database), platform files and CI exist,
+repo hygiene is clean, and the production infrastructure now exists: the
+`rehearse_io_prod` database, the `REHEARSE_*` Infisical secrets, the
+Dokploy application `IcMHdaM_nevmNlv8mP4q4`, and the
+`api.rehearseio.triptribe.info` **router is now attached** (that was the
+root cause of the 404). What is missing is the *first image and first
+deploy*: the GHCR image does not exist yet, so the app is still `idle` and
+the live host still serves the old Traefik 404 until a deploy happens.
+Prod has never worked; this is not a regression.
+
+## Infrastructure provisioned (2026-10-09)
+
+| Thing | Value | Verified by |
+|---|---|---|
+| Dokploy project | `rehearse.io` (`3bYAquVbbcw_wYDoa5VTZ`), env `pkw9Y6NLJzRzQgVpe4944` | `project.all` |
+| Dokploy application | `IcMHdaM_nevmNlv8mP4q4`, name `rehearse-api` | `application.one` |
+| Domain (the 404 fix) | `api.rehearseio.triptribe.info` → port 9000, Let's Encrypt, `ch9_26Krv2lgNFbgRLr1Z` | `domain.byApplicationId` |
+| Container image | `ghcr.io/shrijit37/Rehearse.io:6ce55c1…`, registry `ghcr.io` | `application.one` |
+| Prod database | `rehearse_io_prod`, owner/user `rehearse_io` on the shared Postgres | `psql` connect + `\l` |
+| Database isolation | `REVOKE ALL … FROM PUBLIC`; only `rehearse_io` may connect | `datacl` = `rehearse_io=CTc/rehearse_io` |
+| Infisical (prod) | `REHEARSE_DATABASE_URL`, `REHEARSE_DATABASE_URL_EXTERNAL`, `REHEARSE_JWT_SECRET`, `REHEARSE_ENCRYPTION_KEY`, `REHEARSE_AI_SERVICE_API_KEY` | `infisical export` |
+| GitHub repo vars | `APP_URL`, `DOKPLOY_APPLICATION_ID`, `DOKPLOY_URL`, `INFISICAL_DOMAIN`, `INFISICAL_PROJECT_SLUG`, `INFISICAL_SECRET_PREFIX=REHEARSE`, `PAGES_PROJECT`, `VITE_API_URL` | `gh variable list` |
+| GitHub repo secret | `DOKPLOY_API_KEY` (copied from Infisical, auth-checked first) | `project.all` → 200 |
+
+The old `rehease.io` compose (typo in the name) still exists in the same
+Dokploy project and still owns the broken router's sibling services. It is
+the last Mongo-based artifact and should be removed once the new app serves
+traffic.
 
 ## Live endpoints (probed 2026-10-09)
 
@@ -179,21 +203,40 @@ unavailable in this environment. CI is the first real build.
 
 ## What still needs the owner
 
-1. **Dokploy backend application** pointing at
-   `ghcr.io/shrijit37/Rehearse.io:<sha>`, port 9000, with
-   `api.rehearseio.triptribe.info` attached in the Domains tab. This is the
-   step that actually fixes the live 404.
-2. **`rehearse_io_prod` database + user** on the shared Postgres.
-3. **Infisical `REHEARSE_*` secrets** in the `platform` project: `JWT_SECRET`,
-   `ENCRYPTION_KEY`, `AI_SERVICE_API_KEY`, `GROQ_API_KEY`,
-   `DATABASE_URL`, `DATABASE_URL_EXTERNAL`.
-4. **GitHub repo/org vars**: `INFISICAL_IDENTITY_ID`, `INFISICAL_DOMAIN`,
-   `INFISICAL_PROJECT_SLUG`, `DOKPLOY_URL`, `DOKPLOY_APPLICATION_ID`,
-   `APP_URL`, `INFISICAL_SECRET_PREFIX=REHEARSE`,
-   `PAGES_PROJECT`, `VITE_API_URL`, plus `CLOUDFLARE_API_TOKEN` /
-   `CLOUDFLARE_ACCOUNT_ID` secrets.
-5. **Rotate `GROQ_API_KEY`** — the key supplied this session is
-   compromised-once (it is in this chat transcript).
+Items 1–4 of the original list (Dokploy app + domain, prod DB/user, Infisical
+secrets, GitHub vars) are **done** — see the table above. What actually blocks
+the first deploy:
+
+1. **Infisical machine identity for Dokploy.** The app's env uses
+   `${{vault.infisical-prod.…}}` references, which resolve only through a
+   Dokploy *secrets provider*. **No provider exists** (`vaultProvider.all` →
+   0), and creating one needs an Infisical machine identity that can read the
+   `platform` project. The 26 identities in
+   `~/.local/state/infisical-deploy/identities.json` were each checked: every
+   one authenticates, but **none can see `platform-y58-d`**. So
+   `JWT_SECRET`, `ENCRYPTION_KEY`, `AI_SERVICE_API_KEY` and `DATABASE_URL`
+   will inject as unresolved references until an identity is granted access
+   to `platform` and a provider is created.
+   Until then the container will fail `env.ts` validation and exit.
+2. **Merge `platform/standardize` into `main`.** `deploy-backend.yml` only
+   fires on pushes to `main`, so the GHCR image
+   (`ghcr.io/shrijit37/Rehearse.io:<full-sha>`) **does not exist yet**
+   (confirmed 404 from GHCR). First merge → first build → first deploy.
+3. **`REHEARSE_GROQ_API_KEY`.** Not created, on purpose: the only key
+   available was pasted into this chat and is compromised-once. Rotate in
+   Groq, then store the replacement in Infisical prod.
+4. **Cloudflare Pages project + credentials.** `PAGES_PROJECT` is set to
+   `rehearse-io` as a name, but **no Cloudflare project exists** and
+   `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID` are **not set** (I have
+   no Cloudflare credentials). The frontend deploy is blocked until you
+   create the project and add an API token with Pages edit permission.
+5. **Rotate `GROQ_API_KEY`** (same as 3).
+6. **Superseded env vars.** `deploy-backend.yml` header still documents
+   `vars.DOKPLOY_API_KEY`; the job body correctly reads
+   `secrets.DOKPLOY_API_KEY`. Cosmetic, but worth fixing in the next commit.
+7. **`INFISICAL_IDENTITY_ID` is still unset** (needed by the CI migration
+   step). Same blocker as 1: it is the shared `github-actions` OIDC identity,
+   which does not exist yet.
 
 ## What works locally (verified 2026-10-09)
 

@@ -1,9 +1,20 @@
 #!/usr/bin/env bash
 # Health gate. Checks liveness, then readiness (real DB check).
+#
+# Retries for up to 120s: this runs seconds after a Dokploy redeploy, while
+# swarm is still pulling the image and starting the container. A single probe
+# reads Traefik's 502 and fails a deploy that is actually converging.
 set -euo pipefail
 : "${APP_URL:?APP_URL is required}"
 
-curl -fsS "$APP_URL/health" >/dev/null
+deadline=$((SECONDS + 120))
+until curl -fsS "$APP_URL/health" >/dev/null 2>&1; do
+  if [ "$SECONDS" -ge "$deadline" ]; then
+    echo "NOT HEALTHY: $APP_URL/health (gave up after 120s)" >&2
+    exit 1
+  fi
+  sleep 5
+done
 echo "healthy: $APP_URL/health"
 
 if curl -fsS "$APP_URL/ready" >/dev/null; then

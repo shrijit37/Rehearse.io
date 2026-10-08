@@ -5,14 +5,19 @@ dotenv.config();
 
 const envConfig = () => {
     const schema = z.object({
-        // MongoDB — accept either MONGODB_URI (new) or MONGO_URI (legacy/docker-compose)
-        MONGODB_URI: z.string().min(1),
+        // Canonical platform var. Resolved from DATABASE_URL when unset so a
+        // single Postgres URL can feed both internal and external callers.
+        DATABASE_URL: z.string().min(1),
+        DATABASE_URL_EXTERNAL: z.string().optional(),
+        DATABASE_POOL_MAX: z.coerce.number().int().positive().default(10),
         JWT_SECRET: z.string().min(1),
         PORT: z.coerce.number().default(9000),
         APP_ENV: z.string().min(1).default("development"),
+        APP_URL: z.string().optional(),
+        LOG_LEVEL: z.string().optional().default("info"),
         CLIENT_URL: z.string().min(1).optional(),
-        // Optional S3 — the app stores PII base64 in MongoDB (encrypted); S3 is
-        // a best-effort backup store and must never block startup in docker/local.
+        // Optional S3. S3 is only ever a connectivity check today; PII lives in
+        // Postgres as base64, encrypted when ENCRYPTION_KEY is set.
         AWS_REGION: z.string().optional(),
         AWS_ACCESS_KEY_ID: z.string().optional(),
         AWS_SECRET_ACCESS_KEY: z.string().optional(),
@@ -23,11 +28,7 @@ const envConfig = () => {
         ALLOWED_ORIGINS: z.string().optional(),
     });
 
-    // Normalize legacy MONGO_URI -> MONGODB_URI before validation
     const raw: Record<string, string | undefined> = { ...process.env };
-    if (!raw.MONGODB_URI && raw.MONGO_URI) {
-        raw.MONGODB_URI = raw.MONGO_URI;
-    }
 
     const result = schema.safeParse(raw);
 

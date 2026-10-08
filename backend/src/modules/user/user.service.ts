@@ -1,93 +1,72 @@
-import { RehearsalSession } from "../rehearsal/rehearsalSession.model";
-import { CandidateInvite } from "../interview/candidateInvite.model";
 import bcrypt from "bcryptjs";
-
 import type { OnboardValidation, UpdateProfileValidation } from "./user.validation";
 import { encryptField } from "../../utils/encryption";
 import {
+    validateAudioFormat,
     validateBase64Field,
     validatePdfFormat,
     validatePhotoFormat,
-    validateAudioFormat
 } from "../../utils/fileValidation";
-
 import type { GetUserDetails, GetUserValidation } from "./user.validation";
-import { User } from "./user.model";
+import {
+    findUserById,
+    findUserWithPasswordById,
+    updateUser,
+} from "../../db/repositories/users";
+import { listRehearsalSessions, deleteRehearsalSessionsForUser } from "../../db/repositories/rehearsals";
+import { deleteInvitesForCandidate, listInvitesForCandidate, findInterviewRowById } from "../../db/repositories/interviews";
+import { withId } from "../../db/shape";
+import { findOrganizationRowById } from "../../db/repositories/organizations";
 
-export const getUserDetails = async (data: GetUserValidation): Promise<GetUserDetails> => {
-    let user = null;
+const EMPTY_USER = {
+    email: null,
+    name: null,
+    audio: null,
+    photo: null,
+    resume: null,
+    resumeName: null,
+    onboardingCompleted: false,
+} as const;
+
+export const getUserDetails = async (
+    data: GetUserValidation,
+): Promise<GetUserDetails> => {
+    let user: Awaited<ReturnType<typeof findUserById>> = null;
     try {
-        user = await User.findOne({ _id: data._id });
+        user = await findUserById(data._id);
     } catch (e) {
         console.error(e);
         return {
             status: 500,
-            data: {
-                _id: data._id,
-                email: null,
-                name: null,
-                audio: null,
-                photo: null,
-                resume: null,
-                resumeName: null,
-                onboardingCompleted: false,
-            },
-            message: "Internal Server Error",
-        };
-    }
-    const _id = data._id;
-    try {
-        if (!user) {
-            return {
-                status: 404,
-                data: {
-                    _id: _id,
-                    email: null,
-                    name: null,
-                    audio: null,
-                    photo: null,
-                    resume: null,
-                    resumeName: null,
-                    onboardingCompleted: false,
-                },
-                message: "User not found",
-            };
-        }
-
-        return {
-            status: 200,
-            data: {
-                _id: user._id.toString(),
-                email: user.email,
-                name: user.name,
-                audio: user.audio,
-                photo: user.photo,
-                resume: user.resume,
-                resumeName: user.resumeName,
-                onboardingCompleted: user.onboardingCompleted,
-                onboarded: user.onboardingCompleted === true,
-            },
-            message: "User found",
-        };
-    } catch (error) {
-        console.error(error);
-        return {
-            status: 500,
-            data: {
-                _id: _id,
-                email: null,
-                name: null,
-                audio: null,
-                photo: null,
-                resume: null,
-                resumeName: null,
-                onboardingCompleted: false,
-            },
+            data: { _id: data._id, ...EMPTY_USER },
             message: "Internal Server Error",
         };
     }
 
-}
+    if (!user) {
+        return {
+            status: 404,
+            data: { _id: data._id, ...EMPTY_USER },
+            message: "User not found",
+        };
+    }
+
+    return {
+        status: 200,
+        data: {
+            _id: user.id,
+            email: user.email,
+            name: user.name,
+            audio: user.audio,
+            photo: user.photo,
+            resume: user.resume,
+            resumeName: user.resumeName,
+            onboardingCompleted: user.onboardingCompleted,
+            onboarded: user.onboardingCompleted === true,
+        },
+        message: "User found",
+    };
+};
 
 export interface OnboardResult {
     status: number;
@@ -97,24 +76,29 @@ export interface OnboardResult {
 
 export const onboardUser = async (
     userId: string,
-    data: OnboardValidation
+    data: OnboardValidation,
 ): Promise<OnboardResult> => {
     try {
-        const existingUser = await User.findById(userId);
+        const existingUser = await findUserById(userId);
         if (!existingUser) {
             return { status: 404, message: "User not found" };
         }
         if (existingUser.onboardingCompleted) {
-            return { status: 400, message: "Onboarding has already been completed. Use profile update instead." };
+            return {
+                status: 400,
+                message: "Onboarding has already been completed. Use profile update instead.",
+            };
         }
 
-        // Validate base64 formats/sizes
         const resumeCheck = validateBase64Field(data.resume, "resume");
         if (!resumeCheck.isValid) {
             return { status: 400, message: resumeCheck.message || "Invalid resume" };
         }
         if (!validatePdfFormat(data.resume)) {
-            return { status: 400, message: "Invalid file format. Please upload a valid PDF document." };
+            return {
+                status: 400,
+                message: "Invalid file format. Please upload a valid PDF document.",
+            };
         }
 
         if (data.photo) {
@@ -123,7 +107,10 @@ export const onboardUser = async (
                 return { status: 400, message: photoCheck.message || "Invalid photo" };
             }
             if (!validatePhotoFormat(data.photo)) {
-                return { status: 400, message: "Invalid photo format. Please upload a JPEG or PNG image." };
+                return {
+                    status: 400,
+                    message: "Invalid photo format. Please upload a JPEG or PNG image.",
+                };
             }
         }
 
@@ -133,43 +120,34 @@ export const onboardUser = async (
                 return { status: 400, message: audioCheck.message || "Invalid audio" };
             }
             if (!validateAudioFormat(data.audio)) {
-                return { status: 400, message: "Invalid audio format. Please upload a WAV, WebM, or MP3 file." };
+                return {
+                    status: 400,
+                    message: "Invalid audio format. Please upload a WAV, WebM, or MP3 file.",
+                };
             }
         }
 
-        // Perform encryption and updates
-        const encryptedResume = encryptField(data.resume);
-        const encryptedPhoto = data.photo ? encryptField(data.photo) : undefined;
-        const encryptedAudio = data.audio ? encryptField(data.audio) : undefined;
-
-        const updatedUser = await User.findByIdAndUpdate(
-            userId,
-            {
-                resumeName: data.resumeName,
-                resume: encryptedResume,
-                photo: encryptedPhoto,
-                audio: encryptedAudio,
-                onboardingCompleted: true,
-            },
-            { new: true }
-        );
+        const updatedUser = await updateUser(userId, {
+            resumeName: data.resumeName,
+            resume: encryptField(data.resume) ?? null,
+            photo: data.photo ? (encryptField(data.photo) ?? null) : null,
+            audio: data.audio ? (encryptField(data.audio) ?? null) : null,
+            onboardingCompleted: true,
+        });
 
         if (!updatedUser) {
             return { status: 404, message: "User not found" };
         }
 
-        // Strip large blobs from returned user data
-        const userObj = updatedUser.toObject() as Record<string, unknown>;
-        delete userObj.password;
-        delete userObj.resume;
-        delete userObj.photo;
-        delete userObj.audio;
-        userObj.onboarded = true;
-
+        // Large blobs are stripped from every response.
+        const { resume: _r, photo: _p, audio: _a, password: _pw, ...safe } = updatedUser as Record<
+            string,
+            unknown
+        >;
         return {
             status: 200,
             message: "Onboarding completed successfully",
-            user: userObj,
+            user: { ...safe, onboarded: true },
         };
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "unknown error";
@@ -185,22 +163,24 @@ export interface UpdateProfileResult {
 
 export const updateUserProfile = async (
     userId: string,
-    data: UpdateProfileValidation
+    data: UpdateProfileValidation,
 ): Promise<UpdateProfileResult> => {
     try {
-        const existingUser = await User.findById(userId);
+        const existingUser = await findUserById(userId);
         if (!existingUser) {
             return { status: 404, message: "User not found" };
         }
 
-        // Validate formats
         if (data.photo !== undefined) {
             const photoCheck = validateBase64Field(data.photo, "photo");
             if (!photoCheck.isValid) {
                 return { status: 400, message: photoCheck.message || "Invalid photo" };
             }
             if (data.photo && !validatePhotoFormat(data.photo)) {
-                return { status: 400, message: "Invalid photo format. Please upload a JPEG or PNG image." };
+                return {
+                    status: 400,
+                    message: "Invalid photo format. Please upload a JPEG or PNG image.",
+                };
             }
         }
 
@@ -210,41 +190,30 @@ export const updateUserProfile = async (
                 return { status: 400, message: audioCheck.message || "Invalid audio" };
             }
             if (data.audio && !validateAudioFormat(data.audio)) {
-                return { status: 400, message: "Invalid audio format. Please upload a WAV, WebM, or MP3 file." };
+                return {
+                    status: 400,
+                    message: "Invalid audio format. Please upload a WAV, WebM, or MP3 file.",
+                };
             }
         }
 
-        // Build updates
-        const update: Record<string, string | undefined | null> = {};
-        if (data.photo !== undefined) {
-            update.photo = encryptField(data.photo);
-        }
-        if (data.audio !== undefined) {
-            update.audio = encryptField(data.audio);
-        }
+        const patch: Parameters<typeof updateUser>[1] = {};
+        if (data.photo !== undefined) patch.photo = encryptField(data.photo) ?? null;
+        if (data.audio !== undefined) patch.audio = encryptField(data.audio) ?? null;
 
-        const updatedUser = await User.findByIdAndUpdate(
-            userId,
-            { $set: update },
-            { new: true }
-        );
-
+        const updatedUser = await updateUser(userId, patch);
         if (!updatedUser) {
             return { status: 404, message: "User not found" };
         }
 
-        // Strip blobs
-        const userObj = updatedUser.toObject() as Record<string, unknown>;
-        delete userObj.password;
-        delete userObj.resume;
-        delete userObj.photo;
-        delete userObj.audio;
-        userObj.onboarded = updatedUser.onboardingCompleted === true;
-
+        const { resume: _r, photo: _p, audio: _a, password: _pw, ...safe } = updatedUser as Record<
+            string,
+            unknown
+        >;
         return {
             status: 200,
             message: "Profile updated successfully",
-            user: userObj,
+            user: { ...safe, onboarded: updatedUser.onboardingCompleted === true },
         };
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "unknown error";
@@ -264,7 +233,7 @@ export interface ConsentResult {
 
 export const getUserConsent = async (userId: string): Promise<ConsentResult> => {
     try {
-        const user = await User.findById(userId).select("consentGiven consentDate consentVersion");
+        const user = await findUserById(userId);
         if (!user) return { status: 404, message: "User not found" };
         return {
             status: 200,
@@ -284,22 +253,18 @@ export const getUserConsent = async (userId: string): Promise<ConsentResult> => 
 export const updateUserConsent = async (
     userId: string,
     consentGiven: boolean,
-    consentVersion?: string
+    consentVersion?: string,
 ): Promise<ConsentResult> => {
     try {
         if (typeof consentGiven !== "boolean") {
             return { status: 400, message: "consentGiven must be a boolean" };
         }
 
-        const update = {
+        const user = await updateUser(userId, {
             consentGiven,
             consentDate: new Date(),
             consentVersion: consentVersion || "1.0",
-        };
-
-        const user = await User.findByIdAndUpdate(userId, update, { new: true })
-            .select("consentGiven consentDate consentVersion");
-
+        });
         if (!user) return { status: 404, message: "User not found" };
 
         return {
@@ -325,13 +290,45 @@ export interface ExportDataResult {
 
 export const exportUserData = async (userId: string): Promise<ExportDataResult> => {
     try {
-        const user = await User.findById(userId).select("-password");
+        const user = await findUserById(userId);
         if (!user) return { status: 404, message: "User not found" };
 
-        const sessions = await RehearsalSession.find({ user: userId }).sort({ createdAt: -1 });
-        const invites = await CandidateInvite.find({ candidate: userId })
-            .populate("interview", "title targetRole organization")
-            .sort({ createdAt: -1 });
+        const { rows: sessions } = await listRehearsalSessions(userId, 0, 10_000);
+        const { rows: invites } = await listInvitesForCandidate(userId, 0, 10_000);
+
+        // Resolve the interview/organization references, like the old
+        // `.populate("interview", "title targetRole organization")`.
+        const interviews = new Map<string, Record<string, unknown>>();
+        await Promise.all(
+            [...new Set(invites.map((i) => i.interviewId))].map(async (interviewId) => {
+                const interview = await findInterviewRowById(interviewId);
+                if (interview) interviews.set(interviewId, { ...interview, _id: interview.id });
+            }),
+        );
+
+        const orgIds = [...new Set([...interviews.values()].map((i) => String(i.organizationId)))];
+        const orgs = new Map<string, Record<string, unknown>>();
+        await Promise.all(
+            orgIds.map(async (orgId) => {
+                const org = await findOrganizationRowById(orgId);
+                if (org) orgs.set(orgId, { _id: org.id, name: org.name, slug: org.slug });
+            }),
+        );
+
+        const candidateInvites = invites.map((invite) => {
+            const interview = interviews.get(invite.interviewId);
+            if (!interview) return { ...withId(invite), interview: null };
+            return {
+                ...withId(invite),
+                interview: {
+                    _id: interview.id,
+                    id: interview.id,
+                    title: interview.title,
+                    targetRole: interview.targetRole,
+                    organization: orgs.get(String(interview.organizationId)) ?? null,
+                },
+            };
+        });
 
         return {
             status: 200,
@@ -339,7 +336,7 @@ export const exportUserData = async (userId: string): Promise<ExportDataResult> 
             data: {
                 exportDate: new Date().toISOString(),
                 user: {
-                    id: user._id.toString(),
+                    id: user.id,
                     name: user.name,
                     email: user.email,
                     role: user.role,
@@ -348,7 +345,7 @@ export const exportUserData = async (userId: string): Promise<ExportDataResult> 
                     consentDate: user.consentDate,
                 },
                 rehearsalSessions: sessions,
-                candidateInvites: invites,
+                candidateInvites,
             },
         };
     } catch (error: unknown) {
@@ -364,14 +361,14 @@ export interface DeleteAccountResult {
 
 export const deleteUserAccount = async (
     userId: string,
-    password?: string
+    password?: string,
 ): Promise<DeleteAccountResult> => {
     try {
         if (!password) {
             return { status: 400, message: "Password is required to delete your account" };
         }
 
-        const user = await User.findById(userId).select("+password");
+        const user = await findUserWithPasswordById(userId);
         if (!user) return { status: 404, message: "User not found" };
 
         const isMatch = await bcrypt.compare(password, user.password);
@@ -379,8 +376,8 @@ export const deleteUserAccount = async (
             return { status: 400, message: "Incorrect password" };
         }
 
-        // Soft delete: anonymize data
-        await User.findByIdAndUpdate(userId, {
+        // Soft delete: anonymize the account, then purge dependent records.
+        await updateUser(userId, {
             isDeleted: true,
             deletedAt: new Date(),
             name: "[Deleted User]",
@@ -392,11 +389,8 @@ export const deleteUserAccount = async (
             resumeName: "",
         });
 
-        // Delete rehearsal sessions
-        await RehearsalSession.deleteMany({ user: userId });
-
-        // Delete candidate invites
-        await CandidateInvite.deleteMany({ candidate: userId });
+        await deleteRehearsalSessionsForUser(userId);
+        await deleteInvitesForCandidate(userId);
 
         return {
             status: 200,
@@ -407,4 +401,3 @@ export const deleteUserAccount = async (
         return { status: 500, message: `Internal server error: ${message}` };
     }
 };
-

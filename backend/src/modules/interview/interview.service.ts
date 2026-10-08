@@ -1,12 +1,24 @@
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
-import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
-import { InterviewSession } from "./interviewSession.model";
-import { CandidateInvite } from "./candidateInvite.model";
-import { Organization } from "../organization/organization.model";
-import { User } from "../user/user.model";
 import { env } from "../../config/env";
+import { findOrganizationRowById, findMembership } from "../../db/repositories/organizations";
+import { createUser, findUserByEmail, findUsersByIds } from "../../db/repositories/users";
+import {
+    createInterviewSession,
+    createInvite,
+    findExistingInvite,
+    findInterviewRowById,
+    findInviteById,
+    findInviteByRawToken,
+    listInterviewSessions,
+    listInvitesForCandidate,
+    listInvitesForInterview,
+    updateInterviewSession,
+    updateInvite,
+} from "../../db/repositories/interviews";
+import { withId } from "../../db/shape";
+import type { DsaResultItem, ResultItem } from "../../db/schema";
 import {
     evaluateAudio,
     evaluateDsa as aiEvaluateDsa,
@@ -36,23 +48,53 @@ export interface InterviewResult {
     total?: number;
 }
 
-const isValidId = (id: string) => mongoose.Types.ObjectId.isValid(id);
+/** Batch-loads interview rows for population. */
+async function findInterviews(
+    ids: string[],
+): Promise<Map<string, Awaited<ReturnType<typeof findInterviewRowById>> & {}>> {
+    const out = new Map<string, Awaited<ReturnType<typeof findInterviewRowById>> & {}>();
+    await Promise.all(
+        [...new Set(ids)].map(async (id) => {
+            const row = await findInterviewRowById(id);
+            if (row) out.set(id, row);
+        }),
+    );
+    return out;
+}
+
+/** Batch-loads organizations, returning only the fields the UI renders. */
+async function findOrganizations(
+    ids: string[],
+): Promise<Map<string, { _id: string; id: string; name: string; slug: string }>> {
+    const out = new Map<string, { _id: string; id: string; name: string; slug: string }>();
+    await Promise.all(
+        [...new Set(ids)].map(async (id) => {
+            const row = await findOrganizationRowById(id);
+            if (row) out.set(id, { _id: row.id, id: row.id, name: row.name, slug: row.slug });
+        }),
+    );
+    return out;
+}
+
+/** True when the id looks like a UUID. Replaces ObjectId.isValid(). */
+const isValidId = (id: string): boolean =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
 export const createInterview = async (userId: string, input: CreateInterviewInput): Promise<InterviewResult> => {
     try {
         if (!isValidId(input.organizationId)) {
             return { status: 400, message: "Valid organizationId is required" };
         }
-        const org = await Organization.findById(input.organizationId);
+        const org = await findOrganizationRowById(input.organizationId);
         if (!org) return { status: 404, message: "Organization not found" };
 
-        const isMember = org.members.some(
-            (m) => m.user.toString() === userId && ["admin", "recruiter"].includes(m.role),
-        );
-        if (!isMember) return { status: 403, message: "Not authorized in this organization" };
+        const membership = await findMembership(input.organizationId, userId);
+        if (!membership || !["admin", "recruiter"].includes(membership.role)) {
+            return { status: 403, message: "Not authorized in this organization" };
+        }
 
-        const interview = await InterviewSession.create({
-            organization: input.organizationId,
+        const interview = await createInterviewSession({
+            organizationId: input.organizationId,
             createdBy: userId,
             title: input.title.trim(),
             targetRole: input.targetRole.trim(),
@@ -65,7 +107,10 @@ export const createInterview = async (userId: string, input: CreateInterviewInpu
             status: input.status,
         });
 
-        const populated = await InterviewSession.findById(interview._id).populate("organization", "name slug");
+        const populated = {
+            ...interview,
+            organization: { _id: org.id, id: org.id, name: org.name, slug: org.slug },
+        };
         return { status: 201, message: "Interview session created", interview: populated };
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "unknown error";
@@ -81,22 +126,25 @@ export const listInterviews = async (
 ): Promise<InterviewResult> => {
     try {
         const skip = (page - 1) * limit;
-        const filter: Record<string, unknown> = { createdBy: userId };
-        if (organizationId) {
-            if (!isValidId(organizationId)) return { status: 400, message: "Invalid organizationId format" };
-            filter.organization = organizationId;
+        if (organizationId && !isValidId(organizationId)) {
+            return { status: 400, message: "Invalid organizationId format" };
         }
 
-        const [interviews, total] = await Promise.all([
-            InterviewSession.find(filter)
-                .populate("organization", "name slug")
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit),
-            InterviewSession.countDocuments(filter),
-        ]);
+        const { rows, total } = await listInterviewSessions({
+            createdBy: userId,
+            organizationId,
+            skip,
+            limit,
+        });
 
-        return { status: 200, message: "Interviews fetched", data: interviews, page, limit, total };
+        // Resolve organization references for the listed rows.
+        const orgMap = await findOrganizations(rows.map((r) => r.organizationId));
+        const data = rows.map((row) => ({
+            ...withId(row),
+            organization: orgMap.get(row.organizationId) ?? null,
+        }));
+
+        return { status: 200, message: "Interviews fetched", data, page, limit, total };
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "unknown error";
         return { status: 500, message: `Internal server error: ${message}` };
@@ -107,18 +155,22 @@ export const getInterview = async (userId: string, id: string): Promise<Intervie
     try {
         if (!isValidId(id)) return { status: 400, message: "Invalid interview ID format" };
 
-        const interview = await InterviewSession.findById(id)
-            .populate("organization", "name slug")
-            .populate("createdBy", "name email");
-        if (!interview) return { status: 404, message: "Interview not found" };
+        const row = await findInterviewRowById(id);
+        if (!row) return { status: 404, message: "Interview not found" };
 
-        if (interview.createdBy._id.toString() !== userId) {
+        if (row.createdBy !== userId) {
             return { status: 403, message: "Access denied. You can only view interviews you created." };
         }
 
-        const invites = await CandidateInvite.find({ interview: interview._id })
-            .populate("candidate", "name email")
-            .sort({ createdAt: -1 });
+        const orgMap = await findOrganizations([row.organizationId]);
+        const creatorMap = await findUsersByIds([row.createdBy]);
+        const interview = {
+            ...withId(row),
+            organization: orgMap.get(row.organizationId) ?? null,
+            createdBy: creatorMap.get(row.createdBy) ?? null,
+        };
+
+        const invites = await listInvitesForInterview(row.id);
 
         return { status: 200, message: "Interview fetched", interview, candidates: invites };
     } catch (error: unknown) {
@@ -130,22 +182,22 @@ export const getInterview = async (userId: string, id: string): Promise<Intervie
 export const updateInterview = async (userId: string, id: string, body: Record<string, unknown>): Promise<InterviewResult> => {
     try {
         if (!isValidId(id)) return { status: 400, message: "Invalid interview ID format" };
-        const interview = await InterviewSession.findById(id);
-        if (!interview) return { status: 404, message: "Interview not found" };
-        if (interview.createdBy.toString() !== userId) {
+        const existing = await findInterviewRowById(id);
+        if (!existing) return { status: 404, message: "Interview not found" };
+        if (existing.createdBy !== userId) {
             return { status: 403, message: "Only the creator can update this interview" };
         }
 
-        const allowedFields = [
+        const patch: Record<string, unknown> = {};
+        for (const field of [
             "title", "targetRole", "questions", "description", "status", "expiresAt",
             "interviewType", "dsaProblems", "dsaDifficulty",
-        ];
-        for (const field of allowedFields) {
-            if (body[field] !== undefined) (interview as any)[field] = body[field];
+        ]) {
+            if (body[field] !== undefined) patch[field] = body[field];
         }
-        await interview.save();
+        const updated = await updateInterviewSession(id, patch);
 
-        return { status: 200, message: "Interview updated", interview };
+        return { status: 200, message: "Interview updated", interview: updated };
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "unknown error";
         return { status: 500, message: `Internal server error: ${message}` };
@@ -155,9 +207,9 @@ export const updateInterview = async (userId: string, id: string, body: Record<s
 export const generateInvite = async (userId: string, id: string, input: GenerateInviteInput): Promise<InterviewResult> => {
     try {
         if (!isValidId(id)) return { status: 400, message: "Invalid interview ID format" };
-        const interview = await InterviewSession.findById(id);
+        const interview = await findInterviewRowById(id);
         if (!interview) return { status: 404, message: "Interview not found" };
-        if (interview.createdBy.toString() !== userId) {
+        if (interview.createdBy !== userId) {
             return { status: 403, message: "Only the creator can invite candidates" };
         }
         if (interview.status !== "active") {
@@ -168,12 +220,12 @@ export const generateInvite = async (userId: string, id: string, input: Generate
         }
 
         const normalizedEmail = input.candidateEmail.toLowerCase().trim();
-        let candidate = await User.findOne({ email: normalizedEmail });
+        let candidate = await findUserByEmail(normalizedEmail);
 
         if (!candidate) {
             const randomPassword = crypto.randomBytes(32).toString("hex");
-            candidate = await User.create({
-                name: normalizedEmail.split("@")[0],
+            candidate = await createUser({
+                name: normalizedEmail.split("@")[0] ?? normalizedEmail,
                 email: normalizedEmail,
                 password: await bcrypt.hash(randomPassword, 12),
                 role: "candidate",
@@ -181,19 +233,21 @@ export const generateInvite = async (userId: string, id: string, input: Generate
             });
         }
 
-        const existingInvite = await CandidateInvite.findOne({
-            interview: interview._id,
-            candidate: candidate._id,
-        });
+        if (!candidate) {
+            return { status: 500, message: "Failed to create candidate account" };
+        }
+
+        const existingInvite = await findExistingInvite(interview.id, candidate.id);
         if (existingInvite) {
             return { status: 400, message: "Candidate already invited" };
         }
 
         const rawToken = crypto.randomBytes(32).toString("hex");
-        await CandidateInvite.create({
-            interview: interview._id,
-            candidate: candidate._id,
-            inviteToken: rawToken,
+        // createInvite hashes the raw token before it touches the database.
+        await createInvite({
+            interviewId: interview.id,
+            candidateId: candidate.id,
+            rawToken,
         });
 
         return {
@@ -209,13 +263,12 @@ export const generateInvite = async (userId: string, id: string, input: Generate
 
 export const acceptInvite = async (rawToken: string): Promise<InterviewResult> => {
     try {
-        const invite = await (CandidateInvite.findByRawToken(rawToken) as any)
-            .populate("interview", "title targetRole description questions dsaProblems interviewType expiresAt status")
-            .populate("candidate", "name email role");
+        const inviteRow = await findInviteByRawToken(rawToken);
+        if (!inviteRow) return { status: 404, message: "Invalid invite link" };
 
-        if (!invite) return { status: 404, message: "Invalid invite link" };
-        const interview = invite.interview as any;
+        const interview = await findInterviewRowById(inviteRow.interviewId);
         if (!interview) return { status: 404, message: "Interview not found" };
+
         if (interview.status !== "active") {
             return { status: 400, message: "This interview is no longer active" };
         }
@@ -223,22 +276,33 @@ export const acceptInvite = async (rawToken: string): Promise<InterviewResult> =
             return { status: 400, message: "This interview has expired" };
         }
 
+        const userMap = await findUsersByIds([inviteRow.candidateId]);
+        const candidate = userMap.get(inviteRow.candidateId) ?? null;
+
         // Re-acceptance is allowed while started/completed so page reloads resume
         // the session rather than failing with "already used".
-        if (invite.status === "pending") {
-            invite.status = "started";
-            invite.startedAt = invite.startedAt || new Date();
-            await invite.save();
+        let invite = { ...withId(inviteRow), candidate };
+        if (inviteRow.status === "pending") {
+            const started = await updateInvite(inviteRow.id, {
+                status: "started",
+                startedAt: inviteRow.startedAt || new Date(),
+            });
+            if (started) invite = { ...started, candidate };
         }
 
-        const candidate = invite.candidate as any;
-        const authToken = jwt.sign({ _id: candidate._id, role: "candidate" }, JWT_SECRET, { expiresIn: "2d" });
+        const authToken = jwt.sign(
+            { _id: invite.candidateId, role: "candidate" },
+            JWT_SECRET,
+            { expiresIn: "2d" },
+        );
 
         return {
             status: 200,
             message: "Invite accepted",
             invite,
-            interview,
+            // The old code populated the interview here; the candidate page
+            // keys off `interview._id`, so keep the id/_id mirror.
+            interview: withId(interview),
             token: authToken,
             user: candidate,
         };
@@ -254,12 +318,12 @@ export const evaluateCandidateAnswer = async (
 ): Promise<InterviewResult> => {
     try {
         if (!isValidId(params.inviteId)) return { status: 400, message: "Invalid inviteId" };
-        const invite = await CandidateInvite.findById(params.inviteId);
+        const invite = await findInviteById(params.inviteId);
         if (!invite) return { status: 404, message: "Invite not found" };
-        if (invite.candidate.toString() !== userId) return { status: 403, message: "Not authorized for this invite" };
+        if (invite.candidateId !== userId) return { status: 403, message: "Not authorized for this invite" };
         if (invite.status !== "started") return { status: 400, message: "Invite is not active" };
 
-        const interview = await InterviewSession.findById(invite.interview);
+        const interview = await findInterviewRowById(invite.interviewId);
         if (!interview) return { status: 404, message: "Interview not found" };
 
         const questionIndex = interview.questions.indexOf(params.question);
@@ -274,10 +338,12 @@ export const evaluateCandidateAnswer = async (
             question: params.question,
         });
 
-        const results = invite.results as any[];
-        const existingIndex = results.findIndex((r) => interview.questions.indexOf(r.question) === questionIndex);
-        const record = {
-            question: interview.questions[questionIndex],
+        const results: ResultItem[] = [...invite.results];
+        const existingIndex = results.findIndex(
+            (r) => interview.questions.indexOf(r.question) === questionIndex,
+        );
+        const record: ResultItem = {
+            question: interview.questions[questionIndex]!,
             transcription: ai.transcription,
             score: ai.score,
             feedback: ai.feedback,
@@ -287,8 +353,7 @@ export const evaluateCandidateAnswer = async (
         } else {
             results.push(record);
         }
-        invite.results = results;
-        await invite.save();
+        await updateInvite(invite.id, { results });
 
         return {
             status: 200,
@@ -304,45 +369,56 @@ export const evaluateCandidateAnswer = async (
 export const submitInterviewAnswer = async (userId: string, input: SubmitAnswerInput): Promise<InterviewResult> => {
     try {
         if (!isValidId(input.inviteId)) return { status: 400, message: "Invalid inviteId format" };
-        const invite = await CandidateInvite.findById(input.inviteId);
+        const invite = await findInviteById(input.inviteId);
         if (!invite) return { status: 404, message: "Invite not found" };
-        if (invite.candidate.toString() !== userId) return { status: 403, message: "Not authorized" };
+        if (invite.candidateId !== userId) return { status: 403, message: "Not authorized" };
         if (invite.status !== "started") return { status: 400, message: "Invite is not in started status" };
 
-        const interview = await InterviewSession.findById(invite.interview);
+        const interview = await findInterviewRowById(invite.interviewId);
         if (!interview || !interview.questions[input.questionIndex]) {
             return { status: 400, message: "Invalid question index" };
         }
 
-        const results = invite.results as any[];
-        const existingIndex = results.findIndex((r) => interview.questions.indexOf(r.question) === input.questionIndex);
+        const results: ResultItem[] = [...invite.results];
+        const existingIndex = results.findIndex(
+            (r) => interview.questions.indexOf(r.question) === input.questionIndex,
+        );
         if (existingIndex === -1) {
-            results.push({ question: interview.questions[input.questionIndex], transcription: "", score: null, feedback: "" });
+            results.push({
+                question: interview.questions[input.questionIndex]!,
+                transcription: "",
+                score: null,
+                feedback: "",
+            });
         }
-        invite.results = results;
 
         const hasDsa = (interview.dsaProblems?.length || 0) > 0;
         const behavioralDone = results.length >= (interview.questions.length || 0);
 
+        const patch: Parameters<typeof updateInvite>[1] = { results };
         let nextRound: string | null = null;
         let completed = false;
         if (behavioralDone) {
             if ((interview.interviewType === "mixed" || interview.interviewType === "dsa") && hasDsa) {
-                invite.currentRound = "dsa";
+                patch.currentRound = "dsa";
                 nextRound = "dsa";
             } else {
-                invite.status = "completed";
-                invite.currentRound = "done";
-                invite.completedAt = new Date();
+                patch.status = "completed";
+                patch.currentRound = "done";
+                patch.completedAt = new Date();
                 completed = true;
             }
         }
-        await invite.save();
+        const saved = await updateInvite(invite.id, patch);
 
         return {
             status: 200,
             message: "Answer submitted",
-            data: { invite, ...(nextRound ? { nextRound } : {}), ...(completed ? { completed: true } : {}) },
+            data: {
+                invite: saved ?? invite,
+                ...(nextRound ? { nextRound } : {}),
+                ...(completed ? { completed: true } : {}),
+            },
         };
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "unknown error";
@@ -353,22 +429,36 @@ export const submitInterviewAnswer = async (userId: string, input: SubmitAnswerI
 export const getMyInterviews = async (userId: string, page: number, limit: number): Promise<InterviewResult> => {
     try {
         const skip = (page - 1) * limit;
-        const filter = { candidate: userId };
+        const { rows, total } = await listInvitesForCandidate(userId, skip, limit);
 
-        const [invites, total] = await Promise.all([
-            CandidateInvite.find(filter)
-                .populate({
-                    path: "interview",
-                    select: "title targetRole description status expiresAt interviewType",
-                    populate: { path: "organization", select: "name" },
-                })
-                .sort({ createdAt: -1 })
-                .skip(skip)
-                .limit(limit),
-            CandidateInvite.countDocuments(filter),
-        ]);
+        // Populate interview + nested organization, as the old nested
+        // .populate({ path: "interview", populate: { path: "organization" } }) did.
+        const interviews = await findInterviews(rows.map((r) => r.interviewId));
+        const orgMap = await findOrganizations(
+            [...interviews.values()].map((i) => i.organizationId),
+        );
 
-        return { status: 200, message: "Interviews fetched", data: invites, page, limit, total };
+        const data = rows.map((row) => {
+            const invite = withId(row);
+            const interview = interviews.get(row.interviewId);
+            if (!interview) return { ...invite, interview: null };
+            return {
+                ...invite,
+                interview: {
+                    _id: interview.id,
+                    id: interview.id,
+                    title: interview.title,
+                    targetRole: interview.targetRole,
+                    description: interview.description,
+                    status: interview.status,
+                    expiresAt: interview.expiresAt,
+                    interviewType: interview.interviewType,
+                    organization: orgMap.get(interview.organizationId) ?? null,
+                },
+            };
+        });
+
+        return { status: 200, message: "Interviews fetched", data, page, limit, total };
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "unknown error";
         return { status: 500, message: `Internal server error: ${message}` };
@@ -392,22 +482,23 @@ export const generateDsaForInterview = async (input: GenerateDsaInput): Promise<
 export const evaluateInterviewDsa = async (userId: string, input: EvaluateInterviewDsaInput): Promise<InterviewResult> => {
     try {
         if (!isValidId(input.inviteId)) return { status: 400, message: "Invalid inviteId format" };
-        const invite = await CandidateInvite.findById(input.inviteId);
+        const invite = await findInviteById(input.inviteId);
         if (!invite) return { status: 404, message: "Invite not found" };
-        if (invite.candidate.toString() !== userId) return { status: 403, message: "Not authorized for this invite" };
+        if (invite.candidateId !== userId) return { status: 403, message: "Not authorized for this invite" };
         if (invite.status !== "started" && invite.status !== "pending") {
             return { status: 400, message: "Invite is not active" };
         }
 
-        const interview = await InterviewSession.findById(invite.interview);
+        const interview = await findInterviewRowById(invite.interviewId);
         if (!interview) return { status: 404, message: "Interview not found" };
 
         const problem = (interview.dsaProblems || [])[input.problemIndex];
         if (!problem) return { status: 400, message: "Invalid problem index" };
 
+        const patch: Parameters<typeof updateInvite>[1] = {};
         if (invite.status === "pending") {
-            invite.status = "started";
-            invite.startedAt = invite.startedAt || new Date();
+            patch.status = "started";
+            patch.startedAt = invite.startedAt || new Date();
         }
 
         const ai = await aiEvaluateDsa({
@@ -422,10 +513,10 @@ export const evaluateInterviewDsa = async (userId: string, input: EvaluateInterv
             code: input.code,
         });
 
-        const dsaResults = (invite.dsaResults || []) as any[];
+        const dsaResults: DsaResultItem[] = [...invite.dsaResults];
         const existingIndex = dsaResults.findIndex((r) => r.problemIndex === input.problemIndex);
-        const record = {
-            problemId: problem._id ? String(problem._id) : "",
+        const record: DsaResultItem = {
+            problemId: problem.id ?? "",
             problemTitle: problem.title,
             problemIndex: input.problemIndex,
             language: input.language,
@@ -445,15 +536,15 @@ export const evaluateInterviewDsa = async (userId: string, input: EvaluateInterv
         } else {
             dsaResults.push(record);
         }
-        invite.dsaResults = dsaResults;
+        patch.dsaResults = dsaResults;
 
         const allDsaDone = dsaResults.length >= (interview.dsaProblems?.length || 0);
         if (allDsaDone) {
-            invite.status = "completed";
-            invite.currentRound = "done";
-            invite.completedAt = invite.completedAt || new Date();
+            patch.status = "completed";
+            patch.currentRound = "done";
+            patch.completedAt = invite.completedAt || new Date();
         }
-        await invite.save();
+        await updateInvite(invite.id, patch);
 
         return {
             status: 200,

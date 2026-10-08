@@ -1,52 +1,40 @@
 import jwt from "jsonwebtoken";
 import type { Request, Response, NextFunction } from "express";
 import { env } from "../config/env";
-import { User } from "../modules/user/user.model";
+import { findUserById } from "../db/repositories/users";
 
-export async function authenticateToken(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function authenticateToken(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+): Promise<void> {
     try {
         if (!req.headers.authorization) {
-            res.status(401).json({
-                success: false,
-                message: "Unauthorized",
-            });
+            res.status(401).json({ success: false, message: "Unauthorized" });
             return;
         }
         const secret = env.JWT_SECRET;
         const token = req.headers.authorization.split(" ")[1];
         if (!token) {
-            res.status(401).json({
-                success: false,
-                message: "Unauthorized",
-            });
+            res.status(401).json({ success: false, message: "Unauthorized" });
             return;
         }
         const decodedToken = jwt.verify(token, secret);
-        const user = decodedToken as { _id: string, role: string };
-        //check if user valid
+        const claims = decodedToken as { _id: string; role: string };
 
-        const isValid = await User.findById(user._id);
-        if (!isValid || isValid.isDeleted) {
-            res.status(401).json({
-                success: false,
-                message: "Unauthorized",
-            });
+        const user = await findUserById(claims._id);
+        if (!user || user.isDeleted) {
+            res.status(401).json({ success: false, message: "Unauthorized" });
             return;
         }
-        // @ts-ignore
-        req.user = {
-            _id: user._id,
-            role: user.role
-        }
+
+        (req as Request & { user?: { _id: string; role: string } }).user = {
+            _id: claims._id,
+            role: user.role,
+        };
 
         next();
-
-    }
-    catch (error) {
-        res.status(401).json({
-            success: false,
-            message: "Unauthorized",
-        });
-        return;
+    } catch {
+        res.status(401).json({ success: false, message: "Unauthorized" });
     }
 }

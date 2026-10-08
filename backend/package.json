@@ -11,7 +11,12 @@
     "drizzle-kit": "^0.31.11"
   },
   "scripts": {
-    "start": "bun --watch src/server.ts"
+    "start": "bun --watch src/server.ts",
+    "serve": "bun src/server.ts",
+    "migrate": "drizzle-kit migrate",
+    "migrate:generate": "drizzle-kit generate",
+    "typecheck": "tsc --noEmit",
+    "test:smoke": "bun tests/smoke.ts"
   },
   "peerDependencies": {
     "typescript": "^5.9.3"

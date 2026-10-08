@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Test suite, nonzero on failure.
+#
+# The backend smoke test needs a running server and a migrated database, so it
+# only runs when SMOKE_BASE_URL is set. CI sets both. Plain local runs still get
+# the typecheck gate via scripts/build.
+set -euo pipefail
+
+echo "==> backend typecheck"
+(cd backend && bunx tsc --noEmit)
+
+if [ -n "${SMOKE_BASE_URL:-}" ]; then
+  echo "==> backend smoke test against $SMOKE_BASE_URL"
+  (cd backend && bun tests/smoke.ts)
+else
+  echo "==> skipping smoke test (set SMOKE_BASE_URL to run it)"
+fi

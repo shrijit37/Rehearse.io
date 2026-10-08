@@ -26,11 +26,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Validate backend
-        working-directory: backend
+
+      - name: Validate backend (typecheck + migrations against real Postgres)
         run: |
-          bun install --frozen-lockfile
-          bunx tsc --noEmit
+          docker run -d --name pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=rehearse_io_test -p 5432:5432 postgres:16-alpine
+          cd backend && bun install --frozen-lockfile && bunx tsc --noEmit && cd ..
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/rehearse_io_test ./scripts/migrate
+
       - name: Validate frontend
         working-directory: frontend
         run: |
@@ -39,12 +41,15 @@ jobs:
           npm run build
         env:
           VITE_API_URL: https://api.rehearseio.triptribe.info
+
       - name: Validate AI service
         working-directory: ai-service
         run: |
-          python -m compileall app
+          python -m compileall -q app
           pip install -q -r requirements.txt
-          cd app
-          python -c "from main import app; assert app.title"
-      - name: Validate Dokploy compose build inputs
+          python -c "import sys; sys.path.insert(0, 'app'); from main import app; assert app.title"
+
+      - name: Validate compose config
         run: docker compose config
+        env:
+          JWT_SECRET: ci-placeholder

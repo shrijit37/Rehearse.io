@@ -1,39 +1,27 @@
 {
-  "name": "rehearse.io",
+  "name": "rehearse-io",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "dev:backend": "cd backend && npm start",
-    "dev:frontend": "cd frontend && npm run dev",
-    "dev:ai": "cd ai-service/app && uvicorn main:app --reload",
-    "dev:db": "docker compose up -d",
-    "dev": "npm run dev:db && concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"npm run dev:ai\"",
-    "install:backend": "cd backend && npm install",
-    "install:frontend": "cd frontend && npm install",
-    "install:ai": "cd ai-service && pip install -r requirements.txt",
-    "setup": "npm run install:backend && npm run install:frontend && npm run install:ai",
-    "setup:env": "cd backend && cp example.env .env",
-    "test": "echo \"Run tests per-service: npm run build --prefix frontend, npm test --prefix backend\"",
-    "lint:frontend": "npm run lint --prefix frontend",
-    "build:frontend": "npm run build --prefix frontend"
-  },
+  "private": true,
+  "description": "Enterprise async interview platform: candidates rehearse with AI scoring, recruiters run invite-based interviews.",
+  "license": "ISC",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/shrijit37/Rehearse.io.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "homepage": "https://github.com/shrijit37/Rehearse.io#readme",
   "bugs": {
     "url": "https://github.com/shrijit37/Rehearse.io/issues"
   },
-  "homepage": "https://github.com/shrijit37/Rehearse.io#readme",
+  "scripts": {
+    "setup": "make setup",
+    "dev": "make dev",
+    "test": "make test",
+    "lint": "make lint",
+    "build": "make build",
+    "migrate": "make migrate",
+    "health": "make health"
+  },
   "devDependencies": {
     "concurrently": "^10.0.3"
-  },
-  "dependencies": {
-    "@types/mongoose": "^5.11.97",
-    "mongoose": "^9.7.4"
   }
 }

@@ -25,3 +25,9 @@ fix-*.md
 
 # SLIM tool state
 .slim/
+
+# Package-manager caches that must never be committed
+.pnpm-store/
+
+# Runtime crash logs from the legacy PM2 era
+nohup.out

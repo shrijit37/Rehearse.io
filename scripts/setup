@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# First-time dependency install for every service.
+set -euo pipefail
+
+echo "==> backend (bun)"
+(cd backend && bun install)
+
+echo "==> frontend (npm)"
+(cd frontend && npm ci)
+
+echo "==> ai-service"
+if command -v uv >/dev/null 2>&1; then
+  (cd ai-service && uv sync) || (cd ai-service && pip install -r requirements.txt)
+else
+  (cd ai-service && python -m venv .venv && .venv/bin/pip install -r requirements.txt)
+fi
+
+echo "==> env files"
+[ -f backend/.env ] || { cp backend/example.env backend/.env; echo "created backend/.env from example.env"; }
+[ -f ai-service/.env ] || { cp ai-service/.env.example ai-service/.env; echo "created ai-service/.env from .env.example"; }
+
+echo "Setup complete."

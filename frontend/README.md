@@ -47,7 +47,14 @@ clears the session and redirects to `/signup`.
 
 ## Deploy notes
 
-Pure static output (`dist/`). Served by nginx in Docker (`nginx.conf` has
-the SPA fallback). `vercel.json` is dead config — the live site is on
-Netlify, and platform direction is Cloudflare Pages. Whatever host builds
-it must provide `VITE_API_URL`.
+Pure static output (`dist/`). Target is **Cloudflare Pages** via
+`.github/workflows/deploy-frontend.yml`, which builds with npm and deploys
+`dist/`. The live site is still on Netlify with a broken build (no
+`VITE_API_URL`); that is the pending cutover, not the intended state.
+
+Whoever builds it must provide `VITE_API_URL`. The workflow also greps the
+built bundle for `localhost:9000` and fails the deploy if it appears, so the
+original breakage cannot recur silently.
+
+`frontend/Dockerfile` + `nginx.conf` remain for local compose only; Pages does
+not use Docker.

@@ -1,0 +1,107 @@
+# Rehearse.io frontend pipeline: build -> Cloudflare Pages.
+# Adapted from templates/deploy-static.yml. Two deviations from the template,
+# both forced by this repo:
+#   - npm instead of pnpm (frontend/package-lock.json is the real lockfile)
+#   - output dir is dist/, not out/ (Vite, not a static-export framework)
+#
+# Required GitHub config:
+#   secrets.CLOUDFLARE_API_TOKEN
+#   secrets.CLOUDFLARE_ACCOUNT_ID
+#   vars.PAGES_PROJECT           (repo) Cloudflare Pages project name
+#   vars.VITE_API_URL            (repo) API base baked into the bundle
+name: deploy-frontend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/deploy-frontend.yml"
+  pull_request:
+    paths:
+      - "frontend/**"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+
+  build:
+    needs: [lint]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Build
+        run: npm run build
+        env:
+          # Baked into the bundle at build time. This is exactly the var whose
+          # absence broke production: without it the app falls back to
+          # http://localhost:9000. See STATE.md.
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 7
+
+  # Verifies the built bundle points at the real API, not localhost.
+  verify-api-url:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist
+      - name: Assert no localhost API URL in the bundle
+        run: |
+          if grep -rq "localhost:9000" dist/assets; then
+            echo "::error::Built bundle references localhost:9000 - VITE_API_URL was not set."
+            exit 1
+          fi
+          echo "bundle is clean of localhost API URLs"
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: [build, verify-api-url]
+    runs-on: ubuntu-latest
+    environment: prod
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist
+      - name: Publish to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=${{ vars.PAGES_PROJECT }} --branch=main

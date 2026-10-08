@@ -3,17 +3,18 @@
 Enterprise async interview platform with AI evaluation for **behavioral**
 (voice) and **DSA coding** rounds.
 
-Monorepo with three services plus MongoDB:
+Monorepo with three services:
 
-- **backend**: Bun + Express 5 + TypeScript + Mongoose, JWT auth, port 9000
-- **frontend**: React 19 + TypeScript + Vite 7 + TailwindCSS 4 (static SPA)
+- **backend**: Bun + Express 5 + TypeScript + **Drizzle/PostgreSQL**, JWT auth, port 9000
+- **frontend**: React 19 + TypeScript + Vite 7 + TailwindCSS 4 (static SPA, Cloudflare Pages)
 - **ai-service**: FastAPI (Python) — scenario generation, STT, TTS, DSA
   problem generation and code evaluation, port 8000
-- **mongo**: MongoDB 7 (docker-compose only)
 
-> Honest status lives in [STATE.md](./STATE.md). Production is currently
-> broken (live frontend calls `localhost:9000`, API domain 404s). Read that
-> file before trusting any other doc.
+> Honest status lives in [STATE.md](./STATE.md). **Production is broken**: the
+> live frontend bundle calls `localhost:9000` and `api.rehearseio.triptribe.info`
+> has no Traefik router, so every API route 404s. Read STATE.md before
+> trusting any other doc. (Also: `rehearse.io` itself is a parked GoDaddy
+> domain for sale, not this project's.)
 
 ## Features
 
@@ -27,23 +28,54 @@ Monorepo with three services plus MongoDB:
 - **Consent + GDPR**: consent versioning, data export, soft-delete account
 - **Audit log**: security events recorded (write-only, no viewer yet)
 
-All AI features need `GROQ_API_KEY` (STT + TTS + LLM via LiteLLM).
+All AI features need `GROQ_API_KEY` (STT + TTS + LLM via LiteLLM). Without it
+the AI service returns honest 503s and `false` health flags.
 
 ## Getting started (local dev)
 
-1. `npm run setup` — installs backend, frontend, and AI-service dependencies.
-2. `npm run setup:env` — copies `backend/example.env` to `backend/.env`.
-   Fill in `JWT_SECRET` (required, no default).
-3. Copy `ai-service/.env.example` to `ai-service/.env`, fill in
-   `GROQ_API_KEY` (required for AI features) and `API_KEY` (must match the
-   backend's `AI_SERVICE_API_KEY`).
-4. Start MongoDB: `npm run dev:db` (uses `docker compose up -d` for the
-   `mongo` service).
-5. Start everything: `npm run dev` (DB + backend + frontend + AI service).
+Prerequisites: Bun, Node 22+, Python 3.11+, and a reachable PostgreSQL
+(the shared laptop instance is the convention: `createdb rehearse_io_dev`).
+
+```bash
+make setup                       # install all three services + create .env files
+export DATABASE_URL=postgresql://postgres@localhost:5432/rehearse_io_dev
+export JWT_SECRET=$(openssl rand -hex 32)
+make migrate                     # create/update tables
+make dev                         # backend :9000, frontend :5173, ai :8000
+```
 
 Service URLs: backend `http://localhost:9000`, frontend
-`http://localhost:5173`, AI `http://localhost:8000`. Health: backend
-`GET /health`, AI `GET /health`.
+`http://localhost:5173`, AI `http://localhost:8000`.
+
+Health: backend `GET /health` (liveness) and `GET /ready` (Postgres check);
+AI `GET /health` (reports STT/TTS availability).
+
+## Make targets
+
+`make setup | dev | test | lint | build | migrate | health` — each maps 1:1 to
+a script in `scripts/`. CI calls these too, never framework commands directly.
+
+## Tests
+
+```bash
+make migrate
+(cd backend && bun src/server.ts) &
+SMOKE_BASE_URL=http://127.0.0.1:9000 make test
+```
+
+`backend/tests/smoke.ts` covers auth, orgs, interviews, invite-token hashing,
+placeholder claiming, GDPR export, and consent against a real Postgres.
+
+## Deployment
+
+- **backend** → GHCR (`:<sha>`) → Dokploy application, port 9000, health `/health`
+- **frontend** → static `dist/` → Cloudflare Pages
+- **ai-service** → Dokploy, port 8000
+- **secrets** → Infisical `platform` project, `REHEARSE_*` prefix, never in git
+- **database** → shared Postgres, `rehearse_io_prod` / `rehearse_io_dev`
+
+See `platform.yaml`, `frontend/platform.yaml`, and
+[STATE.md](./STATE.md#deploy-truth) for current status.
 
 ## Docs
 

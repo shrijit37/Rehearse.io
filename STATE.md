@@ -5,11 +5,14 @@ access). This file is the truth. If any other doc disagrees, this file wins.
 
 ## One-line status
 
-Production is **broken and always was**: the live frontend bundle calls
-`localhost:9000`, and `api.rehearseio.triptribe.info` has **no Traefik
-router at all**, so every path 404s including `/health`. Prod has never
-worked; this is not a regression. No router means not a container
-problem, so Dokploy's `done` status is consistent, not contradictory.
+**Code is standardized and verified; production is still broken and awaiting
+the owner.** The backend is now Postgres/Drizzle (48 smoke assertions passing
+against a real database), platform files and CI exist, and repo hygiene is
+clean. But nothing is deployed: `api.rehearseio.triptribe.info` still has
+**no Traefik router**, so every path 404s, and the live frontend bundle still
+calls `localhost:9000`. Prod has never worked; this is not a regression. No
+router means not a container problem, so Dokploy's `done` status is
+consistent, not contradictory.
 
 ## Live endpoints (probed 2026-10-09)
 
@@ -33,13 +36,14 @@ Enterprise async interview platform: candidates rehearse (voice + DSA coding)
 with AI scoring; recruiters create interviews (behavioral / DSA-only / mixed),
 send invite links, and review per-candidate results.
 
-Monorepo, three services plus MongoDB:
+Monorepo, three services. The database is **shared PostgreSQL** (not in
+this repo):
 
 ```text
-backend/    Bun runtime + Express 5 + TypeScript + Mongoose 8, port 9000
-frontend/   React 19 + Vite 7 + TypeScript + TailwindCSS 4, nginx :80 in Docker
+backend/    Bun runtime + Express 5 + TypeScript + Drizzle ORM, port 9000
+frontend/   React 19 + Vite 7 + TypeScript + TailwindCSS 4 (static SPA)
 ai-service/ FastAPI (Python 3.11+), port 8000, Groq-only (STT/TTS/LLM)
-mongo       mongo:7.0 (docker-compose only), localhost-bound, volume mongo_data
+postgres    shared instance, one DB per env (rehearse_io_prod / _dev)
 ```
 
 ## Feature truth table
@@ -48,7 +52,7 @@ mongo       mongo:7.0 (docker-compose only), localhost-bound, volume mongo_data
 |---|---|---|
 | Signup / login (JWT, 1d expiry) | Implemented | `POST /api/auth/signup`, `/login`. Placeholder-claim flow for invited emails works in code. |
 | RBAC (`recruiter` / `candidate`) | Implemented | `authenticateToken` → `authorize(...)` middleware chain. |
-| Candidate onboarding (resume/photo/audio) | Implemented | Files stored as base64 **in MongoDB**, optionally encrypted with `ENCRYPTION_KEY`. Requires valid PDF resume. |
+| Candidate onboarding (resume/photo/audio) | Implemented | Files stored as base64 **in Postgres**, optionally encrypted with `ENCRYPTION_KEY`. Requires valid PDF resume. |
 | Consent + GDPR (export / delete / consent version) | Implemented | `consentGiven/consentDate/consentVersion`, `POST /api/users/export-data`, `DELETE /api/users/delete-account` (soft delete). |
 | Voice rehearsal (behavioral) | Implemented, needs `GROQ_API_KEY` | Resume-tailored questions → record → Whisper STT → LLM score/feedback. |
 | DSA practice | Implemented, needs `GROQ_API_KEY` | AI-generated problems → code submit → correctness/quality/complexity eval. No code execution sandbox; LLM judges statically. |
@@ -59,35 +63,62 @@ mongo       mongo:7.0 (docker-compose only), localhost-bound, volume mongo_data
 | Organizations + member invites | Implemented | `Organization` with admin/recruiter members. |
 | Audit log | Write-only | `AuditLog` written on signup/login/onboard/interview/org/profile actions. **No API reads it.** No viewer UI. |
 | TTS | Dual mode | Browser `SpeechSynthesis` default; Groq Orpheus (`canopylabs/orpheus-v1-english`, voice `tara`) opt-in per call with automatic fallback. Orpheus needs Groq-console terms accepted. |
-| S3 file storage | **Not implemented** | Only a `HeadBucket` connectivity check at boot. Nothing ever uploads to S3; PII lives in Mongo. `AWS_*` vars are optional and inert. |
+| S3 file storage | **Not implemented** | The boot-time `HeadBucket` check was **removed** 2026-10-09 (dead code). Nothing uploads to S3; PII lives in Postgres. `AWS_*` vars are optional and inert. |
 | Rate limiting | Implemented | General + stricter auth limiter, env-tunable. |
-| Input sanitization | Implemented | Strips `$`/operator keys for Mongo injection; name HTML-tag strip. |
-| Health endpoints | Shallow | Backend `GET /health` returns `{status:"ok"}` **without checking Mongo**. AI `GET /health` reports STT/TTS availability. Frontend has no health endpoint (static nginx). No `/ready` anywhere. |
-| Tests | **None** | Backend has no test script. Frontend has lint+build only. AI has import check only. Root `test` script is an echo. `e2e-test.ts` exists in backend but is not wired to any script. |
+| Input sanitization | Implemented | Strips prototype-pollution keys (`__proto__`, `constructor`, `prototype`); name HTML-tag strip. The old Mongo operator-key stripping was removed with the data layer. |
+| Health endpoints | **Fixed 2026-10-09** | Backend `GET /health` = liveness (no DB check, by design). **`GET /ready` added**: `200` only when Postgres answers, `503` otherwise. CI and Dokploy gate on it via `scripts/health`. AI `GET /health` reports STT/TTS availability. Frontend is static (no health endpoint). |
+| Tests | **Smoke suite only** | `backend/tests/smoke.ts`: 48 end-to-end assertions against a live server + real Postgres. Wired into `make test` (runs when `SMOKE_BASE_URL` is set) and CI. No unit tests, no coverage. Frontend still has lint+build only. |
 
 ## Data layer truth
 
-- MongoDB 7 via Mongoose. Six collections: `users`, `organizations`,
-  `interviewsessions`, `candidateinvites`, `rehearsalsessions`, `auditlogs`.
-- No migrations framework. Schemas evolve by code deploy.
-- PII (resume/photo/audio) is base64 inside user docs, not in object storage.
-- No known backups. Prod data existence/value is **unknown** (compose volume
-  `mongo_data` on the VPS; never inspected this session).
-- Platform standard wants shared Postgres. **No Postgres work has started.**
-  This is the biggest migration risk: 6 models + services + invite-token logic.
+**Migrated to PostgreSQL on 2026-10-09** (commit `5f67c82`). MongoDB is gone
+from the codebase; `grep -ri mongoose backend/src` returns nothing.
+
+- **PostgreSQL via Drizzle ORM** (`drizzle-orm` + `pg`, node-postgres driver).
+- Seven tables (was six Mongo collections):
+  `users`, `organizations`, `organization_members`, `interview_sessions`,
+  `candidate_invites`, `rehearsal_sessions`, `audit_logs`.
+- `organization_members` is **new**: the old `members` array was embedded in
+  the organization document. Normalized so membership is indexed and
+  FK-enforced.
+- **IDs are UUIDs**, not ObjectIds. Every row reaches HTTP with both `id` and
+  `_id` because the React frontend reads `_id`. Mongoose `populate()` shapes
+  are reproduced explicitly in the service layer, so **no frontend change was
+  needed**.
+- Migrations: real versioned SQL in `backend/drizzle/` via
+  `bun run migrate:generate` / `bun run migrate`. Idempotent; verified by
+  re-running (table count stayed at 7).
+- Invite tokens still sha256-hashed at rest; raw token returned exactly once.
+  Verified in tests: stored hash equals `sha256(raw)`.
+- PII (resume/photo/audio) is base64 in Postgres, encrypted when
+  `ENCRYPTION_KEY` is set. Still not object storage.
+- Prod data: **starting empty** by owner decision. The old `mongo_data`
+  compose volume on the VPS was never inspected and is being ignored.
+
+### Verified against a real Postgres
+
+Migrations were applied and the API exercised end-to-end on Postgres 16.15
+(`backend/tests/smoke.ts`): **48 assertions passing** covering auth, orgs,
+interviews, invite-token hashing, placeholder claiming, populated references,
+GDPR export, and consent. This suite found two real `_id` bugs that are now
+fixed. Run it with `SMOKE_BASE_URL=... make test`.
 
 ## Secrets truth
 
-Required in prod: `JWT_SECRET`, `MONGO_USERNAME`/`MONGO_PASSWORD`,
-`GROQ_API_KEY`, `AI_SERVICE_API_KEY` (= ai-service `API_KEY`),
-`ENCRYPTION_KEY` (recommended), `VITE_API_URL` (build-time), `CLIENT_URL` /
-`ALLOWED_ORIGINS`.
+Required in prod: `DATABASE_URL` (new), `JWT_SECRET`, `GROQ_API_KEY`,
+`AI_SERVICE_API_KEY` (= ai-service `API_KEY`), `ENCRYPTION_KEY`
+(recommended), `VITE_API_URL` (build-time), `CLIENT_URL` / `ALLOWED_ORIGINS`.
+`MONGO_USERNAME`/`MONGO_PASSWORD` are **no longer used**.
 
 - Where prod values live today: **unknown** (probably Dokploy compose env
   and/or `.env` files on the server from the PM2 era). Nothing is in Infisical
-  yet; no `REHEARSE_*` entries exist.
-- `.env` files are git-ignored; `example.env` / `.env.example` files are
-  templates only. No live secrets were found in the repo.
+  yet; no `REHEARSE_*` entries exist. The old Mongo volume may still hold
+  credentials but is not part of the new stack.
+- `.env` files are git-ignored; `example.env` / `.env.example` /
+  `backend/example.env` are templates only. No live secrets in the repo.
+- **Security note:** a `GROQ_API_KEY` was pasted into chat on 2026-10-09 and
+  is therefore compromised-once. It must be rotated in the Groq console and
+  the replacement stored only in Infisical.
 
 ## Deploy truth
 
@@ -100,64 +131,104 @@ Required in prod: `JWT_SECRET`, `MONGO_USERNAME`/`MONGO_PASSWORD`,
   Because the API hostname returns Traefik's own 404, the compose Domains
   tab currently has **no router** for `api.rehearseio.triptribe.info`.
 - Frontend prod is on **Netlify**, not Dokploy, and is misconfigured
-  (missing `VITE_API_URL`). The compose `frontend` service (port 3002
-  loopback) may be running but is not what the public domain serves.
-- `ecosystem.rehearse.config.cjs` is a legacy PM2 config (`/home/ubuntu`
-  paths, ports 3025/3024/8000). Unknown whether PM2 still runs on the server.
-- `scripts/deploy-on-server.sh` is a deliberate stub that exits 1.
-- CI (`.github/workflows/ci.yml`) validates on PRs: backend `tsc --noEmit`,
-  frontend lint+build, AI compileall+import, `docker compose config`. It never
-  deploys. `deploy.yml` is a stub with no jobs. Deploys happen via Dokploy
-  GitHub webhook (if configured).
-- Branch: `main`. Standardization branch: `platform/standardize` (created
-  2026-10-09, docs-only so far).
+  (missing `VITE_API_URL`). The old compose `frontend` service is gone from
+  `docker-compose.yml`; Pages is the target now.
+- `ecosystem.rehearse.config.cjs` (legacy PM2) and
+  `scripts/deploy-on-server.sh` have been **deleted**.
+- CI: `ci.yml` validates on PRs (backend typecheck + migrations against a real
+  Postgres, frontend lint+build, AI compileall+import, compose config).
+  `deploy-backend.yml` and `deploy-frontend.yml` implement the real pipelines
+  but have **never run** — they need the GitHub vars listed below.
+- Branch: `main`. Standardization branch: `platform/standardize`
+  (4 commits ahead of main; not yet merged or pushed).
 
-## Repo hygiene truth (problems to fix)
+## Repo hygiene truth (fixed 2026-10-09)
 
-- `.pnpm-store/` (2,448 files) is **committed to git**. Pack is ~3.7 MiB.
-  Must `git rm -r --cached` and ignore.
-- `nohup.out` (a Node crash log) is **committed**. Must delete.
-- Three competing root lockfiles (`bun.lock`, `package-lock.json`,
-  `pnpm-lock.yaml`) plus per-service locks. Root `package.json` even carries
-  `mongoose` deps that belong to the backend.
-- `frontend/vercel.json` is dead config (frontend is on Netlify, target is
-  Cloudflare Pages per platform standard).
-- `backend/CLAUDE.md` contradicts the stack (says don't use Express/Vite;
-  the project **is** Express+Vite). Rewritten 2026-10-09; verify before use.
-- `backend/README.md` and `frontend/README.md` were tool templates; rewritten
-  2026-10-09.
-- `AGENTS.md` was stale (wrong entrypoint, wrong commands, false "no route
-  guards / no API client / dead deps" claims); rewritten 2026-10-09.
-- `ai-service/README.md` had stale TTS model/voice defaults; fixed 2026-10-09.
-- Audit score before standardization: **4 pass / 11 fail** (no `platform.yaml`,
-  `Makefile`, `scripts/*` contract, root Dockerfile policy undecided for a
-  monorepo, possible hardcoded-secret warning to clear).
+All of the following are **resolved** in commit `e26cf31`:
 
-## What works locally (expected, not re-verified this session)
+- `.pnpm-store/` (2,448 committed files) untracked, deleted, and ignored.
+- `nohup.out` (Node crash log) deleted and ignored.
+- Competing root lockfiles removed. Root `package.json` no longer carries
+  stray `mongoose` deps; per-service locks are authoritative
+  (`backend/bun.lock`, `frontend/package-lock.json`, `ai-service/uv.lock`).
+- `frontend/vercel.json` deleted (dead config).
+- `ecosystem.rehearse.config.cjs` (legacy PM2, `/home/ubuntu` paths) deleted.
+- `scripts/deploy-on-server.sh` (deliberate exit-1 stub) deleted.
+- `backend/CLAUDE.md` rewritten; it previously contradicted the stack.
+- All `.md` files rewritten for the Postgres stack and the scripts contract.
+- Tracked files: **2,595 → 149**.
 
-`npm run dev` (compose DB + three dev servers) should work given MongoDB,
-`JWT_SECRET`, and `GROQ_API_KEY`. The AI service degrades honestly: missing
-`GROQ_API_KEY` disables STT/TTS with 503s and `false` health flags; missing
-`API_KEY` disables backend→AI auth with a warning (dev only).
+## Platform standardization status
 
-## Decisions needed (blocking standardization)
+Done (2026-10-09):
 
-Decided 2026-10-09 by owner:
+| Item | State |
+|---|---|
+| `platform.yaml` + `frontend/platform.yaml` | Added |
+| `Makefile` + `scripts/{setup,dev,test,lint,build,migrate,health}` | Added, all verified |
+| `backend/Dockerfile` | Rewritten: multi-stage, non-root, typechecks in build |
+| `backend/.dockerignore` | Added |
+| `.env.example` | Rewritten to the canonical platform shape |
+| `deploy-backend.yml` | Added (GHCR SHA → Trivy → Infisical OIDC → Dokploy → health gate) |
+| `deploy-frontend.yml` | Added (Pages, `dist/`, localhost guard) |
+| `ci.yml` | Updated: runs migrations against a real Postgres |
+| MongoDB removal | Complete |
+
+**Not verified:** the backend Docker image was never built — Docker is
+unavailable in this environment. CI is the first real build.
+
+## What still needs the owner
+
+1. **Dokploy backend application** pointing at
+   `ghcr.io/shrijit37/Rehearse.io:<sha>`, port 9000, with
+   `api.rehearseio.triptribe.info` attached in the Domains tab. This is the
+   step that actually fixes the live 404.
+2. **`rehearse_io_prod` database + user** on the shared Postgres.
+3. **Infisical `REHEARSE_*` secrets** in the `platform` project: `JWT_SECRET`,
+   `ENCRYPTION_KEY`, `AI_SERVICE_API_KEY`, `GROQ_API_KEY`,
+   `DATABASE_URL`, `DATABASE_URL_EXTERNAL`.
+4. **GitHub repo/org vars**: `INFISICAL_IDENTITY_ID`, `INFISICAL_DOMAIN`,
+   `INFISICAL_PROJECT_SLUG`, `DOKPLOY_URL`, `DOKPLOY_APPLICATION_ID`,
+   `APP_URL`, `INFISICAL_SECRET_PREFIX=REHEARSE`,
+   `PAGES_PROJECT`, `VITE_API_URL`, plus `CLOUDFLARE_API_TOKEN` /
+   `CLOUDFLARE_ACCOUNT_ID` secrets.
+5. **Rotate `GROQ_API_KEY`** — the key supplied this session is
+   compromised-once (it is in this chat transcript).
+
+## What works locally (verified 2026-10-09)
+
+- `make setup`, `make lint`, `make build` all pass.
+- `make migrate` applies migrations to a real Postgres 16.15 and is
+  idempotent.
+- `make test` with `SMOKE_BASE_URL` set: **48 passed, 0 failed**.
+- The AI service was **not** run this session (no `GROQ_API_KEY` in env, and
+  its deps are not installed locally). It degrades honestly: missing
+  `GROQ_API_KEY` disables STT/TTS with 503s and `false` health flags; missing
+  `API_KEY` disables backend→AI auth with a warning (dev only).
+- `docker compose config` validates, but **no container was built or run** —
+  Docker is unavailable in this environment.
+
+## Decisions (all resolved 2026-10-09)
 
 1. Data layer: **migrate Mongo → shared Postgres now** (platform standard).
-   6 models + services + invite-token logic. Prod data: start empty.
+   Prod data: start empty. **Done** in `5f67c82`.
 2. Frontend target: **Cloudflare Pages** (platform standard for static).
+   Pipeline written; needs CF credentials to run.
 3. Sequence: originally "fix live routing first, then standardize".
-   **Superseded 2026-10-09** once the root cause proved to be a missing
-   Traefik router on a stack that gets replaced anyway: owner chose to
-   **fold routing into a single cutover** (build → deploy once → attach
-   domain). Prod is already fully non-functional, so there is no working
-   site to preserve.
+   **Superseded** once the root cause proved to be a missing Traefik router
+   on a stack being replaced anyway: owner chose to **fold routing into a
+   single cutover**. Prod was already fully non-functional, so there was no
+   working site to preserve.
 4. Prod data: **start empty, ignore old volume** (never inspected).
-5. `GROQ_API_KEY` for prod: owner supplied a key this session. It is
-   **compromised-once** (appeared in chat logs) and must be rotated in the
-   Groq console. Never commit it; it belongs in Infisical.
-6. PM2/Netlify remnants: remove after cutover (implied by 2+3).
-7. IDs: switch Mongo ObjectIds → **UUIDs**. Frontend only consumes the
-   `_id` string key and Mongoose `populate()` shapes, so both are
-   reproduced in the Postgres layer rather than breaking the UI.
+5. `GROQ_API_KEY`: owner supplied a key, but it is **compromised-once** (it is
+   in this chat transcript). Rotate it; store the replacement only in
+   Infisical.
+6. PM2/Netlify remnants: remove after cutover. PM2 config and dead deploy
+   stub already **deleted**.
+7. IDs: Mongo ObjectIds → **UUIDs**. The frontend consumes only the `_id`
+   string key and Mongoose `populate()` shapes, so both are reproduced in
+   the Postgres layer. **Done**.
+
+No decisions are currently blocking the code work. The remaining blockers are
+all owner-side infrastructure actions, listed under **What still needs the
+owner** above.

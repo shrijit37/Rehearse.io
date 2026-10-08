@@ -90,12 +90,18 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # The deploy server is linux/arm64 (OCI Ampere). An amd64-only image is
+      # rejected by Swarm with "no matching manifest for linux/arm64/v8", so
+      # the task loop-fails and Traefik serves 502. Build both platforms.
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
       - uses: docker/setup-buildx-action@v3
-      - name: Build and push (amd64, SHA tag)
+      - name: Build and push (amd64+arm64, SHA tag)
         uses: docker/build-push-action@v6
         with:
           context: ./backend
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ env.IMAGE }}:${{ github.sha }}
           cache-from: type=gha,scope=backend

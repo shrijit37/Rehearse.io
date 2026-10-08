@@ -32,7 +32,10 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE: ghcr.io/${{ github.repository }}
+  # GHCR requires lowercase repository names; `github.repository` preserves the
+  # repo's capitalization, and Rehearse.io has capitals. Docker rejects the tag
+  # with "repository name must be lowercase".
+  IMAGE: ghcr.io/shrijit37/rehearse.io
 
 jobs:
   test:

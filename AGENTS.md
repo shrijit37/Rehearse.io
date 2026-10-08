@@ -1,7 +1,9 @@
 # Rehearse.io - Agent Instructions
 
 > Honest repo state lives in [STATE.md](./STATE.md). Read it first.
-> Production is broken; do not assume the live URLs work.
+> Production is live (API `/ready` returns `database: up`, frontend on
+> Cloudflare Pages); verify live URLs before trusting them, and note
+> `GROQ_API_KEY` is not yet in prod.
 
 ## Project structure
 

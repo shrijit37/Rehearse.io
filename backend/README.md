@@ -3,8 +3,9 @@
 Bun runtime + Express 5 + TypeScript API for Rehearse.io. **PostgreSQL via
 Drizzle ORM**, JWT auth, RBAC, rate limiting, helmet.
 
-> Honest repo state: [STATE.md](../STATE.md). Production is broken; the live
-> API domain has no Traefik router and the live frontend calls localhost.
+> Honest repo state: [STATE.md](../STATE.md). Production is live: the API
+> domain serves `/health` and `/ready` (`database: up`) and the frontend is
+> on Cloudflare Pages.
 
 ## Install and run
 

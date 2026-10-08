@@ -10,11 +10,12 @@ Monorepo with three services:
 - **ai-service**: FastAPI (Python) — scenario generation, STT, TTS, DSA
   problem generation and code evaluation, port 8000
 
-> Honest status lives in [STATE.md](./STATE.md). **Production is broken**: the
-> live frontend bundle calls `localhost:9000` and `api.rehearseio.triptribe.info`
-> has no Traefik router, so every API route 404s. Read STATE.md before
-> trusting any other doc. (Also: `rehearse.io` itself is a parked GoDaddy
-> domain for sale, not this project's.)
+> Honest status lives in [STATE.md](./STATE.md). **Production is live**: the
+> API answers `/health` and `/ready` at `api.rehearseio.triptribe.info`, and
+> the frontend is served by Cloudflare Pages at
+> `https://rehearse.io.shrijit.tech/`. Read STATE.md before trusting any
+> other doc. (Also: `rehearse.io` itself is a parked GoDaddy domain for
+> sale, not this project's.)
 
 ## Features
 

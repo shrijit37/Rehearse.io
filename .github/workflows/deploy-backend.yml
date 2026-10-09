@@ -162,7 +162,9 @@ jobs:
           APPLICATION_ID: ${{ vars.DOKPLOY_APPLICATION_ID }}
           IMAGE_REF: ${{ env.IMAGE }}
           SHA: ${{ github.sha }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Long-lived pull token (repo secret). Ephemeral GITHUB_TOKEN
+          # expires and poisons later pulls (outage 2026-10-09).
+          GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
         run: |
           set -euo pipefail
           # This Dokploy version serves its API under /api/<router>.<procedure>

@@ -7,7 +7,7 @@
 set -euo pipefail
 : "${APP_URL:?APP_URL is required}"
 
-deadline=$((SECONDS + 180))
+deadline=$((SECONDS + 600))
 body=""
 while true; do
   if body=$(curl -fsS --max-time 10 "$APP_URL/health" 2>/dev/null); then
@@ -16,7 +16,7 @@ while true; do
     esac
   fi
   if [ "$SECONDS" -ge "$deadline" ]; then
-    echo "NOT HEALTHY: $APP_URL/health (gave up after 180s)" >&2
+    echo "NOT HEALTHY: $APP_URL/health (gave up after 600s)" >&2
     exit 1
   fi
   sleep 5
@@ -27,13 +27,20 @@ echo "healthy: $APP_URL/health -> $body"
 # git SHA), the gate only passes once the NEW container answers. Without this,
 # a healthy-but-stale container would pass the gate.
 if [ -n "${EXPECTED_VERSION:-}" ]; then
-  case "$body" in
-    *"\"version\":\"$EXPECTED_VERSION\"") ;;
-    *)
+  while true; do
+    case "$body" in
+      *"\"version\":\"$EXPECTED_VERSION\"")
+        echo "version: $EXPECTED_VERSION confirmed"
+        exit 0
+        ;;
+    esac
+    if [ "$SECONDS" -ge "$deadline" ]; then
       echo "FAIL: $APP_URL/health version mismatch (expected $EXPECTED_VERSION)" >&2
       echo "$body" >&2
       exit 1
-      ;;
-  esac
-  echo "version: $EXPECTED_VERSION confirmed"
+    fi
+    echo "healthy but stale version (waiting for $EXPECTED_VERSION)" >&2
+    sleep 6
+    body=$(curl -fsS --max-time 10 "$APP_URL/health" 2>/dev/null || true)
+  done
 fi

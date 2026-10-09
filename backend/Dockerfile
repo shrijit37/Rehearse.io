@@ -1,11 +1,17 @@
 # Rehearse.io API. Multi-stage Bun build, non-root runtime.
 # Adapted from templates/Dockerfile.node per the platform Docker standard.
+# Shared build arg: the CI bakes the git SHA into the runtime image so
+# GET /health can report it as `version` and the deploy gate can tell a
+# new container from a stale one.
+ARG APP_VERSION=unknown
+
 FROM oven/bun:1-alpine AS deps
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
 FROM deps AS build
+ARG APP_VERSION
 WORKDIR /app
 COPY tsconfig.json drizzle.config.ts ./
 COPY src ./src
@@ -13,8 +19,10 @@ COPY src ./src
 RUN bunx tsc --noEmit
 
 FROM oven/bun:1-alpine AS runtime
+ARG APP_VERSION
 WORKDIR /app
 ENV NODE_ENV=production
+ENV APP_VERSION=${APP_VERSION}
 
 # Migrations ship with the image so Dokploy can run them at release.
 COPY package.json bun.lock drizzle.config.ts tsconfig.json ./

@@ -97,21 +97,17 @@ app.use("/api/org", organizationRoutes);
 app.use("/api/interviews", interviewRoutes);
 app.use("/api/tts", ttsRoutes);
 
-// Liveness: the process is up. Intentionally does not touch the database.
-app.get("/health", (_req: Request, res: Response) => {
-    res.json({
-        status: "ok",
-        timestamp: new Date().toISOString(),
-    });
-});
-
-// Readiness: Postgres is reachable. Dokploy/CI gate promotion on this.
-app.get("/ready", async (_req: Request, res: Response) => {
-    const ok = await checkDb();
-    res.status(ok ? 200 : 503).json({
-        status: ok ? "ready" : "not_ready",
-        database: ok ? "up" : "down",
-        timestamp: new Date().toISOString(),
+// Uniform fleet health contract (standards/platform.md#health): exactly
+// GET /health -> { status, service, version, checks }. Postgres is the
+// critical dependency: down means 503. No /ready alias.
+app.get("/health", async (_req: Request, res: Response) => {
+    const database = (await checkDb()) ? "up" : "down";
+    const status = database === "up" ? "ok" : "down";
+    res.status(status === "down" ? 503 : 200).json({
+        status,
+        service: "rehearse-api",
+        version: process.env.APP_VERSION || "unknown",
+        checks: { database },
     });
 });
 

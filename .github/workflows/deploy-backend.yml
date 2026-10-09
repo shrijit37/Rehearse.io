@@ -55,7 +55,7 @@ jobs:
           ./scripts/migrate
           (cd backend && AUTH_RATE_MAX=100000 RATE_MAX=100000 bun src/server.ts) &
           for i in $(seq 1 30); do
-            curl -fsS "$SMOKE_BASE_URL/ready" >/dev/null && break
+            curl -fsS "$SMOKE_BASE_URL/health" >/dev/null && break
             sleep 1
           done
           ./scripts/test
@@ -104,6 +104,10 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ env.IMAGE }}:${{ github.sha }}
+          # APP_VERSION is baked into the image so GET /health reports the git
+          # SHA as `version`, letting the gate tell new from stale containers.
+          build-args: |
+            APP_VERSION=${{ github.sha }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
 
@@ -182,4 +186,5 @@ jobs:
       - name: Health check
         env:
           APP_URL: ${{ vars.APP_URL }}
+          EXPECTED_VERSION: ${{ github.sha }}
         run: ./scripts/health

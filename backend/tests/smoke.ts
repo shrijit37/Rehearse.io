@@ -66,8 +66,11 @@ async function main(): Promise<void> {
     const health = await api("GET", "/health");
     check("GET /health returns ok", health.status === 200 && health.json?.status === "ok", health.json);
 
-    const ready = await api("GET", "/ready");
-    check("GET /ready reports database up", ready.status === 200 && ready.json?.database === "up", ready.json);
+    check(
+        "GET /health reports database up",
+        health.status === 200 && health.json?.checks?.database === "up",
+        health.json,
+    );
 
     console.log("\nauth");
     const signup = await api("POST", "/api/auth/signup", {

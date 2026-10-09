@@ -1,25 +1,39 @@
 #!/usr/bin/env bash
-# Health gate. Checks liveness, then readiness (real DB check).
-#
-# Retries for up to 120s: this runs seconds after a Dokploy redeploy, while
-# swarm is still pulling the image and starting the container. A single probe
-# reads Traefik's 502 and fails a deploy that is actually converging.
+# Uniform fleet health gate: exactly GET /health -> {status,service,version,checks}
+# (standards/platform.md#health). Retries for up to 180s: this runs seconds
+# after a Dokploy redeploy, while swarm is still pulling the image and starting
+# the container. A single probe reads Traefik's 502 and fails a deploy that is
+# actually converging. Down (503) keeps retrying; only ok passes.
 set -euo pipefail
 : "${APP_URL:?APP_URL is required}"
 
-deadline=$((SECONDS + 120))
-until curl -fsS "$APP_URL/health" >/dev/null 2>&1; do
+deadline=$((SECONDS + 180))
+body=""
+while true; do
+  if body=$(curl -fsS --max-time 10 "$APP_URL/health" 2>/dev/null); then
+    case "$body" in
+      *'"status":"ok"'*) break ;;
+    esac
+  fi
   if [ "$SECONDS" -ge "$deadline" ]; then
-    echo "NOT HEALTHY: $APP_URL/health (gave up after 120s)" >&2
+    echo "NOT HEALTHY: $APP_URL/health (gave up after 180s)" >&2
     exit 1
   fi
   sleep 5
 done
-echo "healthy: $APP_URL/health"
+echo "healthy: $APP_URL/health -> $body"
 
-if curl -fsS "$APP_URL/ready" >/dev/null; then
-  echo "ready: $APP_URL/ready"
-else
-  echo "NOT READY: $APP_URL/ready" >&2
-  exit 1
+# Optional deploy-gate pin: when EXPECTED_VERSION is set (CI passes the image's
+# git SHA), the gate only passes once the NEW container answers. Without this,
+# a healthy-but-stale container would pass the gate.
+if [ -n "${EXPECTED_VERSION:-}" ]; then
+  case "$body" in
+    *"\"version\":\"$EXPECTED_VERSION\"") ;;
+    *)
+      echo "FAIL: $APP_URL/health version mismatch (expected $EXPECTED_VERSION)" >&2
+      echo "$body" >&2
+      exit 1
+      ;;
+  esac
+  echo "version: $EXPECTED_VERSION confirmed"
 fi

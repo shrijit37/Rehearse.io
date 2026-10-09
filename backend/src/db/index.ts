@@ -5,7 +5,7 @@ import * as schema from "./schema";
 
 /**
  * Single shared pool. Drizzle owns the connection lifecycle; `pool` is exported
- * so `/ready` can prove reachability and so shutdown can drain cleanly.
+ * so GET /health can prove reachability and so shutdown can drain cleanly.
  */
 export const pool = new Pool({
     connectionString: env.DATABASE_URL,
@@ -28,7 +28,7 @@ export async function closeDb(): Promise<void> {
     await pool.end();
 }
 
-/** Cheap liveness probe used by GET /ready. */
+/** Cheap dependency probe used by GET /health. */
 export async function checkDb(): Promise<boolean> {
     try {
         await pool.query("SELECT 1");

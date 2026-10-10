@@ -5,7 +5,7 @@
 # new container from a stale one.
 ARG APP_VERSION=unknown
 
-FROM oven/bun:1-alpine AS deps
+FROM oven/bun:1.4.3-alpine AS deps
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
@@ -18,7 +18,7 @@ COPY src ./src
 # Typecheck in the build so a broken image never reaches the registry.
 RUN bunx tsc --noEmit
 
-FROM oven/bun:1-alpine AS runtime
+FROM oven/bun:1.4.3-alpine AS runtime
 ARG APP_VERSION
 WORKDIR /app
 ENV NODE_ENV=production

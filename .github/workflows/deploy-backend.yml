@@ -82,8 +82,10 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rehearse_io_test
           AUTH_URL: https://auth.shrijit.tech
-          SMOKE_EMAIL: ${{ secrets.REHEARSE_SMOKE_EMAIL }}
-          SMOKE_PASSWORD: ${{ secrets.REHEARSE_SMOKE_PASSWORD }}
+          # The action writes to GITHUB_ENV, so read through the env context;
+          # `secrets.*` stays empty for values that action injected.
+          SMOKE_EMAIL: ${{ env.REHEARSE_SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ env.REHEARSE_SMOKE_PASSWORD }}
           SMOKE_BASE_URL: http://127.0.0.1:9000
         run: |
           docker run -d --name pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=rehearse_io_test -p 5432:5432 postgres:18-alpine

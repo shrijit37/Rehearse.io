@@ -29,7 +29,7 @@ echo "healthy: $APP_URL/health -> $body"
 if [ -n "${EXPECTED_VERSION:-}" ]; then
   while true; do
     case "$body" in
-      *"\"version\":\"$EXPECTED_VERSION\"")
+      *"\"version\":\"$EXPECTED_VERSION\""*)
         echo "version: $EXPECTED_VERSION confirmed"
         exit 0
         ;;

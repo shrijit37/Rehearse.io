@@ -201,7 +201,11 @@ jobs:
         # error left the prod database with zero tables for a whole deploy.
         env:
           DATABASE_URL: ${{ env.REHEARSE_DATABASE_URL_EXTERNAL }}
-        run: ./scripts/migrate
+        run: |
+          # drizzle.config.ts imports drizzle-kit at runtime and bunx resolves it
+          # from backend/node_modules, so install before migrating.
+          (cd backend && bun install --frozen-lockfile)
+          ./scripts/migrate
       - name: Point Dokploy at SHA image and redeploy
         env:
           DOKPLOY_URL: ${{ vars.DOKPLOY_URL }}

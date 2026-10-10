@@ -45,6 +45,10 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # OIDC for the Infisical secrets-action that fetches the smoke account.
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -53,6 +57,9 @@ jobs:
       # The smoke test authenticates against the shared auth service, so it
       # needs a verified account to sign in with. Same OIDC identity the
       # deploy job uses, scoped to the REHEARSE_SMOKE_* secrets.
+      # The action has no `secret-prefix`/`export-secrets` inputs (only
+      # `secret-name`), so fetch each key by its full name; the action exports
+      # it under that name and the Test step maps it to the shorter env var.
       - name: Fetch shared-auth smoke credentials from Infisical (OIDC)
         uses: infisical/secrets-action@v1.0.18
         with:
@@ -61,10 +68,16 @@ jobs:
           domain: ${{ vars.INFISICAL_DOMAIN }}
           project-slug: ${{ vars.INFISICAL_PROJECT_SLUG }}
           env-slug: prod
-          secret-prefix: REHEARSE_SMOKE
-          # export-secrets puts REHEARSE_SMOKE_* in the job env; smoke.ts reads
-          # the shorter names, so map them explicitly.
-          export-secrets: true
+          secret-name: REHEARSE_SMOKE_EMAIL
+      - name: Fetch shared-auth smoke password from Infisical (OIDC)
+        uses: infisical/secrets-action@v1.0.18
+        with:
+          method: oidc
+          identity-id: ${{ vars.INFISICAL_IDENTITY_ID }}
+          domain: ${{ vars.INFISICAL_DOMAIN }}
+          project-slug: ${{ vars.INFISICAL_PROJECT_SLUG }}
+          env-slug: prod
+          secret-name: REHEARSE_SMOKE_PASSWORD
       - name: Test
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rehearse_io_test

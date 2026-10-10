@@ -17,11 +17,16 @@ on:
     branches: [main]
     paths:
       - "backend/**"
+      # The Test job runs ./scripts/setup, which installs frontend deps too.
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
       - "scripts/**"
       - ".github/workflows/deploy-backend.yml"
   pull_request:
     paths:
       - "backend/**"
+      - "frontend/package.json"
+      - "frontend/package-lock.json"
       - "scripts/**"
       - ".github/workflows/deploy-backend.yml"
   workflow_dispatch:

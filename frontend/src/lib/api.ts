@@ -9,9 +9,10 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { tokenOverride, body, headers: customHeaders, raw, ...rest } = options;
-  const token = tokenOverride || localStorage.getItem("token");
+  // Session auth rides on the shared auth cookie (.shrijit.tech) — there is no
+  // local token any more. tokenOverride stays for the interview invite Bearer.
   const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (tokenOverride) headers["Authorization"] = `Bearer ${tokenOverride}`;
   if (body && !(body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
   }
@@ -22,6 +23,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const res = await fetch(`${BASE_URL}${path}`, {
     ...rest,
     headers,
+    credentials: "include",
     body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
   });
 
@@ -30,7 +32,6 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     if (res.status === 401 && !tokenOverride) {
-      localStorage.removeItem("token");
       localStorage.removeItem("user");
       // Don't redirect if already on signup or login pages
       if (!window.location.pathname.startsWith("/signup") && !window.location.pathname.startsWith("/login")) {

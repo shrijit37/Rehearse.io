@@ -128,7 +128,7 @@ postgres    shared instance, one DB per env (rehearse_io_prod / _dev)
 
 | Feature | State | Notes |
 |---|---|---|
-| Signup / login (JWT, 1d expiry) | Implemented | `POST /api/auth/signup`, `/login`. Placeholder-claim flow for invited emails works in code. |
+| Signup / login | Implemented, delegated | Shared auth service at `auth.shrijit.tech` (Google + email, cookie on `.shrijit.tech`). Backend: `GET /api/auth/session`, `POST /api/auth/claim`; users carry `auth_id`. Recruiter invite tokens remain JWT (`JWT_SECRET`). |
 | RBAC (`recruiter` / `candidate`) | Implemented | `authenticateToken` → `authorize(...)` middleware chain. |
 | Candidate onboarding (resume/photo/audio) | Implemented | Files stored as base64 **in Postgres**, optionally encrypted with `ENCRYPTION_KEY`. Requires valid PDF resume. |
 | Consent + GDPR (export / delete / consent version) | Implemented | `consentGiven/consentDate/consentVersion`, `POST /api/users/export-data`, `DELETE /api/users/delete-account` (soft delete). |

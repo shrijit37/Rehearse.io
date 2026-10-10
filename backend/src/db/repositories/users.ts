@@ -8,6 +8,7 @@ export const USER_PUBLIC_COLUMNS = {
     id: users.id,
     name: users.name,
     email: users.email,
+    authId: users.authId,
     role: users.role,
     organizationId: users.organizationId,
     resumeName: users.resumeName,
@@ -37,19 +38,14 @@ export async function findUserByEmail(email: string) {
     return rows[0] ? withId(rows[0]) : null;
 }
 
-/** Includes the password hash. Only the login and account-deletion paths. */
-export async function findUserWithPasswordByEmail(email: string) {
-    const rows = await db.select().from(users).where(eq(users.email, email)).limit(1);
-    return rows[0] ?? null;
+/** Looks a visitor up by the account id minted by the shared auth service. */
+export async function findUserByAuthId(authId: string) {
+    const rows = await db.select(USER_PUBLIC_COLUMNS).from(users).where(eq(users.authId, authId)).limit(1);
+    return rows[0] ? withId(rows[0]) : null;
 }
 
 export async function setUserOrganization(userId: string, organizationId: string) {
     await db.update(users).set({ organizationId, updatedAt: new Date() }).where(eq(users.id, userId));
-}
-
-export async function findUserWithPasswordById(id: string) {
-    const rows = await db.select().from(users).where(eq(users.id, id)).limit(1);
-    return rows[0] ?? null;
 }
 
 /** Batch lookup used to populate member/creator references. */
@@ -75,7 +71,8 @@ function sanitizeName(name: string): string {
 export interface CreateUserInput {
     name: string;
     email: string;
-    password: string;
+    authId?: string;
+    password?: string | null;
     role?: "recruiter" | "candidate";
     isInvitedPlaceholder?: boolean;
     consentGiven?: boolean;
@@ -89,7 +86,8 @@ export async function createUser(input: CreateUserInput) {
         .values({
             name: sanitizeName(input.name),
             email: input.email,
-            password: input.password,
+            password: input.password ?? null,
+            authId: input.authId ?? null,
             role: input.role ?? "candidate",
             isInvitedPlaceholder: input.isInvitedPlaceholder ?? false,
             consentGiven: input.consentGiven ?? false,
@@ -103,7 +101,8 @@ export async function createUser(input: CreateUserInput) {
 export type UserPatch = Partial<{
     name: string;
     email: string;
-    password: string;
+    authId: string | null;
+    password: string | null;
     role: "recruiter" | "candidate";
     isInvitedPlaceholder: boolean;
     consentGiven: boolean;

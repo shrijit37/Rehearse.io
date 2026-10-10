@@ -50,9 +50,27 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.4.3"
+      # The smoke test authenticates against the shared auth service, so it
+      # needs a verified account to sign in with. Same OIDC identity the
+      # deploy job uses, scoped to the REHEARSE_SMOKE_* secrets.
+      - name: Fetch shared-auth smoke credentials from Infisical (OIDC)
+        uses: infisical/secrets-action@v1.0.18
+        with:
+          method: oidc
+          identity-id: ${{ vars.INFISICAL_IDENTITY_ID }}
+          domain: ${{ vars.INFISICAL_DOMAIN }}
+          project-slug: ${{ vars.INFISICAL_PROJECT_SLUG }}
+          env-slug: prod
+          secret-prefix: REHEARSE_SMOKE
+          # export-secrets puts REHEARSE_SMOKE_* in the job env; smoke.ts reads
+          # the shorter names, so map them explicitly.
+          export-secrets: true
       - name: Test
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rehearse_io_test
+          AUTH_URL: https://auth.shrijit.tech
+          SMOKE_EMAIL: ${{ secrets.REHEARSE_SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.REHEARSE_SMOKE_PASSWORD }}
           SMOKE_BASE_URL: http://127.0.0.1:9000
         run: |
           docker run -d --name pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=rehearse_io_test -p 5432:5432 postgres:18-alpine

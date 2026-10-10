@@ -1,53 +1,56 @@
 import type { Request, Response } from "express";
 import zod from "zod";
-import { addUser, loginUser } from "./auth.service";
-import { SignUpSchema, LoginSchema } from "./auth.validation";
-import type { ISignUpSchema, ILoginSchema } from "./auth.validation";
+import { claimProfile, toPublicUser } from "./auth.service";
+import { ClaimSchema } from "./auth.validation";
+import type { IClaimSchema } from "./auth.validation";
+import { findUserById } from "../../db/repositories/users";
 import { logAudit } from "../../middleware/auditLog";
 
-//validate the request body and call service and return response
+interface AuthenticatedRequest extends Request {
+    user?: { _id: string; role: string };
+}
 
-export const signup = async (req: Request, res: Response): Promise<void> => {
-    const result = zod.safeParse(SignUpSchema, req.body);
-    if (!result.success) {
-        res.status(400).json({
-            message: "Invalid input"
-        });
+/** Current app-side profile for an already authenticated visitor. */
+export const session = async (req: Request, res: Response): Promise<void> => {
+    const userId = (req as AuthenticatedRequest).user?._id;
+    if (!userId) {
+        res.status(401).json({ success: false, message: "Unauthorized" });
         return;
     }
-    const response = await addUser(result.data as ISignUpSchema);
-    if (response.status === 201 && response.data.user) {
-        const userId = typeof response.data.user._id === "string" ? response.data.user._id : undefined;
-        const userObjectId = response.data.user._id as string | undefined; // safe string check
-        const role = typeof response.data.user.role === "string" ? response.data.user.role : "candidate";
+
+    const user = await findUserById(userId);
+    if (!user || user.isDeleted) {
+        res.status(401).json({ success: false, message: "Unauthorized" });
+        return;
+    }
+
+    res.status(200).json({ user: toPublicUser(user) });
+};
+
+/** Records role + consent for a visitor who just signed in on the shared service. */
+export const claim = async (req: Request, res: Response): Promise<void> => {
+    const userId = (req as AuthenticatedRequest).user?._id;
+    if (!userId) {
+        res.status(401).json({ success: false, message: "Unauthorized" });
+        return;
+    }
+
+    const result = zod.safeParse(ClaimSchema, req.body ?? {});
+    if (!result.success) {
+        res.status(400).json({ message: "Invalid input" });
+        return;
+    }
+
+    try {
+        const user = await claimProfile(userId, result.data as IClaimSchema);
         await logAudit({
-            userId: userObjectId,
+            userId,
             action: "signup",
-            details: `User signed up as ${role}`,
+            details: `User signed up as ${user.role}`,
             req,
         });
+        res.status(200).json({ message: "Profile saved", user: toPublicUser(user) });
+    } catch (error: unknown) {
+        res.status(500).json({ message: error instanceof Error ? error.message : "Internal server error" });
     }
-    res.setHeader("Authorization", `Bearer ${response.data.token}`).status(response.status).json(response.data);
 };
-
-export const login = async (req: Request, res: Response): Promise<void> => {
-    const result = zod.safeParse(LoginSchema, req.body);
-    if (!result.success) {
-        res.status(400).json({
-            message: "Invalid input"
-        });
-        return;
-    }
-    const response = await loginUser(result.data as ILoginSchema);
-    if (response.status === 200 && response.data.user) {
-        const userObjectId = response.data.user._id as string | undefined;
-        await logAudit({
-            userId: userObjectId,
-            action: "login",
-            details: "User logged in",
-            req,
-        });
-    }
-    res.setHeader("Authorization", `Bearer ${response.data.token}`).status(response.status).json(response.data);
-};
-

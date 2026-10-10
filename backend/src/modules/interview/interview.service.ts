@@ -1,6 +1,5 @@
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
-import bcrypt from "bcryptjs";
 import { env } from "../../config/env";
 import { findOrganizationRowById, findMembership } from "../../db/repositories/organizations";
 import { createUser, findUserByEmail, findUsersByIds } from "../../db/repositories/users";
@@ -223,11 +222,9 @@ export const generateInvite = async (userId: string, id: string, input: Generate
         let candidate = await findUserByEmail(normalizedEmail);
 
         if (!candidate) {
-            const randomPassword = crypto.randomBytes(32).toString("hex");
             candidate = await createUser({
                 name: normalizedEmail.split("@")[0] ?? normalizedEmail,
                 email: normalizedEmail,
-                password: await bcrypt.hash(randomPassword, 12),
                 role: "candidate",
                 isInvitedPlaceholder: true,
             });

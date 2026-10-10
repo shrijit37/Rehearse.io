@@ -1,4 +1,4 @@
-import React, { useState, type ChangeEvent, type FormEvent } from "react";
+import React, { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,12 @@ import {
 	Users,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import {
+	getSession,
+	signInWithEmail,
+	signInWithProviderRedirect,
+	signUpWithEmail,
+} from "@/lib/auth-client";
 
 interface AuthUser {
 	id: string;
@@ -33,6 +39,19 @@ interface FormData {
 	role: "recruiter" | "candidate";
 	consentGiven: boolean;
 }
+
+/** Better Auth answers with terse strings; show something a human can act on. */
+const friendlyError = (message: string): string => {
+	if (/not verified/i.test(message))
+		return "Verify your email first — open the link we just sent you.";
+	if (/invalid email or password/i.test(message))
+		return "That email and password do not match.";
+	if (/already exists/i.test(message))
+		return "An account already exists for that email. Try signing in.";
+	if (/password/i.test(message) && /(short|at least|weak)/i.test(message))
+		return "Password must be at least 8 characters.";
+	return message;
+};
 
 const SignUp: React.FC = () => {
 	const navigate = useNavigate();
@@ -57,6 +76,33 @@ const SignUp: React.FC = () => {
 		const { name, value } = e.target;
 		setFormData((prev) => ({ ...prev, [name]: value }));
 	};
+
+	/** Cache the profile the backend derives from the shared session. */
+	const finishSignIn = async (
+		claim: Partial<Pick<FormData, "role" | "consentGiven">> = {},
+	): Promise<void> => {
+		const { user } = await api.post<{ user: AuthUser }>("/api/auth/claim", {
+			...claim,
+			consentVersion: "1.0",
+		});
+		localStorage.setItem("user", JSON.stringify(user));
+		window.dispatchEvent(new Event("storage"));
+		navigate(
+			user.role === "recruiter"
+				? "/recruiter"
+				: user.onboarded
+					? "/dashboard"
+					: "/onboarding",
+		);
+	};
+
+	// Already signed in at auth.shrijit.tech? Skip the form.
+	useEffect(() => {
+		getSession()
+			.then((session) => (session ? finishSignIn() : null))
+			.catch(() => {});
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
 
 	const handleSubmit = async (e: FormEvent): Promise<void> => {
 		e.preventDefault();
@@ -83,57 +129,38 @@ const SignUp: React.FC = () => {
 				return;
 			}
 
-			const endpoint = isLogin ? "/api/auth/login" : "/api/auth/signup";
-			const payload = isLogin
-				? { email: formData.email, password: formData.password }
-				: {
-						name: `${formData.firstName} ${formData.lastName}`,
-						email: formData.email,
-						password: formData.password,
-						role: formData.role,
-						consentGiven: formData.consentGiven,
-						consentVersion: "1.0",
-					};
+			if (isLogin) {
+				await signInWithEmail(formData.email, formData.password);
+				await finishSignIn();
+				return;
+			}
 
-			const data = await api.post<{ token: string; user: AuthUser }>(
-				endpoint,
-				payload,
+			await signUpWithEmail(
+				formData.email,
+				formData.password,
+				`${formData.firstName} ${formData.lastName}`.trim(),
 			);
-
-			localStorage.setItem("token", data.token);
-			localStorage.setItem("user", JSON.stringify(data.user));
-			setSuccess(
-				isLogin ? "Signed in successfully." : "Account created successfully.",
-			);
-			window.dispatchEvent(new Event("storage"));
-
-			setTimeout(() => {
-				if (!isLogin) {
-					// New signup: redirect based on role
-					if (data.user?.role === "recruiter") {
-						navigate("/recruiter");
-					} else {
-						navigate("/onboarding");
-					}
-				} else {
-					// Login: redirect based on role and onboarding status
-					if (data.user?.role === "recruiter") {
-						navigate("/recruiter");
-					} else {
-						// Candidate login — check if they have completed onboarding (resume present)
-						if (data.user?.onboarded) {
-							navigate("/dashboard");
-						} else {
-							navigate("/onboarding");
-						}
-					}
-				}
-			}, 600);
+			setSuccess("Account created — check your inbox to verify your email.");
 		} catch (err: unknown) {
-			setError(err instanceof Error ? err.message : "An error occurred");
+			setError(
+				err instanceof Error
+					? friendlyError(err.message)
+					: "An error occurred",
+			);
 		} finally {
 			setLoading(false);
 		}
+	};
+
+	const handleProvider = (provider: "google" | "github"): void => {
+		setError(null);
+		signInWithProviderRedirect(provider).catch((err: unknown) =>
+			setError(
+				err instanceof Error
+					? friendlyError(err.message)
+					: "Could not start sign-in",
+			),
+		);
 	};
 
 	return (
@@ -164,6 +191,42 @@ const SignUp: React.FC = () => {
 
 					{/* Form card */}
 					<div className="border border-border/80 rounded-[20px] bg-card p-6">
+						<div className="grid grid-cols-2 gap-3">
+							<Button
+								type="button"
+								variant="outline"
+								onClick={() => handleProvider("google")}
+								className="h-9 text-[13px]"
+							>
+								<svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" aria-hidden="true">
+									<path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5a5.6 5.6 0 0 1-2.4 3.7v3h3.9c2.3-2.1 3.5-5.2 3.5-8.9Z" />
+									<path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.9-3c-1.1.7-2.4 1.1-4 1.1-3.1 0-5.7-2.1-6.6-4.9H1.4v3.1A12 12 0 0 0 12 24Z" />
+									<path fill="#FBBC05" d="M5.4 14.3a7.2 7.2 0 0 1 0-4.6V6.6H1.4a12 12 0 0 0 0 10.8l4-3.1Z" />
+									<path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4A12 12 0 0 0 1.4 6.6l4 3.1C6.3 6.9 8.9 4.8 12 4.8Z" />
+								</svg>
+								Google
+							</Button>
+							<Button
+								type="button"
+								variant="outline"
+								onClick={() => handleProvider("github")}
+								className="h-9 text-[13px]"
+							>
+								<svg className="h-4 w-4 mr-2" viewBox="0 0 24 24" aria-hidden="true">
+									<path fill="currentColor" d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.8.1-.8.1-.8 1.2.1 1.9 1.2 1.9 1.2 1.1 1.9 2.9 1.3 3.6 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.3 4.9 18.3 5.2 18.3 5.2c.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .5Z" />
+								</svg>
+								GitHub
+							</Button>
+						</div>
+
+						<div className="flex items-center gap-3 py-1">
+							<span className="h-px flex-1 bg-border" />
+							<span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+								or use email
+							</span>
+							<span className="h-px flex-1 bg-border" />
+						</div>
+
 						<form onSubmit={handleSubmit} className="space-y-5">
 							{error && (
 								<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-[20px] border border-destructive/20 text-center animate-in fade-in slide-in-from-top-1 duration-150">

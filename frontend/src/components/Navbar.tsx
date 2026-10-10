@@ -2,6 +2,7 @@ import { Menu, X, LogOut, LayoutDashboard, Settings, Building2, Users, Code2 } f
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "./ui/button";
+import { signOut } from "../lib/auth-client";
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -14,8 +15,7 @@ const Navbar = () => {
   useEffect(() => {
     const checkAuth = () => {
       const storedUser = localStorage.getItem("user");
-      const storedToken = localStorage.getItem("token");
-      if (storedUser && storedToken) {
+      if (storedUser) {
         try { setUser(JSON.parse(storedUser)); }
         catch { setUser(null); }
       } else { setUser(null); }
@@ -37,8 +37,8 @@ const Navbar = () => {
     }
   }, [showDropdown]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
+  const handleLogout = async () => {
+    await signOut().catch(() => {});
     localStorage.removeItem("user");
     setUser(null);
     setShowDropdown(false);

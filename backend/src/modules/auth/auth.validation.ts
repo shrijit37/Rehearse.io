@@ -1,22 +1,13 @@
 import zod from "zod";
 
-export const SignUpSchema = zod.object({
-    name: zod.string().min(2).max(100),
-    email: zod.string().email(),
-    password: zod.string().min(8).max(128),
+/**
+ * Sign-in lives on the shared auth service; the app only learns what a signed-in
+ * visitor chose here: which side of the product they use and their consent.
+ */
+export const ClaimSchema = zod.object({
     role: zod.enum(["recruiter", "candidate"]).optional(),
     consentGiven: zod.boolean().optional(),
-    consentVersion: zod.string().optional(),
+    consentVersion: zod.string().max(32).optional(),
 });
 
-export type ISignUpSchema = zod.infer<typeof SignUpSchema>;
-
-export const LoginSchema = zod.object({
-    email: zod.string().email(),
-    password: zod.string().min(8).max(128),
-});
-
-export type ILoginSchema = zod.infer<typeof LoginSchema>;
-
-
-
+export type IClaimSchema = zod.infer<typeof ClaimSchema>;

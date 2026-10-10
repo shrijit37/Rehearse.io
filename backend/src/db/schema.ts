@@ -94,7 +94,10 @@ export const users = pgTable(
         id: uuid("id").primaryKey().defaultRandom(),
         name: varchar("name", { length: 100 }).notNull(),
         email: varchar("email", { length: 255 }).notNull(),
-        password: text("password").notNull(),
+        /** id of the matching account on the shared auth service. */
+        authId: text("auth_id"),
+        /** Always null now that sign-in lives on the shared auth service. */
+        password: text("password"),
         role: userRole("role").notNull().default("candidate"),
         organizationId: uuid("organization_id"),
         resumeName: text("resume_name"),
@@ -115,6 +118,7 @@ export const users = pgTable(
     },
     (table) => [
         uniqueIndex("users_email_key").on(table.email),
+        uniqueIndex("users_auth_id_key").on(table.authId),
         index("users_organization_idx").on(table.organizationId),
     ],
 );

@@ -1,7 +1,7 @@
 # backend
 
 Bun runtime + Express 5 + TypeScript API for Rehearse.io. **PostgreSQL via
-Drizzle ORM**, JWT auth, RBAC, rate limiting, helmet.
+Drizzle ORM**, shared-auth session verification, RBAC, rate limiting, helmet.
 
 > Honest repo state: [STATE.md](../STATE.md). Production is live: the API
 > domain serves `/health` and `/ready` (`database: up`) and the frontend is
@@ -35,7 +35,8 @@ Required (zod-validated, exits non-zero when missing):
 | `DATABASE_URL` | Postgres connection string |
 | `JWT_SECRET` | Signs session JWTs |
 
-Optional: `DATABASE_URL_EXTERNAL` (CI migrations), `DATABASE_POOL_MAX`
+Optional: `AUTH_URL` (default `https://auth.shrijit.tech`, where sessions are
+verified), `ALLOWED_ORIGINS` (comma-separated CORS allow-list), `DATABASE_URL_EXTERNAL` (CI migrations), `DATABASE_POOL_MAX`
 (default 10), `PORT=9000`, `APP_ENV`, `APP_URL`, `LOG_LEVEL`,
 `AI_SERVICE_URL` (default `http://localhost:8000`), `AI_SERVICE_API_KEY`
 (must match ai-service `API_KEY`), `ENCRYPTION_KEY` (PII encryption,

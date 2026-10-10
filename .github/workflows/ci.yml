@@ -40,7 +40,7 @@ jobs:
           npm run lint
           npm run build
         env:
-          VITE_API_URL: https://api.rehearseio.triptribe.info
+          VITE_API_URL: https://api.rehearse.io.shrijit.tech
 
       - name: Validate AI service
         working-directory: ai-service

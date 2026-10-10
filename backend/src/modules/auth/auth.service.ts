@@ -1,107 +1,71 @@
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-import type { ISignUpSchema, ILoginSchema } from "./auth.validation";
-import { env } from "../../config/env";
-import { createUser, findUserByEmail, findUserWithPasswordByEmail, updateUser } from "../../db/repositories/users";
+import {
+    createUser,
+    findUserByAuthId,
+    findUserByEmail,
+    updateUser,
+    type UserPatch,
+} from "../../db/repositories/users";
+import type { IClaimSchema } from "./auth.validation";
 
-const JWT_SECRET = env.JWT_SECRET;
-
-type AuthPayload = {
-    status: number;
-    data: {
-        message: string;
-        error?: string;
-        token?: string;
-        user?: Record<string, unknown>;
-    };
-};
-
-/**
- * Sanitized public user payload matching the frontend AuthUser shape:
- * { id, name, email, role, onboarded }.
- */
-function toPublicUser(user: Record<string, unknown> | null | undefined): Record<string, unknown> {
-    const id = String(user?.id ?? user?._id ?? "");
-    return {
-        id,
-        _id: id,
-        name: user?.name,
-        email: user?.email,
-        role: user?.role,
-        onboarded: user?.onboardingCompleted === true,
-    };
+/** The user object the shared auth service returns for a valid session. */
+export interface SessionUser {
+    id: string;
+    email: string;
+    name?: string | null;
 }
 
-const addUser = async (data: ISignUpSchema): Promise<AuthPayload> => {
-    try {
-        const email = data.email.toLowerCase().trim();
-        const hashedPassword = await bcrypt.hash(data.password, 12);
-        const existing = await findUserByEmail(email);
+/** A local user row as the repository returns it: public columns plus _id, no password. */
+type LocalUser = NonNullable<Awaited<ReturnType<typeof findUserByAuthId>>>;
 
-        // A claimed account cannot be re-signed-up.
-        if (existing && !existing.isDeleted && !existing.isInvitedPlaceholder) {
-            return { status: 400, data: { message: "User already exists" } };
-        }
+export const toPublicUser = (user: LocalUser) => ({
+    id: user.id,
+    _id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    onboarded: user.onboardingCompleted === true,
+});
 
-        let user: Record<string, unknown> | null;
-        if (existing && existing.isInvitedPlaceholder) {
-            // Claim the placeholder created by an invite.
-            user = await updateUser(existing.id, {
-                name: data.name,
-                password: hashedPassword,
-                role: data.role || "candidate",
-                isInvitedPlaceholder: false,
-                consentGiven: data.consentGiven === true,
-                consentDate: data.consentGiven === true ? new Date() : null,
-                consentVersion: data.consentGiven === true ? data.consentVersion || "1.0" : null,
-            });
-        } else {
-            user = await createUser({
-                name: data.name,
-                email,
-                password: hashedPassword,
-                role: data.role || "candidate",
-                consentGiven: data.consentGiven === true,
-                consentDate: data.consentGiven === true ? new Date() : null,
-                consentVersion: data.consentGiven === true ? data.consentVersion || "1.0" : null,
-            });
-        }
+/**
+ * Maps a shared-auth session onto a local user row: same account -> same row,
+ * an invited placeholder with a matching email -> claimed, otherwise created.
+ * Returns null when the row cannot be trusted (deleted, or already bound to a
+ * different auth account), which the middleware turns into a 401.
+ */
+export async function resolveSessionUser(sessionUser: SessionUser): Promise<LocalUser | null> {
+    const email = sessionUser.email.toLowerCase().trim();
+    const byAuthId = await findUserByAuthId(sessionUser.id);
+    const existing = byAuthId ?? (await findUserByEmail(email));
 
-        if (!user) {
-            return { status: 500, data: { message: "Internal server error" } };
-        }
-
-        const token = jwt.sign({ _id: user.id, role: user.role }, JWT_SECRET, { expiresIn: "1d" });
-        return {
-            status: 201,
-            data: { message: "User created successfully", token, user: toPublicUser(user) },
-        };
-    } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : "unknown error";
-        return { status: 500, data: { message: "Internal server error", error: errorMessage } };
+    if (!existing) {
+        return await createUser({
+            name: sessionUser.name?.trim() || email,
+            email,
+            authId: sessionUser.id,
+            role: "candidate",
+        });
     }
-};
 
-const loginUser = async (data: ILoginSchema): Promise<AuthPayload> => {
-    try {
-        const { email, password } = data;
-        const user = await findUserWithPasswordByEmail(email.toLowerCase().trim());
-        if (!user || user.isDeleted) {
-            return { status: 400, data: { message: "User not found" } };
-        }
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return { status: 400, data: { message: "Invalid credentials" } };
-        }
-        const token = jwt.sign({ _id: user.id, role: user.role }, JWT_SECRET, { expiresIn: "1d" });
-        return {
-            status: 200,
-            data: { message: "User logged in successfully", token, user: toPublicUser(user) },
-        };
-    } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : "unknown error";
-        return { status: 500, data: { message: "Internal server error", error: errorMessage } };
+    if (existing.isDeleted) return null;
+    if (existing.authId && existing.authId !== sessionUser.id) return null;
+
+    const patch: UserPatch = { authId: sessionUser.id, isInvitedPlaceholder: false };
+    if (sessionUser.name?.trim()) patch.name = sessionUser.name.trim();
+
+    return (await updateUser(existing._id, patch)) ?? existing;
+}
+
+/** Records the choices the sign-up form collected here: role and consent. */
+export async function claimProfile(userId: string, data: IClaimSchema): Promise<LocalUser> {
+    const patch: UserPatch = {};
+    if (data.role) patch.role = data.role;
+    if (data.consentGiven !== undefined) {
+        patch.consentGiven = data.consentGiven;
+        patch.consentDate = data.consentGiven ? new Date() : null;
+        if (data.consentVersion) patch.consentVersion = data.consentVersion;
     }
-};
 
-export { loginUser, addUser };
+    const user = await updateUser(userId, patch);
+    if (!user) throw new Error(`User ${userId} not found`);
+    return user;
+}

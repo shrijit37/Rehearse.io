@@ -186,8 +186,7 @@ export const deleteAccount = async (req: Request, res: Response): Promise<void> 
         return;
     }
 
-    const { password } = req.body;
-    const response = await deleteUserAccount(userId, password);
+    const response = await deleteUserAccount(userId);
     if (response.status === 200) {
         await logAudit({
             userId: userId,

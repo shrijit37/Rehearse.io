@@ -1,10 +1,9 @@
 import express, { type Router } from "express";
-import { signup, login } from "./auth.controller.ts";
+import { claim, session } from "./auth.controller.ts";
+import { authenticateToken } from "../../middleware/auth.middleware.ts";
 
 const router: Router = express.Router();
 
-
-router.post("/signup", signup);
-router.post("/login", login);
+router.get("/session", authenticateToken, session);
+router.post("/claim", authenticateToken, claim);
 export default router;
-

@@ -54,8 +54,7 @@ const AccountSettings: React.FC = () => {
 
 	useEffect(() => {
 		const stored = localStorage.getItem("user");
-		const token = localStorage.getItem("token");
-		if (!stored || !token) {
+		if (!stored) {
 			navigate("/signup");
 			return;
 		}

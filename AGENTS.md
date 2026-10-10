@@ -114,8 +114,11 @@ cd app && uvicorn main:app --reload --port 8000
 - PII (resume/photo/audio) is base64 **in Postgres**, encrypted when
   `ENCRYPTION_KEY` is set. S3 is not wired up at all.
 - Resume must be a valid PDF or rehearsal start fails with a 500.
-- JWTs expire in 1 day; frontend 401s wipe the session and redirect.
-- `bcrypt` (native) and `bcryptjs` are both deps; code uses `bcryptjs`.
+- Sign-in is delegated to the shared auth service (`auth.shrijit.tech`, Better
+  Auth). `users` has `auth_id` (unique) and a nullable `password`; there is no
+  local login endpoint. Frontend 401s drop the cached user and redirect.
+- `JWT_SECRET` now only signs the recruiter interview-invite token (2d), which
+  is still the candidate's only credential before they sign in.
 - `docker-compose.yml` is **local dev only** (ai-service + backend). It does
   not define Postgres.
 - Secrets live in Infisical (`REHEARSE_*`). `.env.example` documents names

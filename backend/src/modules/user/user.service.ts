@@ -1,4 +1,3 @@
-import bcrypt from "bcryptjs";
 import type { OnboardValidation, UpdateProfileValidation } from "./user.validation";
 import { encryptField } from "../../utils/encryption";
 import {
@@ -10,7 +9,6 @@ import {
 import type { GetUserDetails, GetUserValidation } from "./user.validation";
 import {
     findUserById,
-    findUserWithPasswordById,
     updateUser,
 } from "../../db/repositories/users";
 import { listRehearsalSessions, deleteRehearsalSessionsForUser } from "../../db/repositories/rehearsals";
@@ -359,22 +357,10 @@ export interface DeleteAccountResult {
     message: string;
 }
 
-export const deleteUserAccount = async (
-    userId: string,
-    password?: string,
-): Promise<DeleteAccountResult> => {
+export const deleteUserAccount = async (userId: string): Promise<DeleteAccountResult> => {
     try {
-        if (!password) {
-            return { status: 400, message: "Password is required to delete your account" };
-        }
-
-        const user = await findUserWithPasswordById(userId);
+        const user = await findUserById(userId);
         if (!user) return { status: 404, message: "User not found" };
-
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return { status: 400, message: "Incorrect password" };
-        }
 
         // Soft delete: anonymize the account, then purge dependent records.
         await updateUser(userId, {
@@ -382,7 +368,7 @@ export const deleteUserAccount = async (
             deletedAt: new Date(),
             name: "[Deleted User]",
             email: `deleted-${userId}@anonymized.local`,
-            password: "DELETED",
+            password: null,
             resume: "",
             photo: "",
             audio: "",

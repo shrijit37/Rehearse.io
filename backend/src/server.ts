@@ -18,6 +18,11 @@ import { checkDb, closeDb } from "./db";
 const port: number = env.PORT;
 const app: Express = express();
 
+// Traefik terminates TLS in front of us, so without this express-rate-limit
+// sees no client IP and every caller shares one bucket (it warns about this
+// in the logs and then 429s the whole fleet from a single user).
+app.set("trust proxy", 1);
+
 // CORS — allow the configured client URL plus any allow-listed origins
 const allowedOrigins = env.ALLOWED_ORIGINS
     ? env.ALLOWED_ORIGINS.split(",").map((s) => s.trim())

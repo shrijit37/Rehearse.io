@@ -190,13 +190,18 @@ jobs:
           project-slug: ${{ vars.INFISICAL_PROJECT_SLUG }}
           env-slug: prod
           secret-name: ${{ vars.INFISICAL_SECRET_PREFIX }}_DATABASE_URL_EXTERNAL
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.3"
       - name: Run migrations
-        # Not `set -e`: a failed migration must not abort the step. A nonzero
-        # exit here would skip the Dokploy redeploy below and leave prod on the
-        # old image, which is a confusing failure mode. Migrations are
-        # idempotent, so if they fail the next green build retries them.
-        run: |
-          ./scripts/migrate || echo "::warning::migrations failed; continuing so prod still gets the new image"
+        # scripts/migrate needs DATABASE_URL and falls back to
+        # DATABASE_URL_EXTERNAL for the actual connection, so hand it the
+        # injected external URL. This step must fail loudly: prod 404s/500s
+        # every authenticated route when its schema is missing, and a swallowed
+        # error left the prod database with zero tables for a whole deploy.
+        env:
+          DATABASE_URL: ${{ env.REHEARSE_DATABASE_URL_EXTERNAL }}
+        run: ./scripts/migrate
       - name: Point Dokploy at SHA image and redeploy
         env:
           DOKPLOY_URL: ${{ vars.DOKPLOY_URL }}

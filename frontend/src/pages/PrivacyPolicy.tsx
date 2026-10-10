@@ -32,7 +32,8 @@ const PrivacyPolicy = () => {
               <section>
                 <h2 className="text-base font-bold text-foreground mb-2">2. Data We Collect</h2>
                 <ul className="list-disc pl-5 space-y-1.5">
-                  <li><strong>Account Data:</strong> Name, email address, password (bcrypt-hashed), and role.</li>
+                  <li><strong>Account Data:</strong> Name, email address, and role. Accounts are held by our
+                  single sign-on service (auth.shrijit.tech); this application never stores your password.</li>
                   <li><strong>Profile Data (Candidates):</strong> Resume, profile photo, and voice sample submitted during onboarding.</li>
                   <li><strong>Interview Data:</strong> Responses, transcriptions, AI-generated scores and feedback, session metadata.</li>
                   <li><strong>Consent Records:</strong> Cookie and data processing consent choices with timestamps and version.</li>
@@ -83,10 +84,10 @@ const PrivacyPolicy = () => {
               <section>
                 <h2 className="text-base font-bold text-foreground mb-2">7. Data Security</h2>
                 <p>
-                  We implement industry-standard security measures including bcrypt password hashing (cost factor 12),
-                  JWT authentication with expiration, HTTP security headers (Helmet.js), rate limiting on all endpoints,
-                  CORS origin restrictions, and encrypted communications. However, no method of transmission over the
-                  Internet is 100% secure.
+                  We implement industry-standard security measures including federated sign-in with secure,
+                  HttpOnly session cookies (authentication is handled by auth.shrijit.tech), HTTP security headers
+                  (Helmet.js), rate limiting on all endpoints, CORS origin restrictions, and encrypted
+                  communications. However, no method of transmission over the Internet is 100% secure.
                 </p>
               </section>
 

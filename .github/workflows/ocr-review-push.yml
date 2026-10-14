@@ -1,0 +1,125 @@
+# OpenCodeReview — review direct pushes
+#
+# The `ocr-review.yml` workflow can only run on pull_request events: the
+# composite action resolves a PR number and hard-fails without one
+# (action.yml "Resolve PR refs"). A push carries no PR, so this workflow runs
+# the OCR CLI directly and renders findings into the run summary instead of
+# posting inline comments.
+#
+# Required repo secrets:
+#   OCR_LLM_URL          — LLM endpoint base (OCR appends /chat/completions)
+#   OCR_LLM_AUTH_TOKEN   — API key for the LLM endpoint
+#
+# The model is pinned inline. Change it here, not via a secret.
+name: OCR Review (push)
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: ['**']
+    paths-ignore:
+      - '**/*.md'
+      - '**/*.png'
+      - '**/*.jpg'
+      - '**/*.jpeg'
+      - '**/*.gif'
+      - '**/*.svg'
+      - '**/*.ico'
+      - 'docs/**'
+      - '**/package-lock.json'
+      - '**/Cargo.lock'
+      - '**/bun.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  code-review:
+    name: Automated Code Review (push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Full history: OCR computes merge-base(from, to) and needs both ends.
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Install OpenCodeReview
+        shell: bash
+        run: |
+          npm install -g --allow-scripts=@alibaba-group/open-code-review "@alibaba-group/open-code-review@1.13.0"
+          ocr version
+
+      - name: Configure OCR
+        shell: bash
+        env:
+          OCR_LLM_URL: ${{ secrets.OCR_LLM_URL }}
+          OCR_LLM_TOKEN: ${{ secrets.OCR_LLM_AUTH_TOKEN }}
+        run: |
+          ocr config set llm.extra_body '{"enable_thinking": false}'
+          ocr config set language 'English'
+
+      - name: Review pushed range
+        shell: bash
+        env:
+          OCR_LLM_URL: ${{ secrets.OCR_LLM_URL }}
+          OCR_LLM_TOKEN: ${{ secrets.OCR_LLM_AUTH_TOKEN }}
+          OCR_LLM_MODEL: space-bunny-free
+          OCR_USE_ANTHROPIC: 'false'
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          # Pass through to the summary renderer so it can label the range.
+          echo "HEAD_SHA=$HEAD_SHA" >> "$GITHUB_ENV"
+          # A brand-new branch reports before == 0000...; fall back to the
+          # first commit so the whole branch content is reviewed once.
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE_SHA="$(git rev-list --max-parents=0 HEAD | head -1)"
+            echo "New branch: reviewing from root commit $BEFORE_SHA"
+          fi
+          echo "Reviewing $BEFORE_SHA..$HEAD_SHA"
+
+          set +e
+          ocr review \
+            --from "$BEFORE_SHA" --to "$HEAD_SHA" \
+            --effort low \
+            --format json --audience agent \
+            > /tmp/ocr-result.json 2> /tmp/ocr-stderr.log
+          OCR_EXIT=$?
+          set -e
+          echo "OCR_EXIT_CODE=$OCR_EXIT" >> "$GITHUB_ENV"
+          echo "=== OCR stderr ==="
+          cat /tmp/ocr-stderr.log
+
+      - name: Upload review artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ocr-push-result-${{ github.run_id }}
+          path: |
+            /tmp/ocr-result.json
+            /tmp/ocr-stderr.log
+          if-no-files-found: warn
+
+      - name: Render findings to run summary
+        if: always()
+        shell: bash
+        run: |
+          node .github/scripts/render-ocr-summary.js /tmp/ocr-result.json >> "$GITHUB_STEP_SUMMARY" || {
+            echo "OCR produced no parsable output (exit ${OCR_EXIT_CODE:-?})." >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/ocr-stderr.log >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          }
+
+      - name: Fail on OCR error
+        if: env.OCR_EXIT_CODE != '0'
+        shell: bash
+        run: |
+          echo "ocr review exited with code ${OCR_EXIT_CODE}; see artifacts."
+          exit "${OCR_EXIT_CODE}"

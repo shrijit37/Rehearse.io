@@ -1,0 +1,50 @@
+# OpenCodeReview — Automated PR Review Pipeline
+#
+# Reviews every PR using Alibaba's OpenCodeReview (OCR) via the ccMesh
+# gateway as the LLM backend. Posts inline comments and a sticky summary.
+#
+# Required repo secrets:
+#   OCR_LLM_URL          — LLM endpoint (chat/completions)
+#   OCR_LLM_AUTH_TOKEN   — API key for the LLM endpoint
+#   OCR_LLM_MODEL        — Model to use for review (unused; the model is
+#                          pinned inline to space-bunny-free below)
+#
+# The Action is an orchestrator: it installs the OCR CLI from npm at run
+# time, so pinning only the Action ref does not freeze review behaviour.
+# Both coordinates are pinned below — Action SHA + `ocr_version`.
+
+name: OCR Review
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  code-review:
+    name: Automated Code Review
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # No pre-checkout: the composite action checks out the PR *base* and
+      # fetches head blobs from git objects, so untrusted PR files are never
+      # materialised into the workspace with a credentialed remote.
+      - name: Run OpenCodeReview
+        uses: alibaba/open-code-review@1672852136fc87748249d22bce0819f33419ea79 # v1.13.0
+        with:
+          ocr_version: '1.13.0'
+          llm_url: ${{ secrets.OCR_LLM_URL }}
+          llm_auth_token: ${{ secrets.OCR_LLM_AUTH_TOKEN }}
+          llm_model: space-bunny-free
+          llm_use_anthropic: 'false'
+          llm_extra_body: '{"enable_thinking": false}'
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          language: 'English'
+          upload_artifacts: 'true'

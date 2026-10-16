@@ -8,7 +8,7 @@ checks). This file is the truth. If any other doc disagrees, this file wins.
 
 **Deployed and live.** The pipeline is green end-to-end on `main`
 (test → lint → build → Trivy scan → Dokploy deploy → health gate, run
-`37859186667`), the API answers `GET /health` with `checks.database: up` in
+`37859186667`), the API answers `/health` and `/ready` (`database: up`) in
 production, and the frontend is served by Cloudflare Pages at
 `https://rehearse.io.shrijit.tech/` with the correct API URL baked in. What
 remains is owner-side cleanup: rotate the Groq key, retire the old Netlify
@@ -19,7 +19,7 @@ frontend and the legacy compose stack, and recover server SSH access.
 | Endpoint | Result | Meaning |
 |---|---|---|
 | `https://api.rehearseio.triptribe.info/health` | `200` | Backend alive in prod (Traefik router + LE cert working). |
-| `https://api.rehearseio.triptribe.info/ready` | `404` | **Removed** — the uniform `/health` contract replaced it (`a2ddf7c`). The `200 {"status":"ready","database":"up"}` recorded here on 2026-10-09 predates that change; any doc still claiming `/ready` is stale. |
+| `https://api.rehearseio.triptribe.info/ready` | `200` `{"status":"ready","database":"up"}` | Prod container is connected to `rehearse_io_prod` — vault refs resolved, migrations ran. |
 | `https://rehearse.io.shrijit.tech/` | `200`, serves the Rehearse.io SPA | **Custom domain active** (Pages domain status `active`, CNAME → `rehearse-io.pages.dev`, DNS-only). |
 | `https://rehearse-io.pages.dev/` | `200` | Pages project `rehearse-io` serving the latest frontend build. |
 | Live JS bundle | Contains `https://api.rehearseio.triptribe.info` | `VITE_API_URL` was set at build time — no more localhost calls. |
@@ -31,14 +31,15 @@ frontend and the legacy compose stack, and recover server SSH access.
 | Thing | Value | Verified by |
 |---|---|---|
 | Dokploy project | `rehearse.io` (`3bYAquVbbcw_wYDoa5VTZ`), env `pkw9Y6NLJzRzQgVpe4944` | `project.all` |
-| Dokploy application | `IcMHdaM_nevmNlv8mP4q4`, name `rehearse-api`, type **docker** | `application.one` |
-| Domain (API) | `api.rehearseio.triptribe.info` → port 9000, Let's Encrypt, `ch9_26Krv2lgNFbgRLr1Z` | router live + `/health` 200 |
+| Dokploy compose app | `rehearse-api` (`6P05YIEVfP-ETKhCNUY8Q`, appName `compose-connect-multi-byte-card-95xy74`) — **the live backend**, image pulled per release via `compose.update` + `compose.deploy` | `compose.one`; `/health` reports the deployed SHA |
+| Dokploy application (retired) | `IcMHdaM_nevmNlv8mP4q4`, name `rehearse-api`, type **docker** — kept stopped for rollback. On Dokploy v0.30.8 an application cannot be image-sourced: `application.redeploy` runs nixpacks and fails `Failed to read app source directory`, leaving the old container answering (2026-10-16, deployment `VsGmFB6hgnAUs-8EXsFAP`) | `application.one` + `deployment.readLogs` |
+| Domain (API) | `api.rehearse.io.shrijit.tech` + `api.rehearseio.triptribe.info` → compose service `app`, port 9000, Let's Encrypt | router live + `/health` 200 on both |
 | Container image | `ghcr.io/shrijit37/rehearse.io:<full-sha>` — **lowercase**, **multi-arch** `linux/amd64` + `linux/arm64` | GHCR manifest list + running container |
-| Registry credentials | **none stored** — GHCR package is public, Dokploy pulls anonymously | `application.saveDockerProvider` cleared; anonymous `tags/list` 200 |
-| Secrets provider | `infisical-prod` on Dokploy → resolves `${{vault.<provider>.<SECRET>}}` env refs | `/health` shows `checks.database: up` |
+| Registry credentials | **none stored** — GHCR package is public, the compose app pulls anonymously | anonymous `tags/list` 200; no `username`/`password` in the compose app |
+| Secrets provider | `infisical-prod` on Dokploy → resolves `${{vault.<provider>.<SECRET>}}` env refs (compose env holds only refs, no values) | `/health` shows `checks.database: up` |
 | OIDC identity | `github-actions` (`0a112be8-f02a-4fbc-b6f6-8792b40165e6`), subject `repo:shrijit37/Rehearse.io:*` (glob — job has `environment: prod`, which appends `:environment:prod` to the claim) | Infisical OIDC auth in CI run, plus `gh api repos/.../actions/oidc/customization/sub` |
 | Prod database | `rehearse_io_prod`, owner/user `rehearse_io` on the shared Postgres, `REVOKE ALL … FROM PUBLIC` | `psql` connect + `datacl` |
-| Infisical (prod) | `REHEARSE_DATABASE_URL`, `REHEARSE_DATABASE_URL_EXTERNAL`, `REHEARSE_JWT_SECRET`, `REHEARSE_ENCRYPTION_KEY`, `REHEARSE_AI_SERVICE_API_KEY` | `infisical export` + `/health` 200 |
+| Infisical (prod) | `REHEARSE_DATABASE_URL`, `REHEARSE_DATABASE_URL_EXTERNAL`, `REHEARSE_JWT_SECRET`, `REHEARSE_ENCRYPTION_KEY`, `REHEARSE_AI_SERVICE_API_KEY` | `infisical export` + `/ready` 200 |
 | GitHub repo vars | `APP_URL`, `DOKPLOY_APPLICATION_ID`, `DOKPLOY_URL`, `INFISICAL_DOMAIN`, `INFISICAL_IDENTITY_ID`, `INFISICAL_PROJECT_SLUG`, `INFISICAL_SECRET_PREFIX=REHEARSE`, `PAGES_PROJECT`, `VITE_API_URL` | `gh variable list` |
 | GitHub repo secrets | `DOKPLOY_API_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` (+ legacy `DEPLOY_*`, `INFISICAL_CLIENT_*`) | `gh secret list` |
 | Cloudflare token | `github-actions-rehearse-io-pages` (`e9a37a4d…`), **Pages Write only**, expires 2027-10-09, stored piped (never printed) | `cf tokens` + a real Pages API call with it |
@@ -93,8 +94,8 @@ needs server SSH or the Dokploy UI — see blockers).
 
 - Prod values live in **Infisical prod** under prefix `REHEARSE_` (5 secrets
   — see the infrastructure table). Dokploy resolves them at deploy time via
-  the `infisical-prod` secrets provider; proven by `/health` returning
-  `checks.database: up`.
+  the `infisical-prod` secrets provider; proven by `/ready` returning
+  `database: up`.
 - CI authenticates to Infisical by OIDC (no stored client credentials in the
   deploy job): `INFISICAL_IDENTITY_ID` = `0a112be8-…` per-repo variable.
 - `CLOUDFLARE_API_TOKEN` (GitHub secret) is scoped Pages-Write-only for the
@@ -144,7 +145,7 @@ postgres    shared instance, one DB per env (rehearse_io_prod / _dev)
 | S3 file storage | **Not implemented** | The boot-time `HeadBucket` check was **removed** 2026-10-09 (dead code). Nothing uploads to S3; PII lives in Postgres. `AWS_*` vars are optional and inert. |
 | Rate limiting | Implemented | General + stricter auth limiter, env-tunable. |
 | Input sanitization | Implemented | Strips prototype-pollution keys (`__proto__`, `constructor`, `prototype`); name HTML-tag strip. The old Mongo operator-key stripping was removed with the data layer. |
-| Health endpoints | **Verified live in prod** | Backend `GET /health` = the fleet contract `{status, service, version, checks}` with a real Postgres check (`503` when down) — currently `200`, `checks.database: up`. **No `/ready`** (dropped in `a2ddf7c`; a request returns `404`). CI and Dokploy gate on `scripts/health`. AI `GET /health` reports STT/TTS availability. Frontend is static (no health endpoint). |
+| Health endpoints | **Verified live in prod** | Backend `GET /health` = liveness (no DB check, by design). **`GET /ready`** = `200` only when Postgres answers, `503` otherwise — currently `200 database:up` in prod. CI and Dokploy gate on `scripts/health`. AI `GET /health` reports STT/TTS availability. Frontend is static (no health endpoint). |
 | Tests | **Smoke suite only** | `backend/tests/smoke.ts`: 48 end-to-end assertions against a live server + real Postgres. Wired into `make test` (runs when `SMOKE_BASE_URL` is set) and CI. No unit tests, no coverage. Frontend still has lint+build only. |
 
 ## Data layer truth
@@ -210,7 +211,8 @@ Done and **verified running** (2026-10-09):
 | `backend/Dockerfile` | Rewritten: multi-stage, non-root, typechecks in build. Built in CI as a **multi-arch** (amd64+arm64) image — the arm64 manifest is what the ARM server actually runs. |
 | `backend/.dockerignore` | Added |
 | `.env.example` | Rewritten to the canonical platform shape |
-| `deploy-backend.yml` | Runs green on `main`: GHCR SHA → Trivy → Infisical OIDC → Dokploy → 120s health gate |
+| `deploy-backend.yml` | Runs green on `main`: GHCR SHA → Trivy → Infisical OIDC → migrations → Dokploy **compose** app (`compose.update` + `compose.deploy`) → 600s version-pinned health gate |
+| `deploy/compose.prod.yml` | The compose file CI sends to Dokploy (`__IMAGE__` → the SHA tag); Dokploy's stored copy is owned by the pipeline |
 | `deploy-frontend.yml` | Runs green: Pages `dist/` deploy with localhost guard |
 | `ci.yml` | Runs on PRs: migrations against a real Postgres |
 | MongoDB removal | Complete |

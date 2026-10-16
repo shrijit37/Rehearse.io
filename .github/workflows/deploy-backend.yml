@@ -6,9 +6,9 @@
 #   vars.INFISICAL_DOMAIN        (org)
 #   vars.INFISICAL_PROJECT_SLUG  (org)
 #   vars.DOKPLOY_URL             (org)
-#   secrets.DOKPLOY_API_KEY      (repo) Dokploy API key (redeploy trigger only)
-#   vars.DOKPLOY_APPLICATION_ID  (repo) backend application id
-#   vars.APP_URL                 (repo) https://api.rehearseio.triptribe.info
+#   secrets.DOKPLOY_API_KEY      (repo) Dokploy API key (deploy trigger only)
+#   vars.DOKPLOY_COMPOSE_ID      (repo) rehearse-api compose app id
+#   vars.APP_URL                 (repo) https://api.rehearse.io.shrijit.tech
 #   vars.INFISICAL_SECRET_PREFIX (repo) REHEARSE
 name: deploy-backend
 
@@ -17,17 +17,22 @@ on:
     branches: [main]
     paths:
       - "backend/**"
+      # Prose under backend/ must not trigger a prod deploy of identical code.
+      - "!backend/**/*.md"
       # The Test job runs ./scripts/setup, which installs frontend deps too.
       - "frontend/package.json"
       - "frontend/package-lock.json"
       - "scripts/**"
+      - "deploy/compose.prod.yml"
       - ".github/workflows/deploy-backend.yml"
   pull_request:
     paths:
       - "backend/**"
+      - "!backend/**/*.md"
       - "frontend/package.json"
       - "frontend/package-lock.json"
       - "scripts/**"
+      - "deploy/compose.prod.yml"
       - ".github/workflows/deploy-backend.yml"
   workflow_dispatch:
 
@@ -174,11 +179,9 @@ jobs:
     environment: prod
     permissions:
       contents: read
-      # OIDC for the Infisical secrets-action, and the GHCR token handed to
-      # Dokploy below. Without `packages: read` that token cannot pull the
-      # image it is being told to deploy.
+      # OIDC for the Infisical secrets-action only. The image is pulled from the
+      # public GHCR package anonymously, so no registry token is minted here.
       id-token: write
-      packages: read
     steps:
       - uses: actions/checkout@v4
       - name: Fetch database URL from Infisical (OIDC)
@@ -206,30 +209,42 @@ jobs:
           # from backend/node_modules, so install before migrating.
           (cd backend && bun install --frozen-lockfile)
           ./scripts/migrate
-      - name: Point Dokploy at SHA image and redeploy
+      - name: Point the Dokploy compose app at the SHA image and deploy
         env:
           DOKPLOY_URL: ${{ vars.DOKPLOY_URL }}
           DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
-          APPLICATION_ID: ${{ vars.DOKPLOY_APPLICATION_ID }}
+          COMPOSE_ID: ${{ vars.DOKPLOY_COMPOSE_ID }}
           IMAGE_REF: ${{ env.IMAGE }}
           SHA: ${{ github.sha }}
-          # Long-lived pull token (repo secret). Ephemeral GITHUB_TOKEN
-          # expires and poisons later pulls (outage 2026-10-09).
-          GHCR_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
         run: |
           set -euo pipefail
           # This Dokploy version serves its API under /api/<router>.<procedure>
           # (dot notation). The slashed form 404s, so a slash here silently
-          # never redeploys.
+          # never deploys.
+          #
+          # Why compose and not application.redeploy: on this Dokploy build an
+          # application cannot be image-sourced — redeploy runs a nixpacks build
+          # ("Failed to read app source directory") and the old container keeps
+          # answering. A raw compose app pulls the tag and rolls it.
+          #
+          # The deployed compose file lives in Dokploy's DB: send the repo copy
+          # (deploy/compose.prod.yml) with the tag substituted. No registry
+          # credentials are sent — the GHCR package is public, and a stored
+          # token is exactly what poisoned pulls after it expired.
+          jq -n --rawfile cf deploy/compose.prod.yml \
+            --arg cid "$COMPOSE_ID" --arg img "$IMAGE_REF:$SHA" \
+            '{composeId: $cid, composeFile: ($cf | gsub("__IMAGE__"; $img))}' > /tmp/compose.update.json
           curl -fsS -X POST -H "x-api-key: $DOKPLOY_API_KEY" \
             -H 'Content-Type: application/json' \
-            -d "{\"applicationId\":\"$APPLICATION_ID\",\"dockerImage\":\"$IMAGE_REF:$SHA\",\"username\":\"${{ github.actor }}\",\"password\":\"$GHCR_TOKEN\",\"registryUrl\":\"ghcr.io\"}" \
-            "$DOKPLOY_URL/api/application.saveDockerProvider"
+            --data @/tmp/compose.update.json \
+            "$DOKPLOY_URL/api/compose.update" > /dev/null
+          jq -n --arg cid "$COMPOSE_ID" --arg t "CI $SHA" \
+            '{composeId: $cid, title: $t}' > /tmp/compose.deploy.json
           curl -fsS -X POST -H "x-api-key: $DOKPLOY_API_KEY" \
             -H 'Content-Type: application/json' \
-            -d "{\"applicationId\":\"$APPLICATION_ID\"}" \
-            "$DOKPLOY_URL/api/application.redeploy" >/dev/null
-          echo "redeploy triggered for $IMAGE_REF:$SHA"
+            --data @/tmp/compose.deploy.json \
+            "$DOKPLOY_URL/api/compose.deploy" > /dev/null
+          echo "compose $COMPOSE_ID deployed with $IMAGE_REF:$SHA"
       - name: Health check
         env:
           APP_URL: ${{ vars.APP_URL }}

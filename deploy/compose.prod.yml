@@ -1,0 +1,31 @@
+# Rehearse.io API — production compose file (source of truth for the deploy).
+#
+# `.github/workflows/deploy-backend.yml` sends this file to Dokploy with
+# `__IMAGE__` replaced by `ghcr.io/shrijit37/rehearse.io:<full-sha>`
+# (`compose.update`) and then deploys it (`compose.deploy`). The deployed copy
+# lives in Dokploy's database; never hand-edit its image tag — the pipeline
+# owns that field.
+#
+# Why a compose app and not a Dokploy *application*: on this Dokploy build
+# (v0.30.8) an application cannot be made image-sourced — `application.redeploy`
+# runs a nixpacks build instead of pulling, which fails with "Failed to read app
+# source directory" and leaves the old container answering. See
+# `dokploy-prebuilt-image-deploy` in the agent skills.
+#
+# Env lives in Dokploy (`compose.saveEnvironment`), not in this file: the
+# non-secret values plus `${{vault.infisical-prod.REHEARSE_*}}` refs that
+# Dokploy resolves at deploy time. Key list: DEPLOY.md.
+services:
+  app:
+    image: __IMAGE__
+    env_file:
+      - .env
+    restart: unless-stopped
+    # The shared overlay Dokploy puts app and database services on: it is how
+    # `postgres-generate-solid-state-microchip-uz12xd` and `ai-service` resolve.
+    networks:
+      - dokploy-network
+
+networks:
+  dokploy-network:
+    external: true

@@ -12,7 +12,7 @@ const PrivacyPolicy = () => {
           <ArrowLeft className="h-3.5 w-3.5" /> Back
         </Button>
 
-        <div className="border border-border rounded-[20px] bg-card  overflow-hidden">
+        <div className="border border-border rounded-md bg-card  overflow-hidden">
           <div className="p-8 sm:p-10 space-y-8">
             <div className="space-y-1.5">
               <h1 className="text-2xl font-bold tracking-[-0.02em] text-foreground">Privacy Policy</h1>
@@ -54,8 +54,8 @@ const PrivacyPolicy = () => {
               <section>
                 <h2 className="text-base font-bold text-foreground mb-2">4. Data Sharing</h2>
                 <p>
-                  We do not sell your personal data. We share data only with third-party AI services (Groq, OpenAI) strictly for
-                  interview evaluation processing. These processors are bound by data processing agreements. We do not share
+                  We do not sell your personal data. We share data only with our third-party AI service provider (Groq) strictly for
+                  interview evaluation processing. That processor is bound by its data processing terms. We do not share
                   data with any other third parties unless required by law.
                 </p>
               </section>
@@ -92,11 +92,13 @@ const PrivacyPolicy = () => {
               </section>
 
               <section>
-                <h2 className="text-base font-bold text-foreground mb-2">8. Cookies</h2>
+                <h2 className="text-base font-bold text-foreground mb-2">8. Cookies and browser storage</h2>
                 <p>
-                  We use essential cookies for authentication and security. Optional cookies are used for analytics and
-                  marketing purposes only with your explicit consent. You can manage preferences at any time
-                  via the cookie banner or Account Settings.
+                  Our sign-in service (auth.shrijit.tech) sets a session cookie that keeps you signed in, and this site
+                  caches your session token, name and email in your browser so the app can render without re-fetching
+                  them. That is all it stores. There are no analytics, advertising, or third-party tracking cookies.
+                  Clearing this storage in your browser will sign you out. You can review your data processing consent
+                  at any time in Account Settings.
                 </p>
               </section>
 

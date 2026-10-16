@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "./ui/button";
 import { signOut } from "../lib/auth-client";
+import { label } from "@/lib/labels";
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -52,42 +53,40 @@ const Navbar = () => {
 
   const isActive = (path: string) => location.pathname === path;
 
-  /** True when a recruiter nav link should be underlined */
+  /** True when a recruiter nav link should read as the lit destination */
   const isRecruiterActive = () =>
     isActive("/recruiter") || isActive("/recruiter/interviews/new") || location.pathname.startsWith("/recruiter/interviews/");
 
   const isRecruiter = user?.role === "recruiter";
 
-  /** Verge-style mint inset underline for active nav items */
-  const activeMintUnderline = "shadow-[0px_-1px_0px_0px_inset_#3cffd0] text-foreground";
-  const inactiveNavLink = "text-muted-foreground hover:text-[#3860be]";
+  /** The lit plate: one destination reads as illuminated among dark ones */
+  const activePlate = "bg-card text-foreground";
+  const inactiveNavLink = "text-sign-white/75 hover:text-sign-white";
 
   return (
-    <nav className="fixed top-0 w-full z-50 border-b border-border bg-[#131313] h-14">
+    <nav className="on-sign fixed top-0 w-full z-50 bg-sign-black h-14">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 h-full">
         <div className="flex items-center justify-between h-full">
-          {/* Logo — Display font (Anton substitute for Manuka) */}
+          {/* The name set in type is the only brand mark — there is no logo */}
           <div className="flex items-center">
             <button
-              className="flex items-center gap-2 rounded-[4px] px-1.5 py-1 text-foreground hover:text-[#3860be] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              className="flex items-center rounded-md px-1.5 py-1 text-sign-white transition-colors hover:bg-white/10"
               onClick={() => navigate("/")}
               aria-label="Rehearse.io home"
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="text-primary">
-                <rect x="2" y="3" width="20" height="18" rx="3" stroke="currentColor" strokeWidth="2" />
-                <path d="M8 12h8M12 8v8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-              <span className="font-display text-lg tracking-[1.07px]">Rehearse<span className="text-primary">.io</span></span>
+              <span className="type-monument text-lg tracking-[-0.01em]">
+                Rehearse.io
+              </span>
             </button>
           </div>
 
-          {/* Desktop Navigation — mono uppercase links */}
+          {/* Desktop navigation — sentence case, as signage is */}
           {user && (
-            <div className="hidden md:flex items-center gap-0.5 font-mono text-xs uppercase tracking-[1.5px]">
+            <div className="hidden md:flex items-center gap-1 text-[13px] font-semibold">
               {isRecruiter ? (
                 <>
                   <button onClick={() => navigate("/recruiter")}
-                    className={`px-3 py-1.5 rounded-[4px] transition-colors ${isRecruiterActive() ? activeMintUnderline : inactiveNavLink}`}>
+                    className={`px-3 py-1.5 rounded-md transition-colors ${isRecruiterActive() ? activePlate : inactiveNavLink}`}>
                     <Building2 className="inline h-3.5 w-3.5 mr-1.5 -mt-0.5" />
                     Recruiter
                   </button>
@@ -95,17 +94,17 @@ const Navbar = () => {
               ) : (
                 <>
                   <button onClick={() => navigate("/dashboard")}
-                    className={`px-3 py-1.5 rounded-[4px] transition-colors flex items-center gap-1.5 ${isActive("/dashboard") ? activeMintUnderline : inactiveNavLink}`}>
+                    className={`px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5 ${isActive("/dashboard") ? activePlate : inactiveNavLink}`}>
                     <LayoutDashboard className="h-3.5 w-3.5" />
-                    My Interviews
+                    My interviews
                   </button>
                   <button onClick={() => navigate("/rehearsal")}
-                    className={`px-3 py-1.5 rounded-[4px] transition-colors flex items-center gap-1.5 ${isActive("/rehearsal") ? activeMintUnderline : inactiveNavLink}`}>
+                    className={`px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5 ${isActive("/rehearsal") ? activePlate : inactiveNavLink}`}>
                     <Users className="h-3.5 w-3.5" />
                     Practice
                   </button>
                   <button onClick={() => navigate("/practice/dsa")}
-                    className={`px-3 py-1.5 rounded-[4px] transition-colors flex items-center gap-1.5 ${isActive("/practice/dsa") ? activeMintUnderline : inactiveNavLink}`}>
+                    className={`px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5 ${isActive("/practice/dsa") ? activePlate : inactiveNavLink}`}>
                     <Code2 className="h-3.5 w-3.5" />
                     DSA
                   </button>
@@ -120,11 +119,11 @@ const Navbar = () => {
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className="flex items-center gap-2 rounded-full p-1 transition-colors hover:text-[#3860be] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className="flex items-center gap-2 rounded-full p-1 transition-colors hover:bg-white/10"
                   aria-label="User menu"
                   aria-expanded={showDropdown}
                 >
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground select-none">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-card text-[11px] font-bold text-foreground select-none">
                     {getUserInitials()}
                   </div>
                 </button>
@@ -132,27 +131,27 @@ const Navbar = () => {
                 {showDropdown && (
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setShowDropdown(false)} />
-                    <div className="absolute right-0 mt-2 w-52 rounded-[20px] border border-border bg-popover p-1 z-20 animate-in fade-in slide-in-from-top-1 duration-150">
+                    <div className="absolute right-0 mt-2 w-52 rounded-md border border-border bg-popover p-1 z-20 text-foreground animate-in fade-in slide-in-from-top-1 duration-150">
                       <div className="px-3 py-2.5 border-b border-border mb-1">
                         <p className="text-[13px] font-semibold text-foreground truncate">{user.name}</p>
                         <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
-                        <span className="mt-1 inline-block px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider text-primary bg-primary/10 rounded-[4px]">
-                          {user.role}
+                        <span className="mt-1 inline-block px-1.5 py-0.5 type-sign-label bg-sign-black text-sign-white rounded-sm">
+                          {label(user.role)}
                         </span>
                       </div>
                       <button onClick={() => { navigate(isRecruiter ? "/recruiter" : "/dashboard"); setShowDropdown(false); }}
-                        className="w-full text-left px-3 py-2 text-[13px] text-foreground hover:text-[#3860be] rounded-[4px] flex items-center gap-2 transition-colors">
+                        className="w-full text-left px-3 py-2 text-[13px] text-foreground hover:bg-surface-active rounded-md flex items-center gap-2 transition-colors">
                         <LayoutDashboard className="h-3.5 w-3.5 text-muted-foreground" />
-                        {isRecruiter ? "Recruiter Dashboard" : "My Interviews"}
+                        {isRecruiter ? "Recruiter dashboard" : "My interviews"}
                       </button>
                       <button onClick={() => { navigate("/account"); setShowDropdown(false); }}
-                        className="w-full text-left px-3 py-2 text-[13px] text-foreground hover:text-[#3860be] rounded-[4px] flex items-center gap-2 transition-colors">
+                        className="w-full text-left px-3 py-2 text-[13px] text-foreground hover:bg-surface-active rounded-md flex items-center gap-2 transition-colors">
                         <Settings className="h-3.5 w-3.5 text-muted-foreground" />
-                        Account Settings
+                        Account settings
                       </button>
                       <div className="border-t border-border my-1" />
                       <button onClick={handleLogout}
-                        className="w-full text-left px-3 py-2 text-[13px] text-destructive hover:text-destructive/80 rounded-[4px] flex items-center gap-2 transition-colors">
+                        className="w-full text-left px-3 py-2 text-[13px] text-destructive hover:bg-surface-active rounded-md flex items-center gap-2 transition-colors">
                         <LogOut className="h-3.5 w-3.5" />
                         Sign out
                       </button>
@@ -173,23 +172,23 @@ const Navbar = () => {
           </div>
 
           {/* Mobile menu button */}
-          <div className="md:hidden flex items-center">
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setIsMenuOpen(!isMenuOpen)} aria-label="Toggle menu">
+          <div className="md:hidden flex items-center text-sign-white">
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-sign-white hover:bg-white/10" onClick={() => setIsMenuOpen(!isMenuOpen)} aria-label="Toggle menu">
               {isMenuOpen ? <X className="h-4.5 w-4.5" /> : <Menu className="h-4.5 w-4.5" />}
             </Button>
           </div>
         </div>
       </div>
 
-      {/* Mobile Navigation */}
+      {/* Mobile navigation */}
       {isMenuOpen && (
-        <div className="md:hidden absolute top-14 left-0 w-full border-b border-border bg-popover px-4 py-4 animate-in fade-in slide-in-from-top-1 duration-150">
+        <div className="md:hidden absolute top-14 left-0 w-full border-b-2 border-border bg-popover text-foreground px-4 py-4 animate-in fade-in slide-in-from-top-1 duration-150">
           <div className="flex flex-col gap-1">
             {user ? (
               <>
                 <div className="px-3 py-3 border-b border-border mb-2">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground select-none">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sign-black text-xs font-bold text-sign-white select-none">
                       {getUserInitials()}
                     </div>
                     <div className="min-w-0">
@@ -198,38 +197,38 @@ const Navbar = () => {
                     </div>
                   </div>
                 </div>
-                <div className="font-mono text-xs uppercase tracking-[1.5px]">
+                <div className="text-[13px] font-semibold">
                   {isRecruiter ? (
                     <>
-                      <button className={`text-left w-full px-3 py-2 rounded-[4px] transition-colors ${isRecruiterActive() ? activeMintUnderline : inactiveNavLink}`}
+                      <button className={`text-left w-full px-3 py-2 rounded-md transition-colors ${isRecruiterActive() ? "bg-sign-black text-sign-white" : "text-foreground hover:bg-surface-active"}`}
                         onClick={() => { navigate("/recruiter"); setIsMenuOpen(false); }}>
-                        <Building2 className="inline h-4 w-4 mr-2 -mt-0.5" />Recruiter Dashboard
+                        <Building2 className="inline h-4 w-4 mr-2 -mt-0.5" />Recruiter dashboard
                       </button>
                     </>
                   ) : (
                     <>
-                      <button className={`text-left w-full px-3 py-2 rounded-[4px] transition-colors ${isActive("/dashboard") ? activeMintUnderline : inactiveNavLink}`}
+                      <button className={`text-left w-full px-3 py-2 rounded-md transition-colors ${isActive("/dashboard") ? "bg-sign-black text-sign-white" : "text-foreground hover:bg-surface-active"}`}
                         onClick={() => { navigate("/dashboard"); setIsMenuOpen(false); }}>
-                        <LayoutDashboard className="inline h-4 w-4 mr-2 -mt-0.5" />My Interviews
+                        <LayoutDashboard className="inline h-4 w-4 mr-2 -mt-0.5" />My interviews
                       </button>
-                      <button className={`text-left w-full px-3 py-2 rounded-[4px] transition-colors ${isActive("/rehearsal") ? activeMintUnderline : inactiveNavLink}`}
+                      <button className={`text-left w-full px-3 py-2 rounded-md transition-colors ${isActive("/rehearsal") ? "bg-sign-black text-sign-white" : "text-foreground hover:bg-surface-active"}`}
                         onClick={() => { navigate("/rehearsal"); setIsMenuOpen(false); }}>
                         <Users className="inline h-4 w-4 mr-2 -mt-0.5" />Practice
                       </button>
-                      <button className={`text-left w-full px-3 py-2 rounded-[4px] transition-colors ${isActive("/practice/dsa") ? activeMintUnderline : inactiveNavLink}`}
+                      <button className={`text-left w-full px-3 py-2 rounded-md transition-colors ${isActive("/practice/dsa") ? "bg-sign-black text-sign-white" : "text-foreground hover:bg-surface-active"}`}
                         onClick={() => { navigate("/practice/dsa"); setIsMenuOpen(false); }}>
-                        <Code2 className="inline h-4 w-4 mr-2 -mt-0.5" />DSA Practice
+                        <Code2 className="inline h-4 w-4 mr-2 -mt-0.5" />DSA practice
                       </button>
                     </>
                   )}
-                  <button className="text-left w-full px-3 py-2 rounded-[4px] text-muted-foreground hover:text-[#3860be] transition-colors"
+                  <button className="text-left w-full px-3 py-2 rounded-md text-foreground hover:bg-surface-active transition-colors"
                     onClick={() => { navigate("/account"); setIsMenuOpen(false); }}>
-                    <Settings className="inline h-4 w-4 mr-2 -mt-0.5" />Account Settings
+                    <Settings className="inline h-4 w-4 mr-2 -mt-0.5" />Account settings
                   </button>
                 </div>
                 <div className="border-t border-border my-2" />
                 <button onClick={() => { handleLogout(); setIsMenuOpen(false); }}
-                  className="w-full text-left px-3 py-2 text-[13px] text-destructive hover:text-destructive/80 rounded-[4px] flex items-center gap-2 font-medium transition-colors">
+                  className="w-full text-left px-3 py-2 text-[13px] text-destructive hover:bg-surface-active rounded-md flex items-center gap-2 font-semibold transition-colors">
                   <LogOut className="h-4 w-4" /><span>Sign out</span>
                 </button>
               </>
@@ -240,8 +239,8 @@ const Navbar = () => {
               </div>
             )}
             <div className="border-t border-border pt-3 mt-2 flex justify-center gap-5 text-[11px] text-muted-foreground">
-              <button onClick={() => { navigate("/privacy"); setIsMenuOpen(false); }} className="hover:text-[#3860be] transition-colors">Privacy</button>
-              <button onClick={() => { navigate("/terms"); setIsMenuOpen(false); }} className="hover:text-[#3860be] transition-colors">Terms</button>
+              <button onClick={() => { navigate("/privacy"); setIsMenuOpen(false); }} className="hover:text-foreground underline-offset-4 hover:underline transition-colors">Privacy</button>
+              <button onClick={() => { navigate("/terms"); setIsMenuOpen(false); }} className="hover:text-foreground underline-offset-4 hover:underline transition-colors">Terms</button>
             </div>
           </div>
         </div>

@@ -1,6 +1,7 @@
 import React from "react";
 import { Calendar, ChevronRight } from "lucide-react";
 import type { NormalizedSession } from "@/types";
+import { label } from "@/lib/labels";
 
 interface SessionListItemProps {
 	session: NormalizedSession;
@@ -25,10 +26,10 @@ const SessionListItem: React.FC<SessionListItemProps> = ({
 	return (
 		<button
 			onClick={onClick}
-			className={`w-full text-left p-3.5 border rounded-[20px] transition-all flex items-center justify-between select-none ${
+			className={`w-full text-left p-3.5 border rounded-md transition-all flex items-center justify-between select-none ${
 				isSelected
-					? "bg-card border-primary/60 "
-					: "bg-card border-border/60 hover:border-primary/30"
+					? "bg-card border-sign-black "
+					: "bg-card border-border/60 hover:border-sign-black"
 			}`}
 		>
 			<div className="space-y-1 min-w-0 pr-3">
@@ -36,14 +37,14 @@ const SessionListItem: React.FC<SessionListItemProps> = ({
 					{session.title}
 				</p>
 				<div className="flex items-center gap-2">
-					<span className="inline-block px-2 py-0.5 text-[10px] font-bold bg-primary/10 text-primary border border-primary/15 rounded">
+					<span className="inline-block px-2 py-0.5 text-[10px] font-bold bg-sign-black text-sign-yellow rounded-md">
 						{session.targetRole}
 					</span>
 					{showStatus && session.status && (
 						<span
-							className={`inline-block px-1.5 py-0.5 text-[9px] font-bold rounded uppercase tracking-wider border ${statusColor}`}
+							className={`inline-block px-1.5 py-0.5 type-sign-label rounded border ${statusColor}`}
 						>
-							{session.status}
+							{label(session.status)}
 						</span>
 					)}
 				</div>
@@ -60,7 +61,7 @@ const SessionListItem: React.FC<SessionListItemProps> = ({
 			</div>
 			<div className="flex items-center gap-2 shrink-0">
 				<div className="text-right">
-					<p className="text-[9px] font-bold text-muted-foreground uppercase">
+					<p className="type-sign-label text-muted-foreground ">
 						Avg
 					</p>
 					<p className="text-sm font-bold text-foreground">
@@ -69,7 +70,7 @@ const SessionListItem: React.FC<SessionListItemProps> = ({
 					</p>
 				</div>
 				<ChevronRight
-					className={`h-3.5 w-3.5 transition-transform ${isSelected ? "text-primary translate-x-0.5" : "text-muted-foreground/50"}`}
+					className={`h-3.5 w-3.5 transition-transform ${isSelected ? "text-foreground translate-x-0.5" : "text-muted-foreground/50"}`}
 				/>
 			</div>
 		</button>

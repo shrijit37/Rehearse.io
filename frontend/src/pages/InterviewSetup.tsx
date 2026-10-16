@@ -14,6 +14,7 @@ import {
 	Sparkles,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { label } from "@/lib/labels";
 import type { Organization } from "@/types";
 import type { DsaProblem } from "@/components/DsaProblemPanel";
 
@@ -182,9 +183,9 @@ const InterviewSetup: React.FC = () => {
 				</div>
 
 				{/* Form card */}
-				<div className="border border-border rounded-[20px] bg-card p-6 space-y-5">
+				<div className="border border-border rounded-md bg-card p-6 space-y-5">
 					{error && (
-						<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-[20px] border border-destructive/20 text-center">
+						<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-md border border-destructive/20 text-center">
 							{error}
 						</div>
 					)}
@@ -194,7 +195,7 @@ const InterviewSetup: React.FC = () => {
 						<select
 							value={selectedOrgId}
 							onChange={(e) => setSelectedOrgId(e.target.value)}
-							className="w-full h-9 px-3 rounded-[20px] border border-border bg-background text-[13px] focus:border-primary/50 focus:outline-none"
+							className="w-full h-9 px-3 rounded-md border border-border bg-background text-[13px] focus:border-foreground focus:outline-none"
 						>
 							{organizations.length === 0 && (
 								<option value="">No organizations found</option>
@@ -260,26 +261,28 @@ const InterviewSetup: React.FC = () => {
 									key={opt.value}
 									type="button"
 									onClick={() => setInterviewType(opt.value)}
-									className={`flex items-start gap-3 p-3.5 rounded-[14px] border text-left transition-all ${
+									className={`flex items-start gap-3 p-3.5 rounded-md border text-left transition-all ${
 										interviewType === opt.value
-											? "border-primary bg-primary/10"
-											: "border-border bg-background hover:border-primary/40"
+											? "border-sign-black bg-sign-black text-sign-white"
+											: "border-border bg-background hover:border-sign-black"
 									}`}
 								>
+									{/* Selected plate carries a yellow mark; the label and
+									    description inherit the plate's ink. */}
 									<span
 										className={
 											interviewType === opt.value
-												? "text-primary mt-0.5"
+												? "text-sign-yellow mt-0.5"
 												: "text-muted-foreground mt-0.5"
 										}
 									>
 										{opt.icon}
 									</span>
 									<span>
-										<span className="block text-[13px] font-semibold text-foreground">
+										<span className="block text-[13px] font-semibold">
 											{opt.label}
 										</span>
-										<span className="block text-[11px] text-muted-foreground">
+										<span className="block text-[11px] opacity-70">
 											{opt.desc}
 										</span>
 									</span>
@@ -299,7 +302,7 @@ const InterviewSetup: React.FC = () => {
 									variant="ghost"
 									size="sm"
 									onClick={addQuestion}
-									className="text-primary font-medium h-7 text-[12px] gap-1"
+									className="text-foreground font-medium h-7 text-[12px] gap-1"
 								>
 									<Plus className="h-3 w-3" /> Add
 								</Button>
@@ -348,7 +351,7 @@ const InterviewSetup: React.FC = () => {
 									<select
 										value={dsaDifficulty}
 										onChange={(e) => setDsaDifficulty(e.target.value)}
-										className="w-full h-9 px-3 rounded-[10px] border border-border bg-background text-[13px] focus:outline-none focus:border-primary/50"
+										className="w-full h-9 px-3 rounded-md border border-border bg-background text-[13px] focus:outline-none focus:border-foreground"
 									>
 										<option value="easy">Easy</option>
 										<option value="medium">Medium</option>
@@ -363,7 +366,7 @@ const InterviewSetup: React.FC = () => {
 									<select
 										value={dsaCount}
 										onChange={(e) => setDsaCount(Number(e.target.value))}
-										className="w-full h-9 px-3 rounded-[10px] border border-border bg-background text-[13px] focus:outline-none focus:border-primary/50"
+										className="w-full h-9 px-3 rounded-md border border-border bg-background text-[13px] focus:outline-none focus:border-foreground"
 									>
 										{[1, 2, 3].map((n) => (
 											<option key={n} value={n}>
@@ -395,7 +398,7 @@ const InterviewSetup: React.FC = () => {
 							</div>
 
 							{dsaProblems.length === 0 ? (
-								<div className="border border-dashed border-border rounded-[14px] p-8 text-center text-[12px] text-muted-foreground">
+								<div className="border border-dashed border-border rounded-md p-8 text-center text-[12px] text-muted-foreground">
 									Generate AI-powered DSA problems tailored to the target role.
 								</div>
 							) : (
@@ -403,7 +406,7 @@ const InterviewSetup: React.FC = () => {
 									{dsaProblems.map((p, idx) => (
 										<div
 											key={idx}
-											className="flex items-start gap-3 p-3 border border-border rounded-[12px] bg-secondary/10"
+											className="flex items-start gap-3 p-3 border border-border rounded-md bg-secondary/10"
 										>
 											<span className="text-[12px] font-bold text-muted-foreground mt-0.5">
 												{idx + 1}.
@@ -413,8 +416,8 @@ const InterviewSetup: React.FC = () => {
 													<p className="text-[13px] font-semibold text-foreground truncate">
 														{p.title}
 													</p>
-													<span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border border-border text-muted-foreground">
-														{p.difficulty}
+													<span className="type-sign-label px-1.5 py-0.5 rounded border border-border text-muted-foreground">
+														{label(p.difficulty)}
 													</span>
 												</div>
 												<p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5">

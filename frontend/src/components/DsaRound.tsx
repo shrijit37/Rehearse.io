@@ -191,20 +191,20 @@ const DsaRound: React.FC<DsaRoundProps> = ({
 			<div className="border-b border-border bg-surface/80 py-3 px-4 sm:px-6">
 				<div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
 					<div className="flex items-center gap-3">
-						<Code2 className="h-4 w-4 text-primary" />
+						<Code2 className="h-4 w-4 text-foreground" />
 						<span className="text-[12px] font-semibold text-foreground">
 							DSA Round · Problem {currentIndex + 1} of {problems.length}
 						</span>
 					</div>
 					<div className="flex items-center gap-4">
-						<div className="flex items-center gap-1.5 text-[11px] font-mono text-muted-foreground">
+						<div className="flex items-center gap-1.5 text-[11px] tabular-nums text-muted-foreground">
 							<Clock className="h-3.5 w-3.5" />
 							{formatTime(elapsed)}
 						</div>
 						<div className="flex items-center gap-3 w-36 sm:w-48">
 							<div className="flex-1 bg-secondary h-1.5 rounded-full overflow-hidden">
 								<div
-									className="bg-primary h-full transition-all duration-300"
+									className="bg-sign-black h-full transition-all duration-300"
 									style={{ width: `${progressPercent}%` }}
 								/>
 							</div>
@@ -230,14 +230,14 @@ const DsaRound: React.FC<DsaRoundProps> = ({
 				{/* Editor + actions */}
 				<div className="lg:col-span-7 flex flex-col gap-3 min-h-[360px] lg:h-[calc(100vh-11rem)]">
 					{error && (
-						<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-[12px] border border-destructive/20 flex items-center gap-2">
+						<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-md border border-destructive/20 flex items-center gap-2">
 							<AlertCircle className="w-4 h-4 shrink-0" />
 							<span>{error}</span>
 						</div>
 					)}
 
 					{evaluation ? (
-						<div className="flex-1 border border-border rounded-[16px] bg-card overflow-hidden flex flex-col">
+						<div className="flex-1 border border-border rounded-md bg-card overflow-hidden flex flex-col">
 							<div className="border-b border-border px-5 py-3.5 bg-secondary/15 flex items-center justify-between">
 								<div className="flex items-center gap-2">
 									<CheckCircle2 className="h-4 w-4 text-success" />
@@ -258,9 +258,9 @@ const DsaRound: React.FC<DsaRoundProps> = ({
 									].map((m) => (
 										<div
 											key={m.label}
-											className="rounded-[10px] border border-border/60 bg-secondary/20 p-2.5 text-center"
+											className="rounded-md border border-border/60 bg-secondary/20 p-2.5 text-center"
 										>
-											<p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+											<p className="type-sign-label text-muted-foreground">
 												{m.label}
 											</p>
 											<p className="text-[13px] font-bold mt-0.5 font-mono">
@@ -270,14 +270,14 @@ const DsaRound: React.FC<DsaRoundProps> = ({
 									))}
 								</div>
 								<div className="space-y-1">
-									<p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+									<p className="type-sign-label text-muted-foreground">
 										Feedback
 									</p>
 									<p className="text-[13px] leading-relaxed">{evaluation.feedback}</p>
 								</div>
 								{evaluation.strengths && evaluation.strengths.length > 0 && (
 									<div className="space-y-1">
-										<p className="text-[10px] font-bold uppercase tracking-wider text-success">
+										<p className="type-sign-label text-success">
 											Strengths
 										</p>
 										<ul className="list-disc list-inside text-[12px] space-y-0.5 text-foreground/90">
@@ -289,7 +289,7 @@ const DsaRound: React.FC<DsaRoundProps> = ({
 								)}
 								{evaluation.improvements && evaluation.improvements.length > 0 && (
 									<div className="space-y-1">
-										<p className="text-[10px] font-bold uppercase tracking-wider text-warning">
+										<p className="type-sign-label text-warning">
 											Improvements
 										</p>
 										<ul className="list-disc list-inside text-[12px] space-y-0.5 text-foreground/90">

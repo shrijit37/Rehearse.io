@@ -28,19 +28,19 @@ const ResultDetailPanel: React.FC<ResultDetailPanelProps> = ({
 			: "—";
 
 	return (
-		<div className="border border-border/80 rounded-[20px] bg-card overflow-hidden animate-in fade-in duration-200">
+		<div className="border border-border/80 rounded-md bg-card overflow-hidden animate-in fade-in duration-200">
 			<div className="border-b border-border/60 bg-secondary/15 px-6 py-4 flex items-center justify-between">
 				<div className="space-y-1">
-					<span className="text-[10px] font-bold bg-primary/10 text-primary border border-primary/15 rounded px-2 py-0.5 uppercase tracking-wider">
+					<span className="type-sign-label bg-sign-black text-sign-yellow rounded-md px-2 py-0.5 ">
 						{targetRole}
 					</span>
 					<h3 className="text-base font-bold text-foreground flex items-center gap-1.5 pt-1">
-						<BarChart3 className="h-4 w-4 text-primary" />
+						<BarChart3 className="h-4 w-4 text-foreground" />
 						{title}
 					</h3>
 				</div>
 				<div className="text-right">
-					<span className="text-[9px] font-bold text-muted-foreground uppercase block">
+					<span className="type-sign-label text-muted-foreground block">
 						Score
 					</span>
 					<span className="text-xl font-bold">
@@ -53,11 +53,11 @@ const ResultDetailPanel: React.FC<ResultDetailPanelProps> = ({
 				{results.map((result: ResultItem, idx: number) => (
 					<div
 						key={result.question || idx}
-						className="border border-border/50 rounded-[20px] p-4 space-y-3"
+						className="border border-border/50 rounded-md p-4 space-y-3"
 					>
 						<div className="flex items-start justify-between gap-3 border-b border-border/40 pb-2.5">
 							<div className="flex items-start gap-2">
-								<span className="text-[11px] font-bold text-primary pt-px">
+								<span className="text-[11px] font-bold text-foreground pt-px">
 									{idx + 1}.
 								</span>
 								<h4 className="text-[13px] font-semibold text-foreground leading-snug">
@@ -70,16 +70,16 @@ const ResultDetailPanel: React.FC<ResultDetailPanelProps> = ({
 						</div>
 						{result.transcription && (
 							<div className="space-y-1">
-								<span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+								<span className="type-sign-label text-muted-foreground flex items-center gap-1">
 									<MessageSquare className="h-3 w-3" /> Transcription
 								</span>
-								<div className="bg-secondary/40 border-l-2 border-l-primary text-[12px] text-foreground/80 italic p-2.5 rounded-r-md leading-relaxed">
+								<div className="bg-secondary/40 border-l-2 border-l-sign-black text-[12px] text-foreground/80 italic p-2.5 rounded-r-md leading-relaxed">
 									{result.transcription}
 								</div>
 							</div>
 						)}
 						<div className="space-y-1">
-							<span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+							<span className="type-sign-label text-muted-foreground">
 								AI Feedback
 							</span>
 							<p className="text-[13px] text-foreground leading-relaxed">
@@ -91,17 +91,17 @@ const ResultDetailPanel: React.FC<ResultDetailPanelProps> = ({
 
 				{dsaResults.length > 0 && (
 					<div className="pt-2 space-y-3">
-						<p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+						<p className="type-sign-label text-muted-foreground flex items-center gap-1.5">
 							<Code2 className="h-3 w-3" /> DSA Results
 						</p>
 						{dsaResults.map((r, idx) => (
 							<div
 								key={`dsa-${idx}`}
-								className="border border-border/50 rounded-[20px] p-4 space-y-3"
+								className="border border-border/50 rounded-md p-4 space-y-3"
 							>
 								<div className="flex items-start justify-between gap-3 border-b border-border/40 pb-2.5">
 									<div className="flex items-start gap-2">
-										<span className="text-[11px] font-bold text-primary pt-px">
+										<span className="text-[11px] font-bold text-foreground pt-px">
 											{idx + 1}.
 										</span>
 										<h4 className="text-[13px] font-semibold text-foreground leading-snug">
@@ -139,7 +139,7 @@ const ResultDetailPanel: React.FC<ResultDetailPanelProps> = ({
 								)}
 								{r.code && (
 									<div className="space-y-1">
-										<span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+										<span className="type-sign-label text-muted-foreground">
 											Submitted Code
 										</span>
 										<pre className="bg-secondary/40 border border-border rounded-md p-2.5 text-[11px] text-foreground/80 overflow-x-auto">
@@ -149,7 +149,7 @@ const ResultDetailPanel: React.FC<ResultDetailPanelProps> = ({
 								)}
 								{r.feedback && (
 									<div className="space-y-1">
-										<span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+										<span className="type-sign-label text-muted-foreground">
 											AI Feedback
 										</span>
 										<p className="text-[13px] text-foreground leading-relaxed">

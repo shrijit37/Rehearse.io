@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Organization, Interview } from "@/types";
+import { label } from "@/lib/labels";
 
 const RecruiterDashboard: React.FC = () => {
 	const navigate = useNavigate();
@@ -128,7 +129,7 @@ const RecruiterDashboard: React.FC = () => {
 					<div className="h-7 w-64 bg-secondary rounded-md" />
 					<div className="grid grid-cols-3 gap-4">
 						{[1, 2, 3].map((i) => (
-							<div key={i} className="h-24 bg-secondary/50 rounded-[20px]" />
+							<div key={i} className="h-24 bg-secondary/50 rounded-md" />
 						))}
 					</div>
 				</div>
@@ -139,7 +140,7 @@ const RecruiterDashboard: React.FC = () => {
 	if (error) {
 		return (
 			<div className="min-h-screen flex items-center justify-center bg-background p-4 mt-14">
-				<div className="w-full max-w-sm border border-border rounded-[20px] bg-card p-8 text-center space-y-4">
+				<div className="w-full max-w-sm border border-border rounded-md bg-card p-8 text-center space-y-4">
 					<AlertCircle className="w-6 h-6 text-destructive mx-auto" />
 					<p className="text-[13px] font-semibold">{error}</p>
 					<Button onClick={fetchData} className="font-medium">
@@ -185,9 +186,9 @@ const RecruiterDashboard: React.FC = () => {
 
 				{/* Org info bar */}
 				{selectedOrg && (
-					<div className="border border-border rounded-[20px] bg-card px-5 py-3.5 flex items-center justify-between">
+					<div className="border border-border rounded-md bg-card px-5 py-3.5 flex items-center justify-between">
 						<div>
-							<p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+							<p className="type-sign-label text-muted-foreground ">
 								Organization
 							</p>
 							<p className="text-[15px] font-bold text-foreground">
@@ -195,7 +196,7 @@ const RecruiterDashboard: React.FC = () => {
 							</p>
 						</div>
 						<div className="text-right">
-							<p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+							<p className="type-sign-label text-muted-foreground ">
 								Members
 							</p>
 							<p className="text-[15px] font-bold text-foreground">
@@ -207,7 +208,7 @@ const RecruiterDashboard: React.FC = () => {
 
 				{/* No org state */}
 				{organizations.length === 0 && (
-					<div className="border-2 border-dashed border-border rounded-[20px] p-16 text-center space-y-4 bg-surface/30">
+					<div className="border-2 border-dashed border-border rounded-md p-16 text-center space-y-4 bg-surface/30">
 						<Users className="w-10 h-10 text-muted-foreground mx-auto" />
 						<div className="space-y-1">
 							<h3 className="text-base font-bold text-foreground">
@@ -228,7 +229,7 @@ const RecruiterDashboard: React.FC = () => {
 
 				{/* No interviews state */}
 				{selectedOrg && interviews.length === 0 && (
-					<div className="border-2 border-dashed border-border rounded-[20px] p-16 text-center space-y-4 bg-surface/30">
+					<div className="border-2 border-dashed border-border rounded-md p-16 text-center space-y-4 bg-surface/30">
 						<FileText className="w-10 h-10 text-muted-foreground mx-auto" />
 						<div className="space-y-1">
 							<h3 className="text-base font-bold text-foreground">
@@ -251,14 +252,14 @@ const RecruiterDashboard: React.FC = () => {
 				{/* Interview list */}
 				{selectedOrg && interviews.length > 0 && (
 					<div className="space-y-3">
-						<h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground px-1">
+						<h2 className="type-sign-label text-muted-foreground px-1">
 							Interview Sessions
 						</h2>
 						<div className="space-y-2">
 							{interviews.map((interview) => (
 								<div
 									key={interview._id}
-									className="border border-border rounded-[20px] bg-card p-4 hover:border-primary/20 transition-colors"
+									className="border border-border rounded-md bg-card p-4 hover:border-sign-black transition-colors"
 								>
 									<div className="flex items-start justify-between gap-4">
 										<div className="space-y-1 min-w-0 flex-1">
@@ -267,7 +268,7 @@ const RecruiterDashboard: React.FC = () => {
 													{interview.title}
 												</h3>
 												<span
-													className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase tracking-wider ${
+													className={`px-2 py-0.5 type-sign-label rounded ${
 														interview.status === "active"
 															? "bg-success/10 text-success border border-success/20"
 															: interview.status === "draft"
@@ -275,14 +276,14 @@ const RecruiterDashboard: React.FC = () => {
 																: "bg-secondary text-muted-foreground border border-border"
 													}`}
 												>
-													{interview.status}
+													{label(interview.status)}
 												</span>
 											</div>
 											<p className="text-[12px] text-muted-foreground">
 												Role: {interview.targetRole}
 												{interview.interviewType && (
-													<span className="ml-2 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded border border-border">
-														{interview.interviewType}
+													<span className="ml-2 px-1.5 py-0.5 type-sign-label rounded border border-border">
+														{label(interview.interviewType)}
 													</span>
 												)}
 											</p>
@@ -368,7 +369,7 @@ const RecruiterDashboard: React.FC = () => {
 			{/* New Organization Modal */}
 			{showNewOrgModal && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-					<div className="bg-card border border-border rounded-[20px]  p-6 w-full max-w-sm space-y-4">
+					<div className="bg-card border border-border rounded-md  p-6 w-full max-w-sm space-y-4">
 						<h3 className="text-[14px] font-bold text-foreground">
 							Create Organization
 						</h3>
@@ -380,7 +381,7 @@ const RecruiterDashboard: React.FC = () => {
 							onKeyDown={(e) => {
 								if (e.key === "Enter") handleCreateOrg();
 							}}
-							className="w-full h-9 px-3 rounded-[20px] border border-border bg-background text-[13px] focus:border-primary/50 focus:outline-none"
+							className="w-full h-9 px-3 rounded-md border border-border bg-background text-[13px] focus:border-foreground focus:outline-none"
 							autoFocus
 						/>
 						<div className="flex gap-2 justify-end">
@@ -411,7 +412,7 @@ const RecruiterDashboard: React.FC = () => {
 			{/* Invite Modal */}
 			{showInviteModal && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-					<div className="bg-card border border-border rounded-[20px]  p-6 w-full max-w-sm space-y-4">
+					<div className="bg-card border border-border rounded-md  p-6 w-full max-w-sm space-y-4">
 						{generatedLink ? (
 							<>
 								<h3 className="text-[14px] font-bold text-foreground">
@@ -426,7 +427,7 @@ const RecruiterDashboard: React.FC = () => {
 										type="text"
 										readOnly
 										value={generatedLink}
-										className="flex-1 h-9 px-3 rounded-[20px] border border-border bg-background text-[12px] focus:border-primary/50 focus:outline-none cursor-text"
+										className="flex-1 h-9 px-3 rounded-md border border-border bg-background text-[12px] focus:border-foreground focus:outline-none cursor-text"
 										onClick={(e) => e.currentTarget.select()}
 									/>
 									<Button
@@ -468,7 +469,7 @@ const RecruiterDashboard: React.FC = () => {
 									onKeyDown={(e) => {
 										if (e.key === "Enter") handleGenerateInvite();
 									}}
-									className="w-full h-9 px-3 rounded-[20px] border border-border bg-background text-[13px] focus:border-primary/50 focus:outline-none"
+									className="w-full h-9 px-3 rounded-md border border-border bg-background text-[13px] focus:border-foreground focus:outline-none"
 									autoFocus
 								/>
 								<div className="flex gap-2 justify-end">

@@ -15,9 +15,9 @@ function Card({ className, cardRadius = 20, ...props }: CardProps) {
       data-slot="card"
       className={cn(
         "bg-card text-card-foreground flex flex-col gap-6 border py-6",
-        cardRadius === 20 && "rounded-[20px]",
-        cardRadius === 24 && "rounded-[24px]",
-        cardRadius === 30 && "rounded-[30px]",
+        cardRadius === 20 && "rounded-md",
+        cardRadius === 24 && "rounded-md",
+        cardRadius === 30 && "rounded-md",
         className
       )}
       {...props}

@@ -370,7 +370,7 @@ const CandidateInterview: React.FC = () => {
 	if (isLoading)
 		return (
 			<div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-				<Loader2 className="w-8 h-8 text-primary animate-spin" />
+				<Loader2 className="w-8 h-8 text-foreground animate-spin" />
 				<p className="text-[13px] font-medium text-muted-foreground mt-3">
 					Loading interview...
 				</p>
@@ -380,7 +380,7 @@ const CandidateInterview: React.FC = () => {
 	if (error && !interview)
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center p-4">
-				<div className="w-full max-w-sm border border-border rounded-[20px] bg-card p-8 text-center space-y-4">
+				<div className="w-full max-w-sm border border-border rounded-md bg-card p-8 text-center space-y-4">
 					<AlertCircle className="w-6 h-6 text-destructive mx-auto" />
 					<h3 className="font-bold text-foreground">
 						Could not load interview
@@ -405,7 +405,7 @@ const CandidateInterview: React.FC = () => {
 
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center p-4">
-				<div className="w-full max-w-md border border-border rounded-[20px] bg-card p-8 text-center space-y-5">
+				<div className="w-full max-w-md border border-border rounded-md bg-card p-8 text-center space-y-5">
 					<div className="w-14 h-14 bg-success/10 rounded-full flex items-center justify-center mx-auto">
 						<CheckCircle2 className="w-7 h-7 text-success" />
 					</div>
@@ -424,16 +424,16 @@ const CandidateInterview: React.FC = () => {
 					</div>
 					{sessionResults.length > 0 && (
 						<div className="space-y-1.5 text-left">
-							<p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+							<p className="type-sign-label text-muted-foreground">
 								Behavioral
 							</p>
 							{sessionResults.map((r, i) => (
 								<div
 									key={i}
-									className="flex items-center justify-between p-2.5 bg-surface rounded-[12px] text-[13px]"
+									className="flex items-center justify-between p-2.5 bg-surface rounded-md text-[13px]"
 								>
 									<span className="font-medium text-foreground">Q{i + 1}</span>
-									<span className="font-bold text-primary">
+									<span className="font-bold text-foreground">
 										{r?.score || 0}/10
 									</span>
 								</div>
@@ -442,18 +442,18 @@ const CandidateInterview: React.FC = () => {
 					)}
 					{dsaResults.length > 0 && (
 						<div className="space-y-1.5 text-left">
-							<p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+							<p className="type-sign-label text-muted-foreground flex items-center gap-1">
 								<Code2 className="h-3 w-3" /> DSA
 							</p>
 							{dsaResults.map((r, i) => (
 								<div
 									key={i}
-									className="flex items-center justify-between p-2.5 bg-surface rounded-[12px] text-[13px]"
+									className="flex items-center justify-between p-2.5 bg-surface rounded-md text-[13px]"
 								>
 									<span className="font-medium text-foreground truncate mr-2">
 										{r.problemTitle}
 									</span>
-									<span className="font-bold text-primary shrink-0">
+									<span className="font-bold text-foreground shrink-0">
 										{r.score}/10
 									</span>
 								</div>
@@ -483,7 +483,7 @@ const CandidateInterview: React.FC = () => {
 					</div>
 				)}
 				{error && (
-					<div className="mx-4 mt-3 bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-[12px] border border-destructive/20 flex items-center gap-2">
+					<div className="mx-4 mt-3 bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-md border border-destructive/20 flex items-center gap-2">
 						<AlertCircle className="w-4 h-4 shrink-0" />
 						<span>{error}</span>
 					</div>

@@ -86,20 +86,55 @@ jobs:
           OCR_LLM_TIMEOUT: '900'
           BEFORE_SHA: ${{ github.event.before }}
           HEAD_SHA: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           # Pass through to the summary renderer so it can label the range.
           echo "HEAD_SHA=$HEAD_SHA" >> "$GITHUB_ENV"
-          # A brand-new branch reports before == 0000...; fall back to the
-          # first commit so the whole branch content is reviewed once.
+
+          # A branch deletion reports after (github.sha) == 0000... and no
+          # diff exists; exit green instead of failing union resolution.
+          if [ "$HEAD_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "Branch deleted; nothing to review."
+            echo "OCR_EXIT_CODE=0" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          # Base resolution for degraded events. A brand-new branch reports
+          # before == 0000...; a force-push names a commit this checkout no
+          # longer has. The OLD fallback reviewed from the ROOT commit, i.e.
+          # the entire repository content (~140 reviewable files here) — a
+          # measured 15-45 minute agent grind that upstream's own docs do not
+          # recommend: for feature branches the recommended invocation is
+          # `ocr review --from main` (Range Mode off the merge base), which
+          # covers exactly the branch's delta from the default branch. The
+          # PR pipeline reviews that same range anyway.
+          degenerate() {
+            # Empty or self-referential base is not reviewable as a delta.
+            [ -z "$1" ] || [ "$1" = "$HEAD_SHA" ]
+          }
+          skip_review() {
+            echo "No reviewable delta ($1); skipping review."
+            echo "OCR_EXIT_CODE=0" >> "$GITHUB_ENV"
+            exit 0
+          }
           if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
-            BEFORE_SHA="$(git rev-list --max-parents=0 HEAD | head -1)"
-            echo "New branch: reviewing from root commit $BEFORE_SHA"
+            BEFORE_SHA="$(git merge-base "origin/$DEFAULT_BRANCH" HEAD 2>/dev/null || true)"
+            if degenerate "$BEFORE_SHA"; then
+              skip_review "pushed the default branch as a new ref, or unrelated history"
+            fi
+            echo "New branch: reviewing the delta off $DEFAULT_BRANCH from $BEFORE_SHA"
           elif ! git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
-            # A force-push rewrites the tip, so `before` names a commit this
-            # checkout no longer has and OCR fails on the unresolvable ref.
-            # Review the tip's own commit instead.
-            BEFORE_SHA="$(git rev-parse "${HEAD_SHA}^" 2>/dev/null || git rev-list --max-parents=0 HEAD | head -1)"
-            echo "Force-push: previous tip is unreachable; reviewing from $BEFORE_SHA"
+            # Force-push: review the rewritten tip's own commit.
+            BEFORE_SHA="$(git rev-parse "${HEAD_SHA}^" 2>/dev/null || true)"
+            if degenerate "$BEFORE_SHA"; then
+              BEFORE_SHA="$(git merge-base "origin/$DEFAULT_BRANCH" HEAD 2>/dev/null || true)"
+              if degenerate "$BEFORE_SHA"; then
+                skip_review "orphan tip and no default-branch merge base"
+              fi
+              echo "Force-push with orphan tip: reviewing delta off $DEFAULT_BRANCH from $BEFORE_SHA"
+            else
+              echo "Force-push: previous tip is unreachable; reviewing from $BEFORE_SHA"
+            fi
           fi
           echo "Reviewing $BEFORE_SHA..$HEAD_SHA"
 
@@ -109,7 +144,12 @@ jobs:
           # and the tee mirrors it into the run log live while the same bytes
           # land in /tmp/ocr-stderr.log for the artifact and the summary.
           # `--timeout` lifts the per-task budget off its 15-minute default,
-          # under the job cap set above.
+          # under the job cap set above. `--max-tokens-budget` caps the run's
+          # total token spend so a runaway review truncates at a predictable
+          # ceiling instead of burning the 45-minute job budget: an
+          # over-budget group gets one final round, remaining groups are
+          # reported as failed(budget), partial results still publish, and
+          # the run exits 0.
           OCR_STDERR_FIFO="$(mktemp -u)"
           mkfifo "$OCR_STDERR_FIFO"
           tee /tmp/ocr-stderr.log < "$OCR_STDERR_FIFO" >&2 &
@@ -117,6 +157,7 @@ jobs:
           ocr review \
             --from "$BEFORE_SHA" --to "$HEAD_SHA" \
             --effort low \
+            --max-tokens-budget 3000000 \
             --format json --timeout 40 \
             > /tmp/ocr-result.json 2> "$OCR_STDERR_FIFO"
           OCR_EXIT=$?

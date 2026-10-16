@@ -61,7 +61,7 @@ jobs:
           OCR_LLM_URL: ${{ secrets.OCR_LLM_URL }}
           OCR_LLM_TOKEN: ${{ secrets.OCR_LLM_AUTH_TOKEN }}
         run: |
-          ocr config set llm.extra_body '{"enable_thinking": false}'
+          ocr config set llm.extra_body '{"enable_thinking": max}'
           ocr config set language 'English'
 
       - name: Review pushed range
@@ -69,7 +69,7 @@ jobs:
         env:
           OCR_LLM_URL: ${{ secrets.OCR_LLM_URL }}
           OCR_LLM_TOKEN: ${{ secrets.OCR_LLM_AUTH_TOKEN }}
-          OCR_LLM_MODEL: space-bunny-free
+          OCR_LLM_MODEL: cat-jam-free
           OCR_USE_ANTHROPIC: 'false'
           BEFORE_SHA: ${{ github.event.before }}
           HEAD_SHA: ${{ github.sha }}

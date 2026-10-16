@@ -13,18 +13,29 @@ const CookieConsent = () => {
 	const [visible, setVisible] = useState(false);
 
 	useEffect(() => {
-		if (!localStorage.getItem(CONSENT_KEY)) setVisible(true);
+		try {
+			if (!localStorage.getItem(CONSENT_KEY)) setVisible(true);
+		} catch {
+			// Storage blocked (private mode, disabled cookies) — the notice cannot be
+			// remembered, but it should still be shown.
+			setVisible(true);
+		}
 	}, []);
 
 	const acknowledge = () => {
-		localStorage.setItem(
-			CONSENT_KEY,
-			JSON.stringify({
-				essential: true,
-				version: CONSENT_VERSION,
-				date: new Date().toISOString(),
-			}),
-		);
+		try {
+			localStorage.setItem(
+				CONSENT_KEY,
+				JSON.stringify({
+					essential: true,
+					version: CONSENT_VERSION,
+					date: new Date().toISOString(),
+				}),
+			);
+		} catch {
+			// Quota or blocked storage: the acknowledgement still counts for this
+			// session, so carry on rather than failing the whole flow.
+		}
 		// Record the same acknowledgement against the account, when signed in
 		if (localStorage.getItem("user")) {
 			api

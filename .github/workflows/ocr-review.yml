@@ -49,9 +49,22 @@ jobs:
           llm_use_anthropic: 'false'
           # `enable_thinking` is rejected upstream for cat-jam-free
           # ([unsupported_parameter] Unrecognized request argument supplied);
-          # `reasoning_effort` is accepted and carries the same "max" intent.
-          # Both verified against the model endpoint directly.
-          llm_extra_body: '{"reasoning_effort": "max"}'
+          # `reasoning_effort` is accepted — verified against the model
+          # endpoint directly. 'low', not 'max': maximal reasoning on every
+          # turn of the agent loop is why a 2-file PR took 34 min (212 LLM
+          # turns, 4.2M input tokens — run 38959556324) and a 32-file PR blew
+          # through this workflow's 45-minute cap.
+          llm_extra_body: '{"reasoning_effort": "low"}'
+          # CLI effort preset (needs OCR >= 1.10.0; we pin 1.13.0), matching
+          # the push workflow's `--effort low`. Empty (default) would keep the
+          # CLI's medium.
+          effort: 'low'
+          # Cap the agent loop's total token spend so a runaway review
+          # truncates at a predictable ceiling instead of burning the whole
+          # 45-minute job budget. An over-budget group gets one final round,
+          # remaining groups are reported as failed(budget), and the run
+          # still publishes partial results and exits 0.
+          max_tokens_budget: '3000000'
           # Human-audience [ocr] progress lines stream live into the workflow
           # log (stderr) instead of appearing only after the run; the JSON
           # result still lands on stdout. Needs OCR >= 1.9.8; we pin 1.13.0.
@@ -59,10 +72,10 @@ jobs:
           # Per-file task budget, in minutes (default 15). Raised with the job
           # cap so a long task is not dropped while the job still has time.
           review_task_timeout: '40'
-          # Single-request budget, in seconds (default 300). With
-          # reasoning_effort max a request ran past 300s and the review failed
-          # with "LLM request timeout ... context deadline exceeded", so it gets
-          # room inside the task budget above.
+          # Single-request budget, in seconds (default 300). Old max-effort
+          # requests ran past 300s and failed with "LLM request timeout ...
+          # context deadline exceeded", so they keep room inside the task
+          # budget above even though low-effort requests should not need it.
           llm_timeout: '900'
           github_token: ${{ secrets.GITHUB_TOKEN }}
           language: 'English'

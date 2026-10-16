@@ -66,8 +66,11 @@ jobs:
           # cat-jam-free ("[unsupported_parameter] Unrecognized request
           # argument supplied"), and an unquoted value here is invalid JSON
           # anyway, which fails the step before any review runs.
-          # `reasoning_effort` is accepted, so the "max" intent lives there.
-          ocr config set llm.extra_body '{"reasoning_effort": "max"}'
+          # `reasoning_effort` is accepted; keep it at 'low': reasoning_effort
+          # max made the review loop itself the wall-clock bottleneck — a
+          # 2-file PR measured 212 LLM turns, 4.2M input tokens, 34 min
+          # (run 38959556324).
+          ocr config set llm.extra_body '{"reasoning_effort": "low"}'
           ocr config set language 'English'
 
       - name: Review pushed range
@@ -77,9 +80,9 @@ jobs:
           OCR_LLM_TOKEN: ${{ secrets.OCR_LLM_AUTH_TOKEN }}
           OCR_LLM_MODEL: cat-jam-free
           OCR_USE_ANTHROPIC: 'false'
-          # Single-request budget in seconds (default 300): with
-          # reasoning_effort max a request ran past 300s and the run failed with
-          # "LLM request timeout ... context deadline exceeded".
+          # Single-request budget in seconds (default 300): old max-effort
+          # requests ran past 300s and the run failed with "LLM request
+          # timeout ... context deadline exceeded".
           OCR_LLM_TIMEOUT: '900'
           BEFORE_SHA: ${{ github.event.before }}
           HEAD_SHA: ${{ github.sha }}

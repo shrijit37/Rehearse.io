@@ -32,7 +32,7 @@ const CookieConsent = () => {
 					consentGiven: true,
 					consentVersion: CONSENT_VERSION,
 				})
-				.catch(() => {});
+				.catch((err) => console.error("Failed to record consent:", err));
 		}
 		setVisible(false);
 	};

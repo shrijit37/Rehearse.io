@@ -12,7 +12,12 @@ import {
     updateUser,
 } from "../../db/repositories/users";
 import { listRehearsalSessions, deleteRehearsalSessionsForUser } from "../../db/repositories/rehearsals";
-import { deleteInvitesForCandidate, listInvitesForCandidate, findInterviewRowById } from "../../db/repositories/interviews";
+import {
+    deleteInterviewSessionsForCreator,
+    deleteInvitesForCandidate,
+    listInvitesForCandidate,
+    findInterviewRowById,
+} from "../../db/repositories/interviews";
 import { withId } from "../../db/shape";
 import { findOrganizationRowById } from "../../db/repositories/organizations";
 
@@ -377,6 +382,8 @@ export const deleteUserAccount = async (userId: string): Promise<DeleteAccountRe
 
         await deleteRehearsalSessionsForUser(userId);
         await deleteInvitesForCandidate(userId);
+        // Interviews this user created (with their invites, via FK cascade).
+        await deleteInterviewSessionsForCreator(userId);
 
         return {
             status: 200,

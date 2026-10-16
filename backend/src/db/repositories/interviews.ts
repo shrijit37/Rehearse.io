@@ -73,6 +73,15 @@ export async function listInterviewSessions(filter: {
     return { rows: all.slice(filter.skip, filter.skip + filter.limit), total: all.length };
 }
 
+/**
+ * Deletes every interview session created by the user.
+ * The interviews' invites go with them: `candidate_invites.interview_id`
+ * references `interview_sessions.id` with `ON DELETE CASCADE`.
+ */
+export async function deleteInterviewSessionsForCreator(userId: string) {
+    await db.delete(interviewSessions).where(eq(interviewSessions.createdBy, userId));
+}
+
 // ---------------------------------------------------------------------------
 // Candidate invites
 // ---------------------------------------------------------------------------

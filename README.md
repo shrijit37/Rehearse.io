@@ -11,8 +11,8 @@ Monorepo with three services:
   problem generation and code evaluation, port 8000
 
 > Honest status lives in [STATE.md](./STATE.md). **Production is live**: the
-> API answers `/health` and `/ready` at `api.rehearseio.triptribe.info`, and
-> the frontend is served by Cloudflare Pages at
+> API answers `GET /health` (with `checks.database`) at `api.rehearseio.triptribe.info`,
+> and the frontend is served by Cloudflare Pages at
 > `https://rehearse.io.shrijit.tech/`. Read STATE.md before trusting any
 > other doc. (Also: `rehearse.io` itself is a parked GoDaddy domain for
 > sale, not this project's.)
@@ -48,7 +48,8 @@ make dev                         # backend :9000, frontend :5173, ai :8000
 Service URLs: backend `http://localhost:9000`, frontend
 `http://localhost:5173`, AI `http://localhost:8000`.
 
-Health: backend `GET /health` (liveness) and `GET /ready` (Postgres check);
+Health: backend `GET /health` (the fleet contract; Postgres is the critical
+check, `503` when down — there is no `/ready` route);
 AI `GET /health` (reports STT/TTS availability).
 
 ## Make targets

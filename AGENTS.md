@@ -1,7 +1,7 @@
 # Rehearse.io - Agent Instructions
 
 > Honest repo state lives in [STATE.md](./STATE.md). Read it first.
-> Production is live (API `/ready` returns `database: up`, frontend on
+> Production is live (API `GET /health` returns `checks.database: up`, frontend on
 > Cloudflare Pages); verify live URLs before trusting them, and note
 > `GROQ_API_KEY` is not yet in prod.
 
@@ -30,7 +30,7 @@ make test       # backend typecheck + smoke test (needs running server + DB)
 make lint       # frontend eslint
 make build      # backend typecheck + frontend build + ai compileall
 make migrate    # drizzle-kit migrate against DATABASE_URL
-make health     # hits $APP_URL/health then /ready
+make health     # polls $APP_URL/health until status ok (600s budget)
 ```
 
 ### Backend (`/backend`, Bun)
@@ -68,8 +68,9 @@ cd app && uvicorn main:app --reload --port 8000
 
 - **Backend entrypoint**: `backend/src/server.ts` — Express 5, helmet, rate
   limiting, prototype-pollution guard, JSON 10 MB limit.
-- **Health**: `GET /health` = liveness (no DB check). `GET /ready` = Postgres
-  reachable (503 otherwise). CI and Dokploy gate on `/ready`.
+- **Health**: `GET /health` is the fleet contract — `{status, service, version,
+  checks}` with a real Postgres check (503 when the DB is down). There is no
+  `/ready` alias; CI and Dokploy gate on `scripts/health`, which polls `/health`.
 - **Data layer**: Drizzle ORM. Schema `backend/src/db/schema.ts`, migrations
   `backend/drizzle/`, queries `backend/src/db/repositories/*`. Services never
   query `db` directly.

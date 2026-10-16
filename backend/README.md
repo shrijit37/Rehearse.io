@@ -4,7 +4,7 @@ Bun runtime + Express 5 + TypeScript API for Rehearse.io. **PostgreSQL via
 Drizzle ORM**, shared-auth session verification, RBAC, rate limiting, helmet.
 
 > Honest repo state: [STATE.md](../STATE.md). Production is live: the API
-> domain serves `/health` and `/ready` (`database: up`) and the frontend is
+> domain serves `GET /health` with `checks.database: up` and the frontend is
 > on Cloudflare Pages.
 
 ## Install and run
@@ -49,13 +49,13 @@ Secrets live in Infisical, never in the repo. See `../.env.example`.
 
 | Endpoint | Meaning |
 |---|---|
-| `GET /health` | Liveness. Process is up; deliberately does **not** touch the database. |
-| `GET /ready` | Readiness. `503` unless Postgres answers `SELECT 1`. CI and Dokploy gate on this. |
+| `GET /health` | The fleet health contract: `{status, service, version, checks}`. Postgres is the critical dependency — `503` with `status: "down"` when the DB check fails. CI and Dokploy gate on this, via `scripts/health`. |
+| `GET /ready` | **Does not exist** — dropped in `a2ddf7c` in favour of the uniform contract above; a request returns `404`. |
 
 ## API map
 
 ```text
-GET  /health    GET /ready                     liveness + readiness
+GET  /health                                   fleet health contract
 
 POST /api/auth/signup   POST /api/auth/login  public, strict rate limit
 

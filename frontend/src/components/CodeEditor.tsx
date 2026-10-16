@@ -57,16 +57,16 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
 
 	return (
 		<div
-			className={`border border-border rounded-[12px] overflow-hidden bg-[#0d0d0d] flex flex-col ${className}`}
+			className={`border border-border rounded-md overflow-hidden bg-sign-black flex flex-col ${className}`}
 		>
 			{/* Toolbar */}
 			<div className="flex items-center justify-between px-3 py-2 border-b border-border bg-secondary/20">
 				<div className="flex items-center gap-2">
-					<span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
+					<span className="type-sign-label text-sign-white/60">
 						Editor
 					</span>
-					<span className="text-[10px] text-muted-foreground/50">·</span>
-					<span className="text-[10px] font-mono text-primary">
+					<span className="text-[10px] text-sign-white/40">·</span>
+					<span className="type-sign-label text-sign-white/70">
 						{LANGUAGE_LABELS[language]}
 					</span>
 				</div>
@@ -74,7 +74,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
 					<select
 						value={language}
 						onChange={(e) => onLanguageChange(e.target.value as CodeLanguage)}
-						className="h-7 px-2 rounded-[6px] border border-border bg-background text-[11px] font-mono text-foreground focus:outline-none focus:border-primary/50"
+						className="h-7 px-2 rounded-md border border-white/25 bg-sign-black text-[11px] font-mono text-sign-white focus:outline-none focus:border-sign-white"
 						aria-label="Programming language"
 					>
 						{(Object.keys(LANGUAGE_LABELS) as CodeLanguage[]).map((lang) => (
@@ -90,7 +90,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
 			<div className="flex flex-1 min-h-0 overflow-hidden">
 				{/* Line numbers */}
 				<div
-					className="select-none py-3 px-2 text-right font-mono text-[11px] leading-5 text-muted-foreground/40 bg-[#0a0a0a] border-r border-border/50 overflow-hidden shrink-0"
+					className="select-none py-3 px-2 text-right font-mono text-[11px] leading-5 text-sign-white/40 bg-sign-black border-r border-border/50 overflow-hidden shrink-0"
 					aria-hidden
 					style={{ minHeight: resolvedMinHeight }}
 				>
@@ -106,7 +106,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
 					spellCheck={false}
 					autoCapitalize="off"
 					autoCorrect="off"
-					className="flex-1 w-full py-3 px-3 font-mono text-[12px] leading-5 text-[#e8e8e8] bg-transparent resize-none focus:outline-none caret-primary"
+					className="flex-1 w-full py-3 px-3 font-mono text-[12px] leading-5 text-sign-white bg-transparent resize-none focus:outline-none caret-primary"
 					style={{ minHeight: resolvedMinHeight, tabSize: 4 }}
 					aria-label="Code editor"
 				/>

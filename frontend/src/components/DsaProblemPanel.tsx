@@ -1,5 +1,6 @@
 import React from "react";
 import { Tag } from "lucide-react";
+import { label } from "@/lib/labels";
 
 export interface DsaExample {
 	input: string;
@@ -44,11 +45,11 @@ const DsaProblemPanel: React.FC<DsaProblemPanelProps> = ({
 	const diff = (problem.difficulty || "medium").toLowerCase();
 
 	return (
-		<div className="h-full flex flex-col overflow-hidden border border-border rounded-[16px] bg-card">
+		<div className="h-full flex flex-col overflow-hidden border border-border rounded-md bg-card">
 			<div className="border-b border-border px-5 py-3.5 bg-secondary/15 flex items-start justify-between gap-3">
 				<div className="min-w-0">
 					{problemNumber != null && totalProblems != null && (
-						<p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mb-1">
+						<p className="type-sign-label text-muted-foreground mb-1">
 							Problem {problemNumber} of {totalProblems}
 						</p>
 					)}
@@ -57,18 +58,18 @@ const DsaProblemPanel: React.FC<DsaProblemPanelProps> = ({
 					</h2>
 				</div>
 				<span
-					className={`shrink-0 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded border ${
+					className={`shrink-0 px-2 py-0.5 type-sign-label rounded border ${
 						difficultyStyles[diff] || difficultyStyles.medium
 					}`}
 				>
-					{diff}
+					{label(diff)}
 				</span>
 			</div>
 
 			<div className="flex-1 overflow-y-auto p-5 space-y-5">
 				{/* Description */}
 				<section className="space-y-2">
-					<h3 className="text-[10px] font-bold uppercase tracking-wider text-primary">
+					<h3 className="type-sign-label text-foreground">
 						Description
 					</h3>
 					<p className="text-[13px] text-foreground/90 leading-relaxed whitespace-pre-wrap">
@@ -79,13 +80,13 @@ const DsaProblemPanel: React.FC<DsaProblemPanelProps> = ({
 				{/* Examples */}
 				{problem.examples && problem.examples.length > 0 && (
 					<section className="space-y-3">
-						<h3 className="text-[10px] font-bold uppercase tracking-wider text-primary">
+						<h3 className="type-sign-label text-foreground">
 							Examples
 						</h3>
 						{problem.examples.map((ex, i) => (
 							<div
 								key={i}
-								className="rounded-[10px] border border-border/60 bg-secondary/20 p-3 space-y-1.5"
+								className="rounded-md border border-border/60 bg-secondary/20 p-3 space-y-1.5"
 							>
 								<p className="text-[11px] font-semibold text-muted-foreground">
 									Example {i + 1}
@@ -97,7 +98,7 @@ const DsaProblemPanel: React.FC<DsaProblemPanelProps> = ({
 									</p>
 									<p>
 										<span className="text-muted-foreground">Output: </span>
-										<span className="text-primary">{ex.output}</span>
+										<span className="text-success">{ex.output}</span>
 									</p>
 									{ex.explanation && (
 										<p className="text-[11px] text-muted-foreground font-sans pt-1">
@@ -113,7 +114,7 @@ const DsaProblemPanel: React.FC<DsaProblemPanelProps> = ({
 				{/* Constraints */}
 				{problem.constraints && (
 					<section className="space-y-2">
-						<h3 className="text-[10px] font-bold uppercase tracking-wider text-primary">
+						<h3 className="type-sign-label text-foreground">
 							Constraints
 						</h3>
 						<pre className="text-[12px] font-mono text-muted-foreground whitespace-pre-wrap leading-relaxed">
@@ -125,7 +126,7 @@ const DsaProblemPanel: React.FC<DsaProblemPanelProps> = ({
 				{/* Topics */}
 				{problem.topics && problem.topics.length > 0 && (
 					<section className="space-y-2">
-						<h3 className="text-[10px] font-bold uppercase tracking-wider text-primary flex items-center gap-1">
+						<h3 className="type-sign-label text-foreground flex items-center gap-1">
 							<Tag className="h-3 w-3" /> Topics
 						</h3>
 						<div className="flex flex-wrap gap-1.5">

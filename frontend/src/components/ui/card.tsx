@@ -2,22 +2,14 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-type CardRadius = 20 | 24 | 30;
+type CardProps = React.ComponentProps<"div">;
 
-interface CardProps extends React.ComponentProps<"div"> {
-  /** Verge radius: 20 (standard), 24 (feature), 30 (promotional) */
-  cardRadius?: CardRadius;
-}
-
-function Card({ className, cardRadius = 20, ...props }: CardProps) {
+function Card({ className, ...props }: CardProps) {
   return (
     <div
       data-slot="card"
       className={cn(
-        "bg-card text-card-foreground flex flex-col gap-6 border py-6",
-        cardRadius === 20 && "rounded-[20px]",
-        cardRadius === 24 && "rounded-[24px]",
-        cardRadius === 30 && "rounded-[30px]",
+        "bg-card text-card-foreground flex flex-col gap-6 border py-6 rounded-md",
         className
       )}
       {...props}

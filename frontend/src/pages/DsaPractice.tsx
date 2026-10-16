@@ -119,7 +119,7 @@ const DsaPractice: React.FC = () => {
 				: "—";
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center p-4 mt-14">
-				<div className="w-full max-w-md border border-border rounded-[20px] bg-card p-8 text-center space-y-5">
+				<div className="w-full max-w-md border border-border rounded-md bg-card p-8 text-center space-y-5">
 					<div className="w-14 h-14 bg-success/10 rounded-full flex items-center justify-center mx-auto">
 						<CheckCircle2 className="w-7 h-7 text-success" />
 					</div>
@@ -134,10 +134,10 @@ const DsaPractice: React.FC = () => {
 						{results.map((r, i) => (
 							<div
 								key={i}
-								className="flex items-center justify-between p-2.5 bg-surface rounded-[12px] text-[13px]"
+								className="flex items-center justify-between p-2.5 bg-surface rounded-md text-[13px]"
 							>
 								<span className="font-medium truncate mr-2">{r.problemTitle}</span>
-								<span className="font-bold text-primary shrink-0">
+								<span className="font-bold text-foreground shrink-0">
 									{r.score}/10
 								</span>
 							</div>
@@ -193,7 +193,7 @@ const DsaPractice: React.FC = () => {
 					</Button>
 					<div>
 						<h1 className="text-xl font-bold tracking-[-0.02em] text-foreground flex items-center gap-2">
-							<Code2 className="h-5 w-5 text-primary" /> DSA Practice
+							<Code2 className="h-5 w-5 text-foreground" /> DSA Practice
 						</h1>
 						<p className="text-[13px] text-muted-foreground">
 							AI-generated coding problems with automated evaluation.
@@ -201,9 +201,9 @@ const DsaPractice: React.FC = () => {
 					</div>
 				</div>
 
-				<div className="border border-border rounded-[20px] bg-card p-6 space-y-5">
+				<div className="border border-border rounded-md bg-card p-6 space-y-5">
 					{error && (
-						<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-[12px] border border-destructive/20 text-center">
+						<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-md border border-destructive/20 text-center">
 							{error}
 						</div>
 					)}
@@ -226,10 +226,10 @@ const DsaPractice: React.FC = () => {
 									key={d.value}
 									type="button"
 									onClick={() => setDifficulty(d.value)}
-									className={`h-9 rounded-[10px] text-[12px] font-semibold border transition-colors ${
+									className={`h-9 rounded-md text-[12px] font-semibold border transition-colors ${
 										difficulty === d.value
-											? "bg-primary/15 border-primary text-primary"
-											: "bg-background border-border text-muted-foreground hover:border-primary/40"
+											? "bg-sign-black border-sign-black text-sign-white"
+											: "bg-background border-border text-muted-foreground hover:border-sign-black"
 									}`}
 								>
 									{d.label}
@@ -243,7 +243,7 @@ const DsaPractice: React.FC = () => {
 						<select
 							value={count}
 							onChange={(e) => setCount(Number(e.target.value))}
-							className="w-full h-9 px-3 rounded-[10px] border border-border bg-background text-[13px] focus:border-primary/50 focus:outline-none"
+							className="w-full h-9 px-3 rounded-md border border-border bg-background text-[13px] focus:border-foreground focus:outline-none"
 						>
 							{[1, 2, 3].map((n) => (
 								<option key={n} value={n}>
@@ -253,7 +253,7 @@ const DsaPractice: React.FC = () => {
 						</select>
 					</div>
 
-					<div className="rounded-[12px] border border-border/60 bg-secondary/15 p-3 text-[12px] text-muted-foreground leading-relaxed">
+					<div className="rounded-md border border-border/60 bg-secondary/15 p-3 text-[12px] text-muted-foreground leading-relaxed">
 						You will write solutions in Python, JavaScript, Java, or C++. AI
 						reviews correctness, code quality, and complexity after each
 						submission.

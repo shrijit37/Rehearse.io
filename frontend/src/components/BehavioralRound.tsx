@@ -90,7 +90,7 @@ const BehavioralRound: React.FC<BehavioralRoundProps> = ({
 					<div className="flex items-center gap-3 w-44 sm:w-56">
 						<div className="flex-1 bg-secondary h-1.5 rounded-full overflow-hidden">
 							<div
-								className="bg-primary h-full transition-all duration-300"
+								className="bg-sign-black h-full transition-all duration-300"
 								style={{ width: `${progressPercent}%` }}
 							/>
 						</div>
@@ -105,7 +105,7 @@ const BehavioralRound: React.FC<BehavioralRoundProps> = ({
 			<div className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col md:grid md:grid-cols-12 gap-5">
 				{/* Question panel */}
 				<div className="md:col-span-5 flex flex-col">
-					<div className="border border-border bg-card rounded-[20px] flex-1 flex flex-col overflow-hidden">
+					<div className="border border-border bg-card rounded-md flex-1 flex flex-col overflow-hidden">
 						<div className="border-b border-border px-5 py-3 bg-secondary/15">
 							<span className="text-[12px] font-semibold text-foreground">
 								{interview?.title || "Interview"}
@@ -115,12 +115,12 @@ const BehavioralRound: React.FC<BehavioralRoundProps> = ({
 							</p>
 						</div>
 						<div className="flex-1 p-5 flex flex-col justify-center items-center">
-							<div className="w-20 h-20 rounded-full bg-primary/10 border border-primary/15 flex items-center justify-center relative mb-5">
+							<div className="w-20 h-20 rounded-full bg-sign-black border border-sign-black flex items-center justify-center relative mb-5">
 								<span
-									className="absolute inset-0 rounded-full border border-primary/20 animate-ping opacity-40"
+									className="absolute inset-0 rounded-full border border-sign-black/25 animate-ping opacity-40"
 									style={{ animationDuration: "3s" }}
 								/>
-								<Volume2 className="h-7 w-7 text-primary" />
+								<Volume2 className="h-7 w-7 text-sign-yellow" />
 							</div>
 							<p className="text-[12px] text-muted-foreground text-center">
 								Listen carefully, then record your response.
@@ -128,7 +128,7 @@ const BehavioralRound: React.FC<BehavioralRoundProps> = ({
 						</div>
 						<div className="border-t border-border p-5 bg-background space-y-2">
 							<div className="flex items-center justify-between">
-								<span className="text-[10px] font-bold uppercase tracking-wider text-primary">
+								<span className="type-sign-label text-foreground">
 									Question
 								</span>
 								{ttsSupported && (
@@ -138,8 +138,8 @@ const BehavioralRound: React.FC<BehavioralRoundProps> = ({
 										title={speaking ? "Stop" : "Play question aloud"}
 										className={`p-1.5 rounded-full transition-all ${
 											speaking
-												? "bg-primary/15 text-primary animate-pulse"
-												: "text-muted-foreground hover:text-primary hover:bg-primary/10"
+												? "bg-sign-black text-sign-white animate-pulse"
+												: "text-muted-foreground hover:text-foreground hover:bg-surface-active"
 										} disabled:opacity-30 disabled:cursor-not-allowed`}
 									>
 										{speaking ? (
@@ -160,16 +160,16 @@ const BehavioralRound: React.FC<BehavioralRoundProps> = ({
 				{/* Recording panel */}
 				<div className="md:col-span-7 flex flex-col relative">
 					{error && (
-						<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-[20px] border border-destructive/20 mb-3 flex items-center gap-2">
+						<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-md border border-destructive/20 mb-3 flex items-center gap-2">
 							<AlertCircle className="w-4 h-4 shrink-0" />
 							<span>{error}</span>
 						</div>
 					)}
-					<div className="border border-border bg-card rounded-[20px] flex-1 flex flex-col overflow-hidden relative min-h-[340px]">
+					<div className="border border-border bg-card rounded-md flex-1 flex flex-col overflow-hidden relative min-h-[340px]">
 						<div className="flex-1 bg-black relative flex flex-col justify-center items-center overflow-hidden">
 							{isEvaluating ? (
 								<div className="absolute inset-0 bg-background/95 z-20 flex flex-col items-center justify-center gap-3">
-									<Loader2 className="w-8 h-8 text-primary animate-spin" />
+									<Loader2 className="w-8 h-8 text-foreground animate-spin" />
 									<p className="text-[13px] font-semibold">
 										Evaluating your response...
 									</p>
@@ -179,7 +179,7 @@ const BehavioralRound: React.FC<BehavioralRoundProps> = ({
 									<div className="space-y-3">
 										<div className="flex items-center justify-between border-b border-border pb-3">
 											<div>
-												<span className="text-[10px] font-bold text-success bg-success/10 px-2 py-0.5 rounded uppercase tracking-wider">
+												<span className="type-sign-label text-success bg-success/10 px-2 py-0.5 rounded ">
 													Ready
 												</span>
 												<h3 className="text-base font-bold pt-1">Score</h3>
@@ -231,11 +231,11 @@ const BehavioralRound: React.FC<BehavioralRoundProps> = ({
 								<>
 									<div className="absolute top-3 right-3 flex items-center gap-1.5 bg-destructive/10 border border-destructive/20 px-2.5 py-1 rounded-full">
 										<span className="w-1.5 h-1.5 bg-destructive rounded-full animate-pulse" />
-										<span className="text-[9px] font-bold uppercase text-white tracking-wider">
+										<span className="type-sign-label text-white ">
 											Live
 										</span>
 									</div>
-									<div className="absolute bottom-3 left-3 bg-black/50 border border-white/10 px-2.5 py-1 rounded-full text-white font-mono text-[11px]">
+									<div className="absolute bottom-3 left-3 bg-black/50 border border-white/10 px-2.5 py-1 rounded-full text-white text-[11px] tabular-nums">
 										{formatTimer(recordingSeconds)}
 									</div>
 								</>

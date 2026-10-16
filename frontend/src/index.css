@@ -2,19 +2,20 @@
 @import "tw-animate-css";
 
 @theme inline {
-  /* Font families */
-  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-mono: "Space Mono", ui-monospace, SFMono-Regular, monospace;
-  --font-display: "Anton", "Impact", ui-sans-serif, sans-serif;
+  /* Font families — one family, as signage uses one.
+     Hanken Grotesk: humanist grotesk, Frutiger-adjacent, sentence case. */
+  --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --font-display: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
 
-  /* Verge discrete radius scale */
-  --radius-sm: 2px;
-  --radius-md: 4px;
-  --radius-lg: 20px;
-  --radius-xl: 24px;
-  --radius-2xl: 30px;
-  --radius-3xl: 40px;
-  --radius: 24px;
+  /* Signs are square. Controls break the edge by 2px, panels not at all. */
+  --radius-sm: 0px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 2px;
+  --radius-2xl: 2px;
+  --radius-3xl: 2px;
+  --radius: 2px;
 
   /* Token mappings */
   --color-background: var(--background);
@@ -58,92 +59,103 @@
   --color-warning-foreground: var(--warning-foreground);
   --color-info: var(--info);
 
-  /* Verge custom colors */
-  --color-mint: #3cffd0;
-  --color-ultraviolet: #5200ff;
-  --color-canvas: #131313;
-  --color-surface-slate: #2d2d2d;
-  --color-deep-link: #3860be;
-  --color-console-mint: #309875;
-  --color-focus-cyan: #1eaedb;
+  /* Wayfinding material, named as the sign system names it */
+  --color-sign-yellow: #f7c600;   /* Schiphol yellow — actions and monuments only */
+  --color-sign-black: #111111;    /* sign black */
+  --color-sign-white: #ffffff;    /* sign white */
+  --color-sign-grey: #9a9a9a;     /* surface grey — rules, never text */
+  --color-sign-frame: #e6e6e4;    /* sign frame */
+  --color-sign-red: #c8102e;      /* prohibition */
+  --color-sign-green: #0f7a3d;    /* exit / go */
+  --color-sign-blue: #1f4e9c;     /* information */
+  --color-sign-amber: #8a5a00;    /* caution — deliberately not the wayfinding yellow */
 }
 
-/* Dark-only canvas — no light mode */
+/* Light work area under the sign layer. Physical scene: a recruiter at a desk
+   in a bright office, an hour into a register, with other tabs and a call open.
+   Chrome is the saturated sign layer; the work area is the reading surface. */
 :root {
-  /* Verge Canvas Black — the forever background */
-  --background: #131313;
-  --foreground: #ffffff;
-  --card: #2d2d2d;
-  --card-foreground: #ffffff;
-  --popover: #1e1e1e;
-  --popover-foreground: #ffffff;
+  /* The app is light-only: keep native controls and scrollbars light even when
+     the operating system is in dark mode. */
+  color-scheme: light;
 
-  /* Primary: Jelly Mint hazard accent */
-  --primary: #3cffd0;
-  --primary-foreground: #131313;
+  --background: #e6e6e4;
+  --foreground: #111111;
+  --card: #ffffff;
+  --card-foreground: #111111;
+  --popover: #ffffff;
+  --popover-foreground: #111111;
 
-  /* Secondary: Surface Slate */
-  --secondary: #363636;
-  --secondary-foreground: #e9e9e9;
+  /* Primary: the wayfinding yellow, on the sign's own black */
+  --primary: #f7c600;
+  --primary-foreground: #111111;
 
-  /* Muted surfaces */
-  --muted: #1a1a1a;
-  --muted-foreground: #949494;
+  --secondary: #dedddb;
+  --secondary-foreground: #111111;
 
-  /* Accent */
-  --accent: #2d2d2d;
-  --accent-foreground: #ffffff;
+  --muted: #f4f4f2;
+  --muted-foreground: #58585a;
 
-  /* Destructive → Verge Ultraviolet */
-  --destructive: #5200ff;
+  --accent: #e6e6e4;
+  --accent-foreground: #111111;
+
+  /* Prohibition red */
+  --destructive: #c8102e;
   --destructive-foreground: #ffffff;
 
-  /* Borders: hairline white at low opacity */
-  --border: rgba(255, 255, 255, 0.12);
-  --input: rgba(255, 255, 255, 0.12);
+  /* Sign panels are ruled, not hairlined */
+  --border: #8f8f8c;
+  --input: #8f8f8c;
 
-  /* Focus: Cyan */
-  --ring: #1eaedb;
+  --ring: #111111;
 
-  /* Surface variants */
-  --surface: #131313;
-  --surface-hover: #1a1a1a;
-  --surface-active: #222222;
+  --surface: #ffffff;
+  --surface-hover: #f4f4f2;
+  --surface-active: #e6e6e4;
 
   /* Semantic */
-  --success: #309875;
-  --success-foreground: #131313;
-  --warning: #e8a839;
-  --warning-foreground: #131313;
-  --info: #3860be;
+  --success: #0f7a3d;
+  --success-foreground: #ffffff;
+  --warning: #8a5a00;
+  --warning-foreground: #ffffff;
+
+  /* The caution hatch's two steps — a texture, not a palette entry */
+  --hatch-a: #fdf1de;
+  --hatch-b: #f6dfb6;
+  --info: #1f4e9c;
 
   /* Chart colors */
-  --chart-1: #3cffd0;
-  --chart-2: #309875;
-  --chart-3: #1eaedb;
-  --chart-4: #e8a839;
-  --chart-5: #5200ff;
+  --chart-1: #f7c600;
+  --chart-2: #111111;
+  --chart-3: #9a9a9a;
+  --chart-4: #0f7a3d;
+  --chart-5: #c8102e;
 
-  /* Sidebar */
-  --sidebar: #1a1a1a;
+  /* The rail is the sign panel, not a sidebar surface */
+  --sidebar: #111111;
   --sidebar-foreground: #ffffff;
-  --sidebar-primary: #3cffd0;
-  --sidebar-primary-foreground: #131313;
-  --sidebar-accent: #2d2d2d;
+  --sidebar-primary: #f7c600;
+  --sidebar-primary-foreground: #111111;
+  --sidebar-accent: #262626;
   --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
-  --sidebar-ring: #1eaedb;
+  --sidebar-border: rgba(255, 255, 255, 0.22);
+  --sidebar-ring: #f7c600;
 }
 
 @layer base {
   * {
     @apply border-border;
-    outline-color: oklch(from var(--ring) l c h / 0.5);
+  }
+
+  /* In-page navigation glides; the reduced-motion block at the end of this
+     file forces it back to auto for anyone who asked for less motion. */
+  html {
+    scroll-behavior: smooth;
   }
   body {
-    @apply bg-[#131313] text-white antialiased;
-    font-family: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    @apply bg-background text-foreground antialiased;
+    font-family: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-feature-settings: "tnum" 1, "lnum" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
@@ -153,6 +165,20 @@
   }
   p, li {
     text-wrap: pretty;
+  }
+  /* One focus treatment, legible on both the white work area and the black
+     sign layer: a black rule over a white offset, inverted on dark ground. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  .on-sign :focus-visible,
+  .on-sign:focus-visible {
+    outline-color: #ffffff;
+  }
+  /* Figures line up column to column, always */
+  table, .num {
+    font-variant-numeric: tabular-nums lining-nums;
   }
 }
 
@@ -164,52 +190,107 @@
     text-wrap: pretty;
   }
 
-  /* Verge typography utilities */
+  /* --- The wayfinding type ladder. One family, three jobs. --- */
 
-  /* Hero/Display: Anton substitute for Manuka */
-  .type-hero {
-    font-family: "Anton", "Impact", ui-sans-serif, sans-serif;
-    font-weight: 900;
-    text-transform: uppercase;
-    line-height: 0.95;
-    letter-spacing: 1.07px;
+  /* The monumental identifier — a band's destination, sized by the caller */
+  .type-monument {
+    font-family: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+    font-weight: 800;
+    line-height: 0.92;
+    letter-spacing: -0.025em;
   }
 
-  /* All-caps mono labels (Space Mono, always UPPERCASE) */
-  .type-mono-label {
-    font-family: "Space Mono", ui-monospace, SFMono-Regular, monospace;
-    text-transform: uppercase;
+  /* At monumental scale the comp tracks tighter still (-0.05em at 54px).
+     Declared after .type-monument so it wins the tie in this layer. */
+  .type-monument-tight {
+    letter-spacing: -0.05em;
+  }
+
+  /* Sentence case, as signage is: the world does not shout in caps */
+  .type-band {
+    font-family: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
     font-weight: 600;
-    letter-spacing: 1.5px;
+    font-size: 13px;
+    line-height: 1.35;
+    letter-spacing: 0.005em;
   }
 
-  /* Thin-weight "fashion whisper" — 300 weight, wide tracking */
-  .type-whisper {
-    font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
-    font-weight: 300;
-    font-size: 19px;
-    letter-spacing: 1.9px;
-    text-transform: uppercase;
+  /* Sentence case, as signage is: the world does not shout in caps. Carries no
+     colour, so a caller's own text-* class decides it. */
+  .type-sign-label {
+    font-family: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600;
+    font-size: 12px;
+    line-height: 1.3;
+    letter-spacing: 0.04em;
   }
 
-  /* Eyebrow: smaller uppercase labels */
-  .type-eyebrow {
-    font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  /* A magnitude ramp: quantity read from weight before colour */
+  .type-score {
+    font-family: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+    font-variant-numeric: tabular-nums lining-nums;
     font-weight: 500;
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 1.8px;
+    letter-spacing: -0.01em;
+  }
+  .type-score[data-mag="high"] { font-weight: 800; }
+  .type-score[data-mag="mid"]  { font-weight: 600; }
+  .type-score[data-mag="low"]  { font-weight: 400; color: var(--muted-foreground); }
+
+  /* The sign layer: black ground, white type, inverts focus */
+  .on-sign {
+    background-color: #111111;
+    color: #ffffff;
   }
 
-  /* Button mono label */
-  .type-button-mono {
-    font-family: "Space Mono", ui-monospace, SFMono-Regular, monospace;
-    font-weight: 600;
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    line-height: 2;
+  /* Arrows as edge rules — the sign system's only ornament */
+  .rule-arrow::after {
+    content: "";
+    display: inline-block;
+    width: 0.5em;
+    height: 0.5em;
+    margin-left: 0.6em;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(-45deg) translateY(-1px);
   }
+
+  /* The score ramp. Magnitude is carried by size and weight first, so the
+     register stays readable with colour removed. Set data-s to the rounded
+     score (1-10) or "none". Reads down the column as a profile. */
+  .score {
+    display: inline-block;
+    line-height: 1;
+    font-variant-numeric: tabular-nums lining-nums;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .score[data-s="10"], .score[data-s="9"] { font-size: 27px; font-weight: 830; }
+  .score[data-s="8"] { font-size: 25px; font-weight: 790; }
+  .score[data-s="7"] { font-size: 23px; font-weight: 740; }
+  .score[data-s="6"] { font-size: 21px; font-weight: 690; }
+  .score[data-s="5"] { font-size: 19px; font-weight: 640; color: var(--muted-foreground); }
+  .score[data-s="4"], .score[data-s="3"], .score[data-s="2"], .score[data-s="1"] {
+    font-size: 18px; font-weight: 600; color: var(--muted-foreground);
+  }
+  .score[data-s="none"] {
+    font-size: 18px; font-weight: 400; color: var(--muted-foreground);
+  }
+
+  /* Caution, drawn as a hatch so it survives colour removal */
+  .state-hatch {
+    background: repeating-linear-gradient(135deg, var(--hatch-a) 0 6px, var(--hatch-b) 6px 12px);
+  }
+}
+
+/* The signature interaction: the distance band settles like a split-flap,
+   in discrete steps, when the register's state changes. */
+@keyframes flap-settle {
+  from { transform: translateY(-1.1em); opacity: 0; }
+  to   { transform: translateY(0);      opacity: 1; }
+}
+.flap {
+  display: inline-block;
+  animation: flap-settle 420ms steps(7, end) both;
 }
 
 /* Reduced motion */

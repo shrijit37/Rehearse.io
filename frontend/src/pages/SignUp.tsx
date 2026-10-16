@@ -15,6 +15,7 @@ import {
 	Users,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { CONSENT_VERSION } from "@/lib/consent";
 import {
 	getSession,
 	signInWithEmail,
@@ -83,7 +84,7 @@ const SignUp: React.FC = () => {
 	): Promise<void> => {
 		const { user } = await api.post<{ user: AuthUser }>("/api/auth/claim", {
 			...claim,
-			consentVersion: "1.0",
+			consentVersion: CONSENT_VERSION,
 		});
 		localStorage.setItem("user", JSON.stringify(user));
 		window.dispatchEvent(new Event("storage"));
@@ -170,7 +171,7 @@ const SignUp: React.FC = () => {
 				{/* Back to home */}
 				<button
 					onClick={() => navigate("/")}
-					className="absolute top-6 left-6 flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground hover:text-[#3860be] transition-colors"
+					className="absolute top-6 left-6 flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors"
 				>
 					<ArrowLeft className="h-3.5 w-3.5" />
 					Home
@@ -190,7 +191,7 @@ const SignUp: React.FC = () => {
 					</div>
 
 					{/* Form card */}
-					<div className="border border-border/80 rounded-[20px] bg-card p-6">
+					<div className="border border-border/80 rounded-md bg-card p-6">
 						<div className="grid grid-cols-2 gap-3">
 							<Button
 								type="button"
@@ -221,7 +222,7 @@ const SignUp: React.FC = () => {
 
 						<div className="flex items-center gap-3 py-1">
 							<span className="h-px flex-1 bg-border" />
-							<span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+							<span className="type-sign-label text-muted-foreground">
 								or use email
 							</span>
 							<span className="h-px flex-1 bg-border" />
@@ -229,12 +230,12 @@ const SignUp: React.FC = () => {
 
 						<form onSubmit={handleSubmit} className="space-y-5">
 							{error && (
-								<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-[20px] border border-destructive/20 text-center animate-in fade-in slide-in-from-top-1 duration-150">
+								<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-md border border-destructive/20 text-center animate-in fade-in slide-in-from-top-1 duration-150">
 									{error}
 								</div>
 							)}
 							{success && (
-								<div className="bg-success/10 text-success text-[13px] font-medium p-3 rounded-[20px] border border-success/20 text-center animate-in fade-in slide-in-from-top-1 duration-150">
+								<div className="bg-success/10 text-success text-[13px] font-medium p-3 rounded-md border border-success/20 text-center animate-in fade-in slide-in-from-top-1 duration-150">
 									{success}
 								</div>
 							)}
@@ -251,17 +252,17 @@ const SignUp: React.FC = () => {
 											onClick={() =>
 												setFormData((p) => ({ ...p, role: "recruiter" }))
 											}
-											className={`p-4 rounded-[20px] border-2 transition-all text-center space-y-2 ${
+											className={`p-4 rounded-md border-2 transition-all text-center space-y-2 ${
 												formData.role === "recruiter"
-													? "border-primary bg-primary/[0.05] ring-1 ring-primary/20"
-													: "border-border hover:border-primary/30"
+													? "border-sign-black bg-sign-black text-sign-white"
+													: "border-border hover:border-sign-black"
 											}`}
 										>
 											<Building2
-												className={`h-5 w-5 mx-auto ${formData.role === "recruiter" ? "text-primary" : "text-muted-foreground"}`}
+												className={`h-5 w-5 mx-auto ${formData.role === "recruiter" ? "text-sign-yellow" : "text-muted-foreground"}`}
 											/>
 											<p className="text-[13px] font-semibold">Recruiter</p>
-											<p className="text-[11px] text-muted-foreground">
+											<p className="text-[11px] opacity-70">
 												Create & manage interviews
 											</p>
 										</button>
@@ -270,17 +271,17 @@ const SignUp: React.FC = () => {
 											onClick={() =>
 												setFormData((p) => ({ ...p, role: "candidate" }))
 											}
-											className={`p-4 rounded-[20px] border-2 transition-all text-center space-y-2 ${
+											className={`p-4 rounded-md border-2 transition-all text-center space-y-2 ${
 												formData.role === "candidate"
-													? "border-primary bg-primary/[0.05] ring-1 ring-primary/20"
-													: "border-border hover:border-primary/30"
+													? "border-sign-black bg-sign-black text-sign-white"
+													: "border-border hover:border-sign-black"
 											}`}
 										>
 											<Users
-												className={`h-5 w-5 mx-auto ${formData.role === "candidate" ? "text-primary" : "text-muted-foreground"}`}
+												className={`h-5 w-5 mx-auto ${formData.role === "candidate" ? "text-sign-yellow" : "text-muted-foreground"}`}
 											/>
 											<p className="text-[13px] font-semibold">Candidate</p>
-											<p className="text-[11px] text-muted-foreground">
+											<p className="text-[11px] opacity-70">
 												Complete interviews
 											</p>
 										</button>
@@ -370,7 +371,7 @@ const SignUp: React.FC = () => {
 										<button
 											type="button"
 											onClick={() => alert("Password reset is not yet available. Please contact support.")}
-											className="text-[11px] text-primary font-medium hover:underline focus:outline-none"
+											className="text-[11px] text-foreground font-medium hover:underline focus:outline-none"
 										>
 											Forgot password?
 										</button>
@@ -390,7 +391,7 @@ const SignUp: React.FC = () => {
 									<button
 										type="button"
 										onClick={() => setShowPassword(!showPassword)}
-										className="absolute right-3 top-2.5 text-muted-foreground hover:text-[#3860be] transition-colors focus:outline-none"
+										className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground transition-colors focus:outline-none"
 									>
 										{showPassword ? (
 											<EyeOff className="h-4 w-4" />
@@ -426,7 +427,7 @@ const SignUp: React.FC = () => {
 											onClick={() =>
 												setShowConfirmPassword(!showConfirmPassword)
 											}
-											className="absolute right-3 top-2.5 text-muted-foreground hover:text-[#3860be] transition-colors focus:outline-none"
+											className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground transition-colors focus:outline-none"
 										>
 											{showConfirmPassword ? (
 												<EyeOff className="h-4 w-4" />
@@ -450,14 +451,14 @@ const SignUp: React.FC = () => {
 												consentGiven: e.target.checked,
 											}))
 										}
-										className="accent-primary mt-0.5 shrink-0"
+										className="accent-sign-black mt-0.5 shrink-0"
 									/>
 									<span className="text-[12px] text-muted-foreground leading-relaxed">
 										I agree to the{" "}
 										<button
 											type="button"
 											onClick={() => window.open("/privacy", "_blank")}
-											className="text-primary font-medium hover:underline"
+											className="text-foreground font-medium hover:underline"
 										>
 											Privacy Policy
 										</button>{" "}
@@ -465,7 +466,7 @@ const SignUp: React.FC = () => {
 										<button
 											type="button"
 											onClick={() => window.open("/terms", "_blank")}
-											className="text-primary font-medium hover:underline"
+											className="text-foreground font-medium hover:underline"
 										>
 											Terms of Service
 										</button>
@@ -506,7 +507,7 @@ const SignUp: React.FC = () => {
 										consentGiven: false,
 									});
 								}}
-								className="ml-1.5 text-primary font-semibold hover:underline focus:outline-none"
+								className="ml-1.5 text-foreground font-semibold hover:underline focus:outline-none"
 							>
 								{isLogin ? "Create an account" : "Sign in"}
 							</button>
@@ -516,7 +517,7 @@ const SignUp: React.FC = () => {
 			</div>
 
 			{/* Marketing panel (lg+) */}
-			<div className="hidden lg:flex lg:w-[45%] bg-[#5200ff] text-white p-12 flex-col justify-between relative overflow-hidden select-none">
+			<div className="hidden lg:flex lg:w-[45%] bg-sign-black text-white p-12 flex-col justify-between relative overflow-hidden select-none">
 
 				{/* Content */}
 				<div className="space-y-10 max-w-md relative z-10 my-auto">
@@ -525,16 +526,16 @@ const SignUp: React.FC = () => {
 							Run structured first rounds at scale.
 						</h2>
 						<p className="text-sm text-white/80 leading-relaxed max-w-sm">
-							Create sessions, invite candidates, and let AI handle the rest.
-							Every evaluation consistent, every score fair.
+							Create a session from your own questions, invite candidates,
+							and read every answer scored against the same rubric.
 						</p>
 					</div>
 
 					<div className="space-y-3.5">
 						{[
 							"Candidates interview on their own schedule, no coordination needed.",
-							"AI-powered transcription, scoring, and feedback for every answer.",
-							"GDPR/CCPA compliant with full data export and account deletion.",
+							"Transcription, scoring, and written feedback for every answer.",
+							"Data export and account deletion built in.",
 						].map((text, i) => (
 							<div key={i} className="flex items-start gap-2.5">
 								<CheckCircle2 className="h-4 w-4 text-white/70 shrink-0 mt-0.5" />
@@ -545,18 +546,20 @@ const SignUp: React.FC = () => {
 						))}
 					</div>
 
-					<div className="bg-white/[0.08] border border-white/[0.15] rounded-lg p-5">
-						<blockquote className="text-[13px] text-white/85 leading-relaxed italic mb-3">
-							"Rehearse.io cut our first-round screening time by 60%. The AI
-							evaluations are consistent, fair, and our candidates love the
-							flexibility."
-						</blockquote>
-						<div>
-							<p className="text-[13px] font-semibold text-white">Sarah Chen</p>
-							<p className="text-[11px] text-white/60">
-								VP of Engineering, TechCorp
-							</p>
-						</div>
+					<div className="bg-white/[0.08] border border-white/[0.2] rounded-md p-5">
+						<p className="type-sign-label text-white/60 mb-3">
+							What the evaluation does
+						</p>
+						<ul className="space-y-2 text-[13px] text-white/90 leading-relaxed">
+							<li>Transcribes each spoken answer.</li>
+							<li>Scores it 1–10 against your rubric, with written feedback.</li>
+							<li>Reviews submitted code by reading it, not by running it.</li>
+						</ul>
+						<p className="text-[12px] text-white/60 leading-relaxed mt-3 pt-3 border-t border-white/15">
+							Scores are a model's judgement on a fixed rubric, not a
+							measurement. The transcription and the submission sit beside
+							every score so you can check it yourself.
+						</p>
 					</div>
 				</div>
 			</div>

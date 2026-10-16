@@ -236,8 +236,8 @@ const RehearsalRoom: React.FC = () => {
 			<div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 pt-14">
 				<div className="w-full max-w-lg space-y-6">
 					<div className="text-center space-y-2">
-						<div className="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center mx-auto border border-primary/15">
-							<Briefcase className="h-6 w-6 text-primary" />
+						<div className="w-14 h-14 bg-sign-black rounded-full flex items-center justify-center mx-auto border border-sign-black">
+							<Briefcase className="h-6 w-6 text-sign-yellow" />
 						</div>
 						<h1 className="text-xl font-bold tracking-tight text-foreground">
 							Choose Your Target Role
@@ -249,22 +249,22 @@ const RehearsalRoom: React.FC = () => {
 					</div>
 
 					{error && (
-						<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-[20px] border border-destructive/20 text-center">
+						<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-md border border-destructive/20 text-center">
 							{error}
 						</div>
 					)}
 
-					<div className="border border-border rounded-[20px] bg-card p-4 ">
+					<div className="border border-border rounded-md bg-card p-4 ">
 						<div className="grid grid-cols-2 gap-2">
 							{PRESET_ROLES.map((role) => (
 								<button
 									key={role}
 									onClick={() => startInterview(role)}
 									disabled={isLoading}
-									className={`p-3 rounded-[20px] border text-left transition-all text-[13px] font-medium ${
+									className={`p-3 rounded-md border text-left transition-all text-[13px] font-medium ${
 										targetRole === role
-											? "border-primary bg-primary/5 text-primary"
-											: "border-border hover:border-primary/30 hover:bg-secondary/50 text-foreground"
+											? "border-sign-black bg-sign-black text-sign-white"
+											: "border-border hover:border-sign-black hover:bg-secondary/50 text-foreground"
 									}`}
 								>
 									{role}
@@ -273,7 +273,7 @@ const RehearsalRoom: React.FC = () => {
 						</div>
 					</div>
 
-					<div className="border border-border rounded-[20px] bg-card p-4  space-y-3">
+					<div className="border border-border rounded-md bg-card p-4  space-y-3">
 						<Label className="text-muted-foreground">
 							Or type a custom role
 						</Label>
@@ -311,7 +311,7 @@ const RehearsalRoom: React.FC = () => {
 	if (isLoading) {
 		return (
 			<div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">
-				<Loader2 className="w-8 h-8 text-primary animate-spin" />
+				<Loader2 className="w-8 h-8 text-foreground animate-spin" />
 				<p className="text-[13px] font-medium text-muted-foreground mt-3">
 					Preparing interview room...
 				</p>
@@ -322,7 +322,7 @@ const RehearsalRoom: React.FC = () => {
 	if (error && !questions.length) {
 		return (
 			<div className="min-h-screen bg-background flex items-center justify-center p-4">
-				<div className="w-full max-w-sm border border-border rounded-[20px] bg-card p-8 flex flex-col items-center text-center space-y-5">
+				<div className="w-full max-w-sm border border-border rounded-md bg-card p-8 flex flex-col items-center text-center space-y-5">
 					<div className="w-12 h-12 bg-destructive/10 rounded-full flex items-center justify-center">
 						<AlertCircle className="w-6 h-6 text-destructive" />
 					</div>

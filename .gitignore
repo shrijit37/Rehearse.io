@@ -31,3 +31,8 @@ fix-*.md
 
 # Runtime crash logs from the legacy PM2 era
 nohup.out
+
+# Impeccable design-agent state (hook config, decision mocks, review captures).
+# DESIGN.md at the root is the durable record and stays tracked.
+.impeccable/
+frontend/.impeccable/

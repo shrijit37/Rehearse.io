@@ -1,28 +1,77 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
 	ArrowLeft,
 	AlertCircle,
-	BarChart3,
-	MessageSquare,
-	Calendar,
-	Users,
-	Code2,
 	Mic,
+	Code2,
+	Copy,
+	Check,
+	Users,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { label } from "@/lib/labels";
 import type { Interview, CandidateInvite, ResultItem, DsaResultItem } from "@/types";
+
+/* Four states, each carried by a mark and a word as well as a plate,
+   so the register stays readable with colour removed. */
+type CandState = "complete" | "in-progress" | "not-started" | "not-scored";
+
+const STATE: Record<CandState, { label: string; mark: string; cls: string }> = {
+	complete: {
+		label: "Complete",
+		mark: "✓",
+		cls: "bg-sign-black text-sign-white border-sign-black",
+	},
+	"in-progress": {
+		label: "In progress",
+		mark: "▸",
+		cls: "bg-card text-foreground border-sign-black",
+	},
+	"not-started": {
+		label: "Not started",
+		mark: "○",
+		cls: "border-dashed border-muted-foreground text-muted-foreground",
+	},
+	"not-scored": {
+		label: "Not scored",
+		mark: "▲",
+		cls: "state-hatch border-warning text-warning",
+	},
+};
+
+type SortKey = "name" | "round" | "behavioral" | "dsa" | "correctness" | "quality" | "state";
+
+/** Round order is the route's order, not the alphabet's. */
+const ROUND_RANK: Record<string, number> = { behavioral: 0, dsa: 1, done: 2 };
+
+const mean = (xs: (number | null | undefined)[]): number | null => {
+	const v = xs.filter((x): x is number => x != null);
+	return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+};
+
+/** One decimal only when the value isn't whole: 8, not 8.0 */
+const show = (v: number | null) => (v == null ? "—" : Number.isInteger(v) ? String(v) : v.toFixed(1));
+
+const ScoreCell = ({ value }: { value: number | null }) => (
+	<span className="score" data-s={value == null ? "none" : String(Math.round(value))}>
+		{show(value)}
+	</span>
+);
 
 const CandidateResults: React.FC = () => {
 	const navigate = useNavigate();
 	const { id } = useParams<{ id: string }>();
 	const [interview, setInterview] = useState<Interview | null>(null);
 	const [candidates, setCandidates] = useState<CandidateInvite[]>([]);
-	const [selectedCandidate, setSelectedCandidate] = useState<CandidateInvite | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const [activeTab, setActiveTab] = useState<"behavioral" | "dsa">("behavioral");
+	const [expanded, setExpanded] = useState<string | null>(null);
+	const [query, setQuery] = useState("");
+	const [stateFilter, setStateFilter] = useState<"all" | CandState>("all");
+	const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "name", dir: 1 });
+	const [copied, setCopied] = useState(false);
 
 	useEffect(() => {
 		if (!id) {
@@ -41,12 +90,7 @@ const CandidateResults: React.FC = () => {
 			);
 			setInterview(data.interview);
 			setCandidates(data.candidates || []);
-			if (data.candidates?.length > 0) {
-				setSelectedCandidate(data.candidates[0]);
-				// Default tab based on available results / interview type
-				const type = data.interview?.interviewType || "behavioral";
-				if (type === "dsa") setActiveTab("dsa");
-			}
+			if (data.candidates?.length) setExpanded(data.candidates[0]._id);
 		} catch (err: unknown) {
 			setError(err instanceof Error ? err.message : "An error occurred");
 		} finally {
@@ -54,33 +98,96 @@ const CandidateResults: React.FC = () => {
 		}
 	};
 
-	const avgOf = (items: (ResultItem | DsaResultItem)[], key: "score" = "score") => {
-		const valid = (items || []).filter((r) => r?.[key] != null);
-		if (!valid.length) return null;
-		return (
-			valid.reduce((a: number, r) => a + (r[key] || 0), 0) / valid.length
-		);
+	const nameOf = (c: CandidateInvite) =>
+		c.candidate && typeof c.candidate === "object" ? c.candidate.name || "Candidate" : "Candidate";
+	const emailOf = (c: CandidateInvite) =>
+		c.candidate && typeof c.candidate === "object" ? c.candidate.email || "" : "";
+
+	const behavioralOf = (c: CandidateInvite) => mean((c.results || []).map((r) => r.score));
+	const dsaOf = (c: CandidateInvite) => mean((c.dsaResults || []).map((r) => r.score));
+	const correctnessOf = (c: CandidateInvite) =>
+		mean((c.dsaResults || []).map((r) => r.correctness ?? null));
+	const qualityOf = (c: CandidateInvite) =>
+		mean((c.dsaResults || []).map((r) => r.codeQuality ?? null));
+
+	/** Completed with nothing scored is its own state — the round is left
+	    unscored rather than estimated, and it is the one needing attention. */
+	const stateOf = (c: CandidateInvite): CandState => {
+		if (c.status === "pending") return "not-started";
+		if (c.status === "started") return "in-progress";
+		const scored = [...(c.results || []), ...(c.dsaResults || [])].some((r) => r.score != null);
+		return scored ? "complete" : "not-scored";
 	};
 
-	const candidateAvg = (c: CandidateInvite) => {
-		const behavioral = c.results || [];
-		const dsa = c.dsaResults || [];
-		const all = [
-			...behavioral.map((r) => r.score).filter((s): s is number => s != null),
-			...dsa.map((r) => r.score).filter((s): s is number => s != null),
-		];
-		if (!all.length) return "—";
-		return (all.reduce((a: number, b: number) => a + b, 0) / all.length).toFixed(
-			1,
-		);
+	const interviewType = interview?.interviewType || "behavioral";
+	const showBehavioral = interviewType === "behavioral" || interviewType === "mixed";
+	const showDsa = interviewType === "dsa" || interviewType === "mixed";
+
+	const columns = useMemo(() => {
+		const cols: { key: SortKey; label: string; num?: boolean }[] = [{ key: "name", label: "Candidate" }];
+		if (interviewType === "mixed") cols.push({ key: "round", label: "Round" });
+		if (showBehavioral) cols.push({ key: "behavioral", label: "Behavioral (1–10)", num: true });
+		if (showDsa) {
+			cols.push({ key: "dsa", label: "DSA (1–10)", num: true });
+			cols.push({ key: "correctness", label: "Correctness", num: true });
+			cols.push({ key: "quality", label: "Code quality", num: true });
+		}
+		cols.push({ key: "state", label: "Status" });
+		return cols;
+	}, [interviewType, showBehavioral, showDsa]);
+
+	const valueOf = (c: CandidateInvite, key: SortKey): string | number | null => {
+		switch (key) {
+			case "name": return nameOf(c).toLowerCase();
+			case "round": return ROUND_RANK[c.currentRound] ?? c.currentRound;
+			case "behavioral": return behavioralOf(c);
+			case "dsa": return dsaOf(c);
+			case "correctness": return correctnessOf(c);
+			case "quality": return qualityOf(c);
+			case "state": return STATE[stateOf(c)].label;
+		}
+	};
+
+	const rows = useMemo(() => {
+		const q = query.trim().toLowerCase();
+		return candidates
+			.filter((c) => {
+				if (stateFilter !== "all" && stateOf(c) !== stateFilter) return false;
+				if (!q) return true;
+				return nameOf(c).toLowerCase().includes(q) || emailOf(c).toLowerCase().includes(q);
+			})
+			.sort((a, b) => {
+				const va = valueOf(a, sort.key);
+				const vb = valueOf(b, sort.key);
+				// Unscored candidates sort last regardless of direction
+				if (va == null && vb == null) return 0;
+				if (va == null) return 1;
+				if (vb == null) return -1;
+				return (va < vb ? -1 : va > vb ? 1 : 0) * sort.dir;
+			});
+	}, [candidates, query, stateFilter, sort]); // eslint-disable-line react-hooks/exhaustive-deps
+
+	const toggleSort = (key: SortKey) =>
+		setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: 1 }));
+
+	const copyInvite = async () => {
+		if (!interview?.inviteLink) return;
+		try {
+			await navigator.clipboard.writeText(interview.inviteLink);
+			setCopied(true);
+			setTimeout(() => setCopied(false), 2000);
+		} catch {
+			// Clipboard unavailable — the link is still visible on the dashboard
+		}
 	};
 
 	if (isLoading)
 		return (
-			<div className="min-h-screen bg-background py-8 px-4 mt-14">
-				<div className="max-w-5xl mx-auto space-y-8 animate-pulse">
-					<div className="h-7 w-64 bg-secondary rounded-md" />
-					<div className="h-96 bg-secondary/30 rounded-[20px]" />
+			<div className="min-h-screen bg-background py-8 px-4 sm:px-6 lg:px-8 mt-14">
+				<div className="max-w-[1400px] mx-auto space-y-6">
+					<div className="h-7 w-72 bg-secondary rounded-md" />
+					<div className="h-24 bg-secondary/40 rounded-md" />
+					<div className="h-96 bg-secondary/20 rounded-md" />
 				</div>
 			</div>
 		);
@@ -88,373 +195,424 @@ const CandidateResults: React.FC = () => {
 	if (error)
 		return (
 			<div className="min-h-screen flex items-center justify-center bg-background p-4 mt-14">
-				<div className="w-full max-w-sm border border-border rounded-[20px] bg-card p-8 text-center space-y-4">
+				<div className="w-full max-w-sm border-2 border-sign-black rounded-md bg-card p-8 text-center space-y-4">
 					<AlertCircle className="w-6 h-6 text-destructive mx-auto" />
 					<p className="text-[13px] font-semibold">{error}</p>
-					<Button onClick={fetchData} className="font-medium">
-						Retry
-					</Button>
+					<Button onClick={fetchData} className="font-medium">Retry</Button>
 				</div>
 			</div>
 		);
 
-	const interviewType = interview?.interviewType || "behavioral";
-	const showBehavioralTab =
-		interviewType === "behavioral" || interviewType === "mixed";
-	const showDsaTab = interviewType === "dsa" || interviewType === "mixed";
+	/* ---- the band's figures, all counted from the candidates list ---- */
+	const states = candidates.map(stateOf);
+	const invited = candidates.length;
+	const startedCount = states.filter((s) => s !== "not-started").length;
+	const completedCount = candidates.filter((c) => c.status === "completed").length;
+	const scoredCount = states.filter((s) => s === "complete").length;
+	const needsAttention = states.filter((s) => s === "not-scored").length;
 
-	const selectedBehavioralAvg = avgOf(selectedCandidate?.results || []);
-	const selectedDsaAvg = avgOf(selectedCandidate?.dsaResults || []);
+	const daysLeft = interview?.expiresAt
+		? Math.ceil((new Date(interview.expiresAt).getTime() - Date.now()) / 86400000)
+		: null;
+
+	/* The route the interview runs, and where the cohort has reached on it */
+	const rounds =
+		interviewType === "mixed" ? ["Behavioral", "DSA", "Done"] : interviewType === "dsa" ? ["DSA", "Done"] : ["Behavioral", "Done"];
+	const activeRound =
+		states.includes("not-started") && candidates.some((c) => c.currentRound === "behavioral")
+			? "Behavioral"
+			: candidates.some((c) => c.currentRound === "dsa")
+				? "DSA"
+				: "Done";
+	const activeIdx = Math.max(0, rounds.indexOf(activeRound));
+
+	// The band's third job: the next decision, in plain language. The counts
+	// belong to the cohort row above and the expiry to the title meta, so
+	// restating them here said the same thing three times on one screen.
+	const nextLine = needsAttention
+		? "Some answers could not be scored automatically. Open a candidate to review."
+		: scoredCount === 0
+			? "Nothing scored yet. Results appear as candidates submit."
+			: scoredCount < invited
+				? "Scoring continues as candidates submit."
+				: "Every invited candidate has been scored.";
 
 	return (
 		<div className="min-h-screen bg-background py-8 px-4 sm:px-6 lg:px-8 mt-14">
-			<div className="max-w-5xl mx-auto space-y-6">
-				{/* Header */}
-				<div className="flex items-center gap-4 border-b border-border pb-6">
-					<Button
-						variant="ghost"
-						size="sm"
-						onClick={() => navigate("/recruiter")}
-						className="text-muted-foreground font-medium gap-1.5"
-					>
-						<ArrowLeft className="h-3.5 w-3.5" /> Dashboard
-					</Button>
-					<div>
-						<h1 className="text-xl font-bold tracking-[-0.02em] text-foreground">
+			<div className="max-w-[1400px] mx-auto space-y-5">
+				{/* Breadcrumb + actions */}
+				<div className="flex items-center justify-between gap-4">
+					<div className="flex items-center gap-3 min-w-0">
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={() => navigate("/recruiter")}
+							className="text-muted-foreground font-medium gap-1.5 shrink-0"
+						>
+							<ArrowLeft className="h-3.5 w-3.5" />
+							Interviews
+						</Button>
+						<span className="text-muted-foreground/50 shrink-0" aria-hidden="true">/</span>
+						<span className="text-[13px] font-semibold text-foreground truncate">
 							{interview?.title}
-						</h1>
-						<div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-1 flex-wrap">
-							<span>{interview?.targetRole}</span>
-							<span className="flex items-center gap-1">
-								<Calendar className="h-3 w-3" />
-								{interview?.expiresAt ? new Date(interview.expiresAt).toLocaleDateString() : ""}
-							</span>
-							<span className="flex items-center gap-1">
-								<Users className="h-3 w-3" />
-								{candidates.length} invited
-							</span>
-							<span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border border-border">
-								{interviewType}
-							</span>
-						</div>
+						</span>
+					</div>
+					{interview?.inviteLink && (
+						<Button variant="outline" size="sm" onClick={copyInvite} className="shrink-0">
+							{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+							{copied ? "Link copied" : "Copy invite link"}
+						</Button>
+					)}
+				</div>
+
+				{/* Title block */}
+				<div>
+					<h1 className="type-monument text-3xl text-foreground">{interview?.title}</h1>
+					<div className="flex items-center gap-3 text-[12.5px] text-muted-foreground mt-2 flex-wrap">
+						<span className="font-semibold text-foreground">{label(interviewType)}</span>
+						<span aria-hidden="true">·</span>
+						<span>{interview?.targetRole}</span>
+						{daysLeft != null && (
+							<>
+								<span aria-hidden="true">·</span>
+								<span>
+									{daysLeft > 0
+										? `Invite link expires in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`
+										: "Invite link has expired"}
+								</span>
+							</>
+						)}
 					</div>
 				</div>
 
-				{candidates.length === 0 ? (
-					<div className="border-2 border-dashed border-border rounded-[20px] p-16 text-center space-y-4 bg-surface/30">
-						<Users className="w-10 h-10 text-muted-foreground mx-auto" />
-						<div className="space-y-1">
-							<h3 className="text-base font-bold text-foreground">
-								No candidates yet
-							</h3>
-							<p className="text-[13px] text-muted-foreground">
-								Generate an invite link from the dashboard to get started.
-							</p>
+				{/* Cohort figures */}
+				<div className="flex flex-wrap gap-x-10 gap-y-3">
+					{[
+						{ n: invited, label: "Invited" },
+						{ n: startedCount, label: "Started" },
+						{ n: completedCount, label: "Completed" },
+						{ n: needsAttention, label: "Needs attention" },
+					].map((s) => (
+						<div key={s.label} className="flex items-baseline gap-2">
+							<b className="type-score text-2xl font-extrabold text-foreground">{s.n}</b>
+							<span className="text-[12px] text-muted-foreground">{s.label}</span>
 						</div>
+					))}
+				</div>
+
+				{/* The band: the route, the live round, and the next decision */}
+				<section className="border-2 border-sign-black rounded-md overflow-hidden" aria-label="Round order and next decision">
+					<div className="flex text-[12.5px] overflow-x-auto">
+						<span className="px-3.5 py-2 border-r-2 border-sign-black bg-muted text-muted-foreground text-[11.5px] flex items-center whitespace-nowrap">
+							Round order
+						</span>
+						{rounds.map((r, i) => {
+							const cls =
+								i < activeIdx
+									? "text-muted-foreground"
+									: i === activeIdx
+										? "bg-sign-black text-sign-white font-bold"
+										: "bg-muted/60 text-muted-foreground";
+							const mark = i < activeIdx ? "✓" : i === activeIdx ? "▸" : "○";
+							return (
+								<span
+									key={r}
+									className={`px-3.5 py-2 border-r-2 border-sign-black flex items-center gap-2 whitespace-nowrap ${cls}`}
+									aria-current={i === activeIdx ? "step" : undefined}
+								>
+									<span aria-hidden="true">{mark}</span>
+									{r}
+								</span>
+							);
+						})}
+					</div>
+
+					<div className="bg-sign-yellow text-sign-black px-4 py-2 flex items-baseline gap-5 flex-wrap">
+						<span key={activeRound} className="flap type-monument type-monument-tight text-[40px] sm:text-[54px]">
+							{activeRound}
+						</span>
+						<span className="text-[12.5px] font-semibold">
+							Round {activeIdx + 1} of {rounds.length} · {interviewType === "mixed" ? "behavioral + DSA" : label(interviewType)}
+						</span>
+					</div>
+
+					<div className="on-sign px-4 py-2.5 text-[13px]">{nextLine}</div>
+				</section>
+
+				{/* Toolbar */}
+				<div className="flex items-center gap-2 flex-wrap">
+					<input
+						value={query}
+						onChange={(e) => setQuery(e.target.value)}
+						placeholder="Search candidate name"
+						aria-label="Search candidate name"
+						className="h-9 px-3 w-56 rounded-md border border-input bg-card text-[13px] text-foreground focus-visible:border-foreground"
+					/>
+					<select
+						value={stateFilter}
+						onChange={(e) => setStateFilter(e.target.value as typeof stateFilter)}
+						aria-label="Filter by status"
+						className="h-9 px-2.5 rounded-md border border-input bg-card text-[13px] text-foreground focus-visible:border-foreground"
+					>
+						<option value="all">All statuses</option>
+						<option value="not-scored">Needs attention</option>
+						<option value="in-progress">In progress</option>
+						<option value="complete">Complete</option>
+						<option value="not-started">Not started</option>
+					</select>
+					<span className="flex-1" />
+					<span className="text-[12px] text-muted-foreground">
+						Showing {rows.length} of {candidates.length} invited
+					</span>
+				</div>
+
+				{/* Register */}
+				{candidates.length === 0 ? (
+					<div className="border-2 border-dashed border-border rounded-md p-16 text-center space-y-3">
+						<Users className="w-9 h-9 text-muted-foreground mx-auto" />
+						<h3 className="text-base font-bold text-foreground">No candidates yet</h3>
+						<p className="text-[13px] text-muted-foreground">
+							Generate an invite link from the dashboard to get started.
+						</p>
 					</div>
 				) : (
-					<div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-						{/* Candidate list */}
-						<div className="lg:col-span-4 space-y-3">
-							<h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground px-1">
-								Candidates ({candidates.length})
-							</h2>
-							<div className="space-y-1.5 max-h-[600px] overflow-y-auto">
-								{candidates.map((c) => {
-									const isSelected = selectedCandidate?._id === c._id;
-									const avg = candidateAvg(c);
-									const candidateUser = c.candidate && typeof c.candidate === "object" ? c.candidate : null;
-									return (
-										<button
-											key={c._id}
-											onClick={() => {
-												setSelectedCandidate(c);
-												if (
-													showDsaTab &&
-													!showBehavioralTab &&
-													c.dsaResults?.length
-												)
-													setActiveTab("dsa");
-											}}
-											className={`w-full text-left p-3.5 border rounded-[20px] transition-all ${
-												isSelected
-													? "bg-card border-primary/60"
-													: "bg-card border-border hover:border-primary/30"
-											}`}
-										>
-											<div className="flex items-center justify-between">
-												<div className="min-w-0">
-													<p className="text-[13px] font-semibold text-foreground truncate">
-														{candidateUser?.name || "Candidate"}
-													</p>
-													<p className="text-[11px] text-muted-foreground truncate">
-														{candidateUser?.email}
-													</p>
-													<span
-														className={`inline-block mt-1 px-1.5 py-0.5 text-[9px] font-bold rounded uppercase tracking-wider ${
-															c.status === "completed"
-																? "bg-success/10 text-success"
-																: "bg-warning/10 text-warning"
-														}`}
-													>
-														{c.status}
+					<div className="border border-border rounded-md bg-card overflow-x-auto">
+						<table className="w-full min-w-[720px] border-collapse">
+							<thead>
+								<tr>
+									{columns.map((col) => {
+										const active = sort.key === col.key;
+										return (
+											<th
+												key={col.key}
+												scope="col"
+												aria-sort={active ? (sort.dir === 1 ? "ascending" : "descending") : "none"}
+												className={`text-left text-[11.5px] font-bold text-muted-foreground px-3.5 pb-2 pt-3 border-b-2 border-sign-black whitespace-nowrap ${
+													col.num ? "text-right" : ""
+												}`}
+											>
+												<button
+													onClick={() => toggleSort(col.key)}
+													className={`inline-flex items-center gap-1.5 hover:text-foreground transition-colors ${col.num ? "flex-row-reverse" : ""}`}
+												>
+													{col.label}
+													<span className="font-normal text-muted-foreground/70" aria-hidden="true">
+														{active ? (sort.dir === 1 ? "↑" : "↓") : "⇅"}
 													</span>
-												</div>
-												<div className="text-right shrink-0">
-													<p className="text-[9px] font-bold text-muted-foreground uppercase">
-														Avg
-													</p>
-													<p className="text-lg font-bold text-foreground">
-														{avg}
-													</p>
-												</div>
-											</div>
-										</button>
-									);
-								})}
-							</div>
-						</div>
-
-						{/* Results detail */}
-						<div className="lg:col-span-8">
-							{selectedCandidate &&
-							((selectedCandidate.results?.length || 0) > 0 ||
-								(selectedCandidate.dsaResults?.length || 0) > 0) ? (
-								<div className="border border-border rounded-[20px] bg-card overflow-hidden">
-									<div className="border-b border-border bg-secondary/15 px-6 py-4 flex items-center justify-between">
-										<div>
-											<h3 className="text-base font-bold flex items-center gap-1.5">
-												<BarChart3 className="h-4 w-4 text-primary" />{" "}
-												{selectedCandidate.candidate && typeof selectedCandidate.candidate === "object" ? selectedCandidate.candidate.name : "Candidate"}
-											</h3>
-											<p className="text-[11px] text-muted-foreground mt-0.5">
-												{selectedCandidate.candidate && typeof selectedCandidate.candidate === "object" ? selectedCandidate.candidate.email : ""}
-											</p>
-										</div>
-										<div className="text-right">
-											<span className="text-[9px] font-bold text-muted-foreground uppercase block">
-												Overall
-											</span>
-											<span className="text-xl font-bold">
-												{candidateAvg(selectedCandidate)}
-												<span className="text-[11px] text-muted-foreground">
-													/10
-												</span>
-											</span>
-										</div>
-									</div>
-
-									{/* Tabs */}
-									{(showBehavioralTab || showDsaTab) && (
-										<div className="flex border-b border-border">
-											{showBehavioralTab && (
-												<button
-													onClick={() => setActiveTab("behavioral")}
-													className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[12px] font-semibold transition-colors ${
-														activeTab === "behavioral"
-															? "text-primary border-b-2 border-primary"
-															: "text-muted-foreground hover:text-foreground"
-													}`}
-												>
-													<Mic className="h-3.5 w-3.5" />
-													Behavioral
-													{selectedBehavioralAvg != null && (
-														<span className="text-[10px] font-mono opacity-70">
-															{selectedBehavioralAvg.toFixed(1)}
-														</span>
-													)}
 												</button>
-											)}
-											{showDsaTab && (
-												<button
-													onClick={() => setActiveTab("dsa")}
-													className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[12px] font-semibold transition-colors ${
-														activeTab === "dsa"
-															? "text-primary border-b-2 border-primary"
-															: "text-muted-foreground hover:text-foreground"
-													}`}
-												>
-													<Code2 className="h-3.5 w-3.5" />
-													DSA
-													{selectedDsaAvg != null && (
-														<span className="text-[10px] font-mono opacity-70">
-															{selectedDsaAvg.toFixed(1)}
+											</th>
+										);
+									})}
+								</tr>
+							</thead>
+							<tbody>
+								{rows.map((c) => {
+									const st = stateOf(c);
+									const meta = STATE[st];
+									const isOpen = expanded === c._id;
+									const interactive = (c.results?.length || 0) > 0 || (c.dsaResults?.length || 0) > 0;
+									return (
+										<React.Fragment key={c._id}>
+											<tr className={st === "not-started" ? "bg-muted/50" : ""}>
+												<td className="px-3.5 py-2.5 border-b border-border align-middle">
+													<button
+														onClick={() => interactive && setExpanded(isOpen ? null : c._id)}
+														aria-expanded={interactive ? isOpen : undefined}
+														disabled={!interactive}
+														className="text-left group"
+													>
+														<span className="block text-[14px] font-semibold text-foreground group-enabled:group-hover:underline underline-offset-2">
+															{nameOf(c)}
 														</span>
-													)}
-												</button>
-											)}
-										</div>
-									)}
+														<span className="block text-[11.5px] text-muted-foreground">
+															{emailOf(c)}
+														</span>
+													</button>
+												</td>
+												{interviewType === "mixed" && (
+													<td className="px-3.5 py-2.5 border-b border-border align-middle text-[13px] capitalize text-muted-foreground">
+														{c.currentRound}
+													</td>
+												)}
+												{showBehavioral && (
+													<td className="px-3.5 py-2.5 border-b border-border align-middle text-right pr-6">
+														<ScoreCell value={behavioralOf(c)} />
+													</td>
+												)}
+												{showDsa && (
+													<>
+														<td className="px-3.5 py-2.5 border-b border-border align-middle text-right pr-6">
+															<ScoreCell value={dsaOf(c)} />
+														</td>
+														<td className="px-3.5 py-2.5 border-b border-border align-middle text-right pr-6">
+															<ScoreCell value={correctnessOf(c)} />
+														</td>
+														<td className="px-3.5 py-2.5 border-b border-border align-middle text-right pr-6">
+															<ScoreCell value={qualityOf(c)} />
+														</td>
+													</>
+												)}
+												<td className="px-3.5 py-2.5 border-b border-border align-middle">
+													<span
+														className={`inline-flex items-center gap-1.5 text-[12.5px] font-semibold px-2.5 py-1 rounded-sm border-2 whitespace-nowrap ${meta.cls}`}
+													>
+														<span aria-hidden="true">{meta.mark}</span>
+														{meta.label}
+													</span>
+												</td>
+											</tr>
 
-									<div className="p-6 space-y-4 max-h-[500px] overflow-y-auto">
-										{activeTab === "behavioral" && showBehavioralTab && (
-											<>
-												{(selectedCandidate.results?.length || 0) === 0 ? (
-													<p className="text-[13px] text-muted-foreground text-center py-8">
-														No behavioral results yet.
-													</p>
-												) : (
-													(selectedCandidate.results || []).map(
-														(result: ResultItem, idx: number) => (
-															<div
-																key={idx}
-																className="border border-border/50 rounded-[20px] p-4 space-y-3"
-															>
-																<div className="flex items-start justify-between gap-3 border-b border-border/40 pb-2.5">
-																	<div className="flex items-start gap-2">
-																		<span className="text-[11px] font-bold text-primary">
-																			{idx + 1}.
+											{isOpen && interactive && (
+												<tr>
+													<td colSpan={columns.length} className="p-0 border-b-2 border-sign-black">
+														<div className="border-l-2 border-sign-black bg-muted/40 px-5 py-4 space-y-4">
+															{st === "not-scored" && (
+																<div className="border-2 border-warning rounded-md bg-card px-4 py-3">
+																	<div className="flex items-center gap-2.5">
+																		<span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold px-2.5 py-1 rounded-sm border-2 state-hatch border-warning text-warning">
+																			<span aria-hidden="true">▲</span> Evaluator unavailable
 																		</span>
-																		<h4 className="text-[13px] font-semibold">
-																			{result.question}
-																		</h4>
-																	</div>
-																	<span className="shrink-0 px-2 py-0.5 bg-secondary text-[11px] font-bold rounded border border-border">
-																		{result.score}/10
-																	</span>
-																</div>
-																{result.transcription && (
-																	<div className="space-y-1">
-																		<span className="text-[10px] font-semibold uppercase text-muted-foreground flex items-center gap-1">
-																			<MessageSquare className="h-3 w-3" />{" "}
-																			Transcription
+																		<span className="text-[12.5px] text-muted-foreground">
+																			{c.completedAt
+																				? `Submitted ${new Date(c.completedAt).toLocaleDateString()} — scoring did not complete`
+																				: "Scoring did not complete"}
 																		</span>
-																		<div className="bg-secondary/40 border-l-2 border-l-primary text-[12px] italic p-2.5 rounded-r-md">
-																			{result.transcription}
-																		</div>
 																	</div>
-																)}
-																<div className="space-y-1">
-																	<span className="text-[10px] font-semibold uppercase text-muted-foreground">
-																		AI Feedback
-																	</span>
-																	<p className="text-[13px] leading-relaxed">
-																		{result.feedback}
+																	<p className="text-[13px] text-foreground mt-2.5 max-w-3xl leading-relaxed">
+																		No score and no written feedback were recorded for this
+																		candidate. The round is left unscored rather than
+																		estimated. A scored round returns one score 1–10 plus
+																		written feedback per answer.
 																	</p>
 																</div>
-															</div>
-														),
-													)
-												)}
-											</>
-										)}
+															)}
 
-										{activeTab === "dsa" && showDsaTab && (
-											<>
-												{(selectedCandidate.dsaResults?.length || 0) === 0 ? (
-													<p className="text-[13px] text-muted-foreground text-center py-8">
-														No DSA results yet.
-													</p>
-												) : (
-													(selectedCandidate.dsaResults || []).map(
-														(result: DsaResultItem, idx: number) => (
-															<div
-																key={idx}
-																className="border border-border/50 rounded-[20px] p-4 space-y-3"
-															>
-																<div className="flex items-start justify-between gap-3 border-b border-border/40 pb-2.5">
-																	<div className="flex items-start gap-2 min-w-0">
-																		<span className="text-[11px] font-bold text-primary">
-																			{idx + 1}.
-																		</span>
-																		<div className="min-w-0">
-																			<h4 className="text-[13px] font-semibold">
-																				{result.problemTitle}
-																			</h4>
-																			<p className="text-[10px] text-muted-foreground font-mono mt-0.5">
-																				{result.language}
-																				{result.timeSpentSeconds
-																					? ` · ${Math.floor(result.timeSpentSeconds / 60)}m ${result.timeSpentSeconds % 60}s`
-																					: ""}
-																			</p>
-																		</div>
-																	</div>
-																	<span className="shrink-0 px-2 py-0.5 bg-secondary text-[11px] font-bold rounded border border-border">
-																		{result.score}/10
-																	</span>
-																</div>
-
-																<div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-																	{[
-																		{
-																			label: "Correctness",
-																			value: result.correctness
-																				? `${result.correctness}/10`
-																				: "—",
-																		},
-																		{
-																			label: "Quality",
-																			value: result.codeQuality
-																				? `${result.codeQuality}/10`
-																				: "—",
-																		},
-																		{
-																			label: "Time",
-																			value: result.timeComplexity || "—",
-																		},
-																		{
-																			label: "Space",
-																			value: result.spaceComplexity || "—",
-																		},
-																	].map((m) => (
-																		<div
-																			key={m.label}
-																			className="rounded-[8px] bg-secondary/30 border border-border/40 p-2 text-center"
-																		>
-																			<p className="text-[9px] font-bold uppercase text-muted-foreground">
-																				{m.label}
-																			</p>
-																			<p className="text-[11px] font-mono font-semibold mt-0.5">
-																				{m.value}
-																			</p>
+															{(c.results?.length || 0) > 0 && (
+																<div className="space-y-3">
+																	<h4 className="type-sign-label text-muted-foreground flex items-center gap-1.5">
+																		<Mic className="h-3.5 w-3.5" />
+																		Behavioral — {c.results.length} answer{c.results.length === 1 ? "" : "s"}
+																	</h4>
+																	{c.results.map((r: ResultItem, i: number) => (
+																		<div key={i} className="border border-border rounded-md bg-card p-4 space-y-3">
+																			<div className="flex items-start justify-between gap-4 border-b border-border pb-2.5">
+																				<div className="flex items-start gap-2 min-w-0">
+																					<span className="text-[11px] font-bold text-muted-foreground pt-px">
+																						{i + 1}.
+																					</span>
+																					<h5 className="text-[13px] font-semibold text-foreground leading-snug">
+																						{r.question}
+																					</h5>
+																				</div>
+																				<span className="shrink-0 border-2 border-sign-black rounded-sm px-2 py-0.5 text-[12px] font-bold text-foreground">
+																					{show(r.score)}/10
+																				</span>
+																			</div>
+																			{r.transcription && (
+																				<div className="space-y-1">
+																					<span className="type-sign-label text-muted-foreground">Transcription</span>
+																					<div className="bg-muted border-l-2 border-l-sign-black text-[12.5px] italic p-2.5 text-foreground/90">
+																						{r.transcription}
+																					</div>
+																				</div>
+																			)}
+																			{r.feedback && (
+																				<div className="space-y-1">
+																					<span className="type-sign-label text-muted-foreground">Written feedback</span>
+																					<p className="text-[13px] leading-relaxed text-foreground">
+																						{r.feedback}
+																					</p>
+																				</div>
+																			)}
 																		</div>
 																	))}
 																</div>
+															)}
 
-																{result.code && (
-																	<div className="space-y-1">
-																		<span className="text-[10px] font-semibold uppercase text-muted-foreground flex items-center gap-1">
-																			<Code2 className="h-3 w-3" /> Submission
-																		</span>
-																		<pre className="bg-[#0d0d0d] border border-border/50 text-[11px] font-mono p-3 rounded-[10px] overflow-x-auto max-h-48 text-foreground/90">
-																			{result.code}
-																		</pre>
-																	</div>
-																)}
+															{(c.dsaResults?.length || 0) > 0 && (
+																<div className="space-y-3">
+																	<h4 className="type-sign-label text-muted-foreground flex items-center gap-1.5">
+																		<Code2 className="h-3.5 w-3.5" />
+																		DSA — {c.dsaResults.length} problem{c.dsaResults.length === 1 ? "" : "s"}
+																	</h4>
+																	{c.dsaResults.map((r: DsaResultItem, i: number) => (
+																		<div key={i} className="border border-border rounded-md bg-card p-4 space-y-3">
+																			<div className="flex items-start justify-between gap-4 border-b border-border pb-2.5">
+																				<div className="flex items-start gap-2 min-w-0">
+																					<span className="text-[11px] font-bold text-muted-foreground pt-px">
+																						{i + 1}.
+																					</span>
+																					<div className="min-w-0">
+																						<h5 className="text-[13px] font-semibold text-foreground">
+																							{r.problemTitle}
+																						</h5>
+																						<p className="text-[10.5px] text-muted-foreground font-mono mt-0.5">
+																							{r.language}
+																							{r.timeSpentSeconds
+																								? ` · ${Math.floor(r.timeSpentSeconds / 60)}m ${r.timeSpentSeconds % 60}s`
+																								: ""}
+																						</p>
+																					</div>
+																				</div>
+																				<span className="shrink-0 border-2 border-sign-black rounded-sm px-2 py-0.5 text-[12px] font-bold text-foreground">
+																					{show(r.score)}/10
+																				</span>
+																			</div>
 
-																<div className="space-y-1">
-																	<span className="text-[10px] font-semibold uppercase text-muted-foreground">
-																		AI Feedback
-																	</span>
-																	<p className="text-[13px] leading-relaxed">
-																		{result.feedback}
-																	</p>
+																			<div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+																				{[
+																					{ label: "Correctness", value: show(r.correctness ?? null) },
+																					{ label: "Code quality", value: show(r.codeQuality ?? null) },
+																					{ label: "Time", value: r.timeComplexity || "—" },
+																					{ label: "Space", value: r.spaceComplexity || "—" },
+																				].map((m) => (
+																					<div key={m.label} className="rounded-sm bg-muted border border-border p-2 text-center">
+																						<p className="type-sign-label text-muted-foreground">{m.label}</p>
+																						<p className="text-[11.5px] font-mono font-semibold mt-0.5 text-foreground">
+																							{m.value}
+																						</p>
+																					</div>
+																				))}
+																			</div>
+
+																			{r.code && (
+																				<div className="space-y-1">
+																					<span className="type-sign-label text-muted-foreground">Submission</span>
+																					<pre className="bg-sign-black border border-sign-black text-[11px] font-mono p-3 rounded-sm overflow-x-auto max-h-48 text-sign-white/90">
+																						{r.code}
+																					</pre>
+																				</div>
+																			)}
+
+																			{r.feedback && (
+																				<div className="space-y-1">
+																					<span className="type-sign-label text-muted-foreground">Written feedback</span>
+																					<p className="text-[13px] leading-relaxed text-foreground">
+																						{r.feedback}
+																					</p>
+																				</div>
+																			)}
+																		</div>
+																	))}
 																</div>
-															</div>
-														),
-													)
-												)}
-											</>
-										)}
-									</div>
-								</div>
-							) : selectedCandidate ? (
-								<div className="h-96 border border-border rounded-[20px] bg-card flex flex-col items-center justify-center text-center p-6">
-									<p className="text-[13px] text-muted-foreground">
-										This candidate has not completed the interview yet.
-									</p>
-									<p className="text-[11px] text-muted-foreground/70 mt-1">
-										Status: {selectedCandidate.status}
-									</p>
-								</div>
-							) : (
-								<div className="h-96 border border-border rounded-[20px] bg-card flex flex-col items-center justify-center text-center p-6">
-									<p className="text-[13px] text-muted-foreground">
-										Select a candidate to view results
-									</p>
-								</div>
-							)}
-						</div>
+															)}
+														</div>
+													</td>
+												</tr>
+											)}
+										</React.Fragment>
+									);
+								})}
+
+								{rows.length === 0 && (
+									<tr>
+										<td colSpan={columns.length} className="px-3.5 py-10 text-center text-[13px] text-muted-foreground">
+											No candidates match this filter.
+										</td>
+									</tr>
+								)}
+							</tbody>
+						</table>
 					</div>
 				)}
 			</div>

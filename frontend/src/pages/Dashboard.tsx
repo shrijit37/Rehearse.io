@@ -10,6 +10,7 @@ import {
 	Users,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { label } from "@/lib/labels";
 import ResultDetailPanel from "@/components/ResultDetailPanel";
 import SessionListItem from "@/components/SessionListItem";
 import type {
@@ -197,11 +198,11 @@ const Dashboard: React.FC = () => {
 						{[1, 2, 3].map((i) => (
 							<div
 								key={i}
-								className="h-24 bg-secondary/50 rounded-[20px] border border-border/40"
+								className="h-24 bg-secondary/50 rounded-md border border-border/40"
 							/>
 						))}
 					</div>
-					<div className="h-96 bg-secondary/30 rounded-[20px] border border-border/40" />
+					<div className="h-96 bg-secondary/30 rounded-md border border-border/40" />
 				</div>
 			</div>
 		);
@@ -210,7 +211,7 @@ const Dashboard: React.FC = () => {
 	if (error) {
 		return (
 			<div className="min-h-screen flex items-center justify-center bg-background p-4 mt-14">
-				<div className="w-full max-w-sm border border-border/80 rounded-[20px] bg-card p-8 flex flex-col items-center text-center gap-5">
+				<div className="w-full max-w-sm border border-border/80 rounded-md bg-card p-8 flex flex-col items-center text-center gap-5">
 					<div className="w-12 h-12 bg-destructive/10 rounded-full flex items-center justify-center">
 						<AlertCircle className="w-6 h-6 text-destructive" />
 					</div>
@@ -273,12 +274,12 @@ const Dashboard: React.FC = () => {
 
 				{/* Stats */}
 				<div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-					<div className="border border-border/80 rounded-[20px] bg-card p-4 space-y-3">
+					<div className="border border-border/80 rounded-md bg-card p-4 space-y-3">
 						<div className="flex items-center justify-between">
-							<span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+							<span className="type-sign-label text-muted-foreground">
 								Average Score
 							</span>
-							<TrendingUp className="h-3.5 w-3.5 text-primary" />
+							<TrendingUp className="h-3.5 w-3.5 text-foreground" />
 						</div>
 						<div className="flex items-baseline gap-1">
 							<span className="text-2xl font-bold text-foreground">
@@ -287,23 +288,23 @@ const Dashboard: React.FC = () => {
 							<span className="text-[12px] text-muted-foreground">/ 10</span>
 						</div>
 					</div>
-					<div className="border border-border/80 rounded-[20px] bg-card p-4 space-y-3">
+					<div className="border border-border/80 rounded-md bg-card p-4 space-y-3">
 						<div className="flex items-center justify-between">
-							<span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+							<span className="type-sign-label text-muted-foreground">
 								Total Sessions
 							</span>
-							<History className="h-3.5 w-3.5 text-primary" />
+							<History className="h-3.5 w-3.5 text-foreground" />
 						</div>
 						<span className="text-2xl font-bold text-foreground">
 							{totalSessions}
 						</span>
 					</div>
-					<div className="border border-border/80 rounded-[20px] bg-card p-4 space-y-3">
+					<div className="border border-border/80 rounded-md bg-card p-4 space-y-3">
 						<div className="flex items-center justify-between">
-							<span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+							<span className="type-sign-label text-muted-foreground">
 								Peak Score
 							</span>
-							<Award className="h-3.5 w-3.5 text-primary" />
+							<Award className="h-3.5 w-3.5 text-foreground" />
 						</div>
 						<div className="flex items-baseline gap-1">
 							<span className="text-2xl font-bold text-foreground">
@@ -316,7 +317,7 @@ const Dashboard: React.FC = () => {
 
 				{/* Tabs */}
 				{(invitedInterviews.length > 0 || history.length > 0) && (
-					<div className="flex gap-1 p-1 bg-surface rounded-[20px] border border-border/60">
+					<div className="flex gap-1 p-1 bg-surface rounded-md border border-border/60">
 						{[
 							{
 								key: "invited" as const,
@@ -348,7 +349,7 @@ const Dashboard: React.FC = () => {
 								<Icon className="h-3.5 w-3.5" />
 								{label}
 								{count > 0 && (
-									<span className="px-1.5 py-0.5 text-[10px] font-bold bg-primary/10 text-primary rounded-full">
+									<span className="px-1.5 py-0.5 text-[10px] font-bold bg-sign-black text-sign-yellow rounded-md">
 										{count}
 									</span>
 								)}
@@ -359,7 +360,7 @@ const Dashboard: React.FC = () => {
 
 				{/* Content */}
 				{activeSessions.length === 0 ? (
-					<div className="border-2 border-dashed border-border/60 rounded-[20px] p-16 text-center space-y-4 bg-surface/30">
+					<div className="border-2 border-dashed border-border/60 rounded-md p-16 text-center space-y-4 bg-surface/30">
 						{activeTab === "invited" ? (
 							<Users className="w-10 h-10 text-muted-foreground mx-auto" />
 						) : (
@@ -392,7 +393,7 @@ const Dashboard: React.FC = () => {
 					<div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 						{/* List */}
 						<div className="lg:col-span-5 space-y-3">
-							<h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground px-1">
+							<h2 className="type-sign-label text-muted-foreground px-1">
 								{activeTab === "invited" ? "Your Interviews" : "History"}
 							</h2>
 							<div className="space-y-1.5 max-h-[560px] overflow-y-auto pr-1">
@@ -424,7 +425,7 @@ const Dashboard: React.FC = () => {
 									dsaResults={selectedSession.dsaResults}
 								/>
 							) : selectedSession ? (
-								<div className="h-96 border border-border/80 rounded-[20px] bg-card flex flex-col items-center justify-center text-center p-6">
+								<div className="h-96 border border-border/80 rounded-md bg-card flex flex-col items-center justify-center text-center p-6">
 									<p className="text-[13px] text-muted-foreground">
 										{activeTab === "invited"
 											? "You haven't completed this interview yet."
@@ -432,12 +433,12 @@ const Dashboard: React.FC = () => {
 									</p>
 									{selectedSession.status && (
 										<p className="text-[11px] text-muted-foreground/70 mt-1">
-											Status: {selectedSession.status}
+											Status: {label(selectedSession.status)}
 										</p>
 									)}
 								</div>
 							) : (
-								<div className="h-96 border border-border/80 rounded-[20px] bg-card flex flex-col items-center justify-center text-center p-6">
+								<div className="h-96 border border-border/80 rounded-md bg-card flex flex-col items-center justify-center text-center p-6">
 									<p className="text-[13px] text-muted-foreground">
 										Select an interview to view results
 									</p>

@@ -1,180 +1,87 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { ShieldCheck, X } from "lucide-react";
-
-type ConsentLevel = "essential" | "analytics" | "marketing";
+import { CONSENT_VERSION } from "@/lib/consent";
+import { ShieldCheck } from "lucide-react";
 
 const CONSENT_KEY = "rehearse_cookie_consent";
 
+/* This site stores only what keeps a session working. There is no analytics,
+   advertising, or third-party code to consent to, so the notice states what is
+   stored and asks for nothing it cannot honour. */
 const CookieConsent = () => {
 	const [visible, setVisible] = useState(false);
-	const [analytics, setAnalytics] = useState(false);
-	const [marketing, setMarketing] = useState(false);
 
 	useEffect(() => {
-		const stored = localStorage.getItem(CONSENT_KEY);
-		if (!stored) setVisible(true);
+		try {
+			const stored = localStorage.getItem(CONSENT_KEY);
+			if (!stored) {
+				setVisible(true);
+				return;
+			}
+			const parsed: unknown = JSON.parse(stored);
+			const answered =
+				parsed && typeof parsed === "object" && "version" in parsed ? parsed.version : undefined;
+			// The stored record names the notice it answered, so a revised notice is
+			// asked again instead of being assumed answered.
+			if (typeof answered !== "string" || answered !== CONSENT_VERSION) setVisible(true);
+		} catch {
+			// Storage blocked (private mode, disabled cookies) or the record is
+			// unreadable — the notice cannot be remembered, but it should still be
+			// shown.
+			setVisible(true);
+		}
 	}, []);
 
-	const handleAcceptAll = () => {
-		setAnalytics(true);
-		setMarketing(true);
-		saveConsent("marketing", true);
-		localStorage.setItem(
-			CONSENT_KEY,
-			JSON.stringify({
-				essential: true,
-				analytics: true,
-				marketing: true,
-				date: new Date().toISOString(),
-			}),
-		);
+	const acknowledge = () => {
+		try {
+			localStorage.setItem(
+				CONSENT_KEY,
+				JSON.stringify({
+					essential: true,
+					version: CONSENT_VERSION,
+					date: new Date().toISOString(),
+				}),
+			);
+		} catch {
+			// Quota or blocked storage: the acknowledgement still counts for this
+			// session, so carry on rather than failing the whole flow.
+		}
+		// Record the same acknowledgement against the account, when signed in
+		if (localStorage.getItem("user")) {
+			api
+				.post("/api/users/consent", {
+					consentGiven: true,
+					consentVersion: CONSENT_VERSION,
+				})
+				.catch((err) => console.error("Failed to record consent:", err));
+		}
 		setVisible(false);
-	};
-
-	const handleEssentialOnly = () => {
-		setAnalytics(false);
-		setMarketing(false);
-		saveConsent("essential", false);
-		localStorage.setItem(
-			CONSENT_KEY,
-			JSON.stringify({
-				essential: true,
-				analytics: false,
-				marketing: false,
-				date: new Date().toISOString(),
-			}),
-		);
-		setVisible(false);
-	};
-
-	const handleSavePreferences = () => {
-		saveConsent(marketing ? "marketing" : analytics ? "analytics" : "essential", analytics || marketing);
-		localStorage.setItem(
-			CONSENT_KEY,
-			JSON.stringify({
-				essential: true,
-				analytics,
-				marketing,
-				date: new Date().toISOString(),
-			}),
-		);
-		setVisible(false);
-	};
-
-	const saveConsent = (level: ConsentLevel, granted: boolean) => {
-		if (!localStorage.getItem("user")) return;
-		api
-			.post("/api/users/consent", { consentGiven: granted, consentLevel: level })
-			.catch(() => {});
 	};
 
 	if (!visible) return null;
 
 	return (
 		<div className="fixed bottom-0 left-0 right-0 z-[100] p-4 sm:p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-			<div className="max-w-3xl mx-auto bg-card border border-border rounded-[20px]  p-5">
+			<div className="max-w-3xl mx-auto bg-card border-2 border-sign-black rounded-md p-5">
 				<div className="flex items-start gap-4">
-					<div className="w-9 h-9 bg-primary/10 border border-primary/15 text-primary rounded-[20px] flex items-center justify-center shrink-0">
+					<div className="w-9 h-9 bg-sign-black text-sign-yellow rounded-md flex items-center justify-center shrink-0">
 						<ShieldCheck className="h-4 w-4" />
 					</div>
-					<div className="flex-1 space-y-3.5">
-						<div>
-							<h3 className="text-[13px] font-bold text-foreground">
-								Cookie Preferences
-							</h3>
-							<p className="text-[12px] text-muted-foreground mt-1 leading-relaxed">
-								Essential cookies are required for authentication and security.
-								Optional cookies help us improve the platform. You can customize
-								below.
-							</p>
-						</div>
-
-						<div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-							<label className="flex items-center gap-2 p-2.5 bg-surface rounded-[20px] border border-border">
-								<input
-									type="checkbox"
-									checked
-									disabled
-									className="accent-primary shrink-0"
-								/>
-								<div>
-									<p className="text-[12px] font-semibold text-foreground">
-										Essential
-									</p>
-									<p className="text-[10px] text-muted-foreground">
-										Required for login & security
-									</p>
-								</div>
-							</label>
-							<label className="flex items-center gap-2 p-2.5 bg-surface rounded-[20px] border border-border cursor-pointer hover:border-primary/30 transition-colors">
-								<input
-									type="checkbox"
-									checked={analytics}
-									onChange={(e) => setAnalytics(e.target.checked)}
-									className="accent-primary shrink-0"
-								/>
-								<div>
-									<p className="text-[12px] font-semibold text-foreground">
-										Analytics
-									</p>
-									<p className="text-[10px] text-muted-foreground">
-										Usage patterns & performance
-									</p>
-								</div>
-							</label>
-							<label className="flex items-center gap-2 p-2.5 bg-surface rounded-[20px] border border-border cursor-pointer hover:border-primary/30 transition-colors">
-								<input
-									type="checkbox"
-									checked={marketing}
-									onChange={(e) => setMarketing(e.target.checked)}
-									className="accent-primary shrink-0"
-								/>
-								<div>
-									<p className="text-[12px] font-semibold text-foreground">
-										Marketing
-									</p>
-									<p className="text-[10px] text-muted-foreground">
-										Personalized recommendations
-									</p>
-								</div>
-							</label>
-						</div>
-
-						<div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-							<Button
-								size="sm"
-								className="font-semibold"
-								onClick={handleAcceptAll}
-							>
-								Accept All
-							</Button>
-							<Button
-								size="sm"
-								variant="outline"
-								className="font-semibold"
-								onClick={handleEssentialOnly}
-							>
-								Essential Only
-							</Button>
-							<Button
-								size="sm"
-								variant="ghost"
-								className="font-semibold"
-								onClick={handleSavePreferences}
-							>
-								Save Preferences
-							</Button>
-						</div>
+					<div className="flex-1 space-y-3">
+						<h3 className="text-[13px] font-bold text-foreground">
+							What this site stores
+						</h3>
+						<p className="text-[12.5px] text-muted-foreground leading-relaxed">
+							Your session is held in a cookie set by our sign-in service, and
+							this site caches your name and email in your browser. That is
+							everything it stores. There is no analytics, no advertising, and
+							no third-party tracking here.
+						</p>
+						<Button size="sm" className="font-semibold" onClick={acknowledge}>
+							Got it
+						</Button>
 					</div>
-					<button
-						onClick={handleEssentialOnly}
-						className="text-muted-foreground hover:text-foreground p-1 shrink-0 transition-colors"
-						aria-label="Close"
-					>
-						<X className="h-4 w-4" />
-					</button>
 				</div>
 			</div>
 		</div>

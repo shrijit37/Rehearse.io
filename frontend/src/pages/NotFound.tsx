@@ -8,7 +8,7 @@ const NotFound: React.FC = () => {
 
 	return (
 		<div className="min-h-screen bg-background flex items-center justify-center p-4 mt-14">
-			<div className="w-full max-w-md border border-border/80 rounded-[20px] bg-card p-8 text-center space-y-5">
+			<div className="w-full max-w-md border border-border/80 rounded-md bg-card p-8 text-center space-y-5">
 				<div className="space-y-1">
 					<h1 className="text-5xl font-bold tracking-[-0.03em] text-foreground">
 						404

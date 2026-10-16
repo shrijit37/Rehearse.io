@@ -285,17 +285,17 @@ const Onboarding = () => {
 									{/* Connector line */}
 									{idx < steps.length - 1 && (
 										<div
-											className={`absolute left-[13px] top-[28px] bottom-0 w-px ${isDone ? "bg-primary" : "bg-border/60"}`}
+											className={`absolute left-[13px] top-[28px] bottom-0 w-px ${isDone ? "bg-sign-black" : "bg-border/60"}`}
 										/>
 									)}
 									{/* Step circle */}
 									<div className="shrink-0 z-10 mt-0.5">
 										{isDone ? (
-											<div className="w-7 h-7 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
+											<div className="w-7 h-7 rounded-full bg-sign-black text-sign-white flex items-center justify-center">
 												<CheckCircle2 className="h-4 w-4" />
 											</div>
 										) : isActive ? (
-											<div className="w-7 h-7 rounded-full border-2 border-primary bg-background text-primary flex items-center justify-center text-xs font-bold">
+											<div className="w-7 h-7 rounded-full border-2 border-sign-black bg-background text-foreground flex items-center justify-center text-xs font-bold">
 												{s.step}
 											</div>
 										) : (
@@ -322,16 +322,16 @@ const Onboarding = () => {
 
 				{/* Main content card */}
 				<div className="flex-1 flex flex-col">
-					<div className="border border-border rounded-[20px] bg-card  flex-1 flex flex-col overflow-hidden">
+					<div className="border border-border rounded-md bg-card  flex-1 flex flex-col overflow-hidden">
 						{/* Progress bar */}
 						<div className="border-b border-border px-6 py-3 flex items-center justify-between bg-secondary/20">
-							<span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+							<span className="type-sign-label text-muted-foreground">
 								Step {currentStep} of {steps.length}
 							</span>
 							<div className="flex items-center gap-3 w-36">
 								<div className="flex-1 bg-secondary h-1.5 rounded-full overflow-hidden">
 									<div
-										className="bg-primary h-full transition-all duration-300"
+										className="bg-sign-black h-full transition-all duration-300"
 										style={{ width: `${progress}%` }}
 									/>
 								</div>
@@ -344,7 +344,7 @@ const Onboarding = () => {
 						{/* Step content */}
 						<div className="flex-1 p-8 flex flex-col justify-center min-h-[340px]">
 							{error && (
-								<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-[20px] border border-destructive/20 mb-6 flex items-center gap-2 animate-in fade-in duration-200">
+								<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-md border border-destructive/20 mb-6 flex items-center gap-2 animate-in fade-in duration-200">
 									<AlertCircle className="w-4 h-4 shrink-0" />
 									<span>{error}</span>
 								</div>
@@ -353,14 +353,14 @@ const Onboarding = () => {
 							{currentStep === 1 && (
 								<div className="flex flex-col items-center">
 									{resumeError && (
-										<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-[20px] border border-destructive/20 mb-4 flex items-center gap-2 animate-in fade-in duration-200 w-full max-w-md">
+										<div className="bg-destructive/10 text-destructive text-[13px] font-medium p-3 rounded-md border border-destructive/20 mb-4 flex items-center gap-2 animate-in fade-in duration-200 w-full max-w-md">
 											<AlertCircle className="w-4 h-4 shrink-0" />
 											<span>{resumeError}</span>
 										</div>
 									)}
 									{resumeFile ? (
-										<div className="w-full max-w-md bg-surface border border-border rounded-[20px] p-4 flex items-center gap-4 animate-in zoom-in-95 duration-200">
-											<div className="w-10 h-10 bg-primary/10 border border-primary/15 text-primary rounded-[20px] flex items-center justify-center shrink-0">
+										<div className="w-full max-w-md bg-surface border border-border rounded-md p-4 flex items-center gap-4 animate-in zoom-in-95 duration-200">
+											<div className="w-10 h-10 bg-sign-black border border-sign-black text-sign-yellow rounded-md flex items-center justify-center shrink-0">
 												<FileText className="h-5 w-5" />
 											</div>
 											<div className="flex-1 min-w-0">
@@ -384,10 +384,10 @@ const Onboarding = () => {
 									) : (
 										<div
 											{...getRootProps()}
-											className="w-full max-w-md border-2 border-dashed border-border hover:border-primary/40 bg-surface/50 hover:bg-secondary/50 rounded-[20px] p-10 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 select-none group"
+											className="w-full max-w-md border-2 border-dashed border-border hover:border-sign-black bg-surface/50 hover:bg-secondary/50 rounded-md p-10 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 select-none group"
 										>
 											<div className="w-12 h-12 bg-card border border-border rounded-full flex items-center justify-center mb-4  group-hover:scale-105 transition-transform">
-												<Upload className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+												<Upload className="w-5 h-5 text-muted-foreground group-hover:text-foreground transition-colors" />
 											</div>
 											<h3 className="text-sm font-semibold text-foreground mb-1">
 												Upload your resume
@@ -404,7 +404,7 @@ const Onboarding = () => {
 								<div className="flex flex-col items-center gap-5">
 									{photo ? (
 										<div className="flex flex-col items-center gap-4 animate-in zoom-in-95 duration-200">
-											<div className="w-40 h-40 rounded-full border-4 border-card outline outline-2 outline-primary overflow-hidden ">
+											<div className="w-40 h-40 rounded-full border-4 border-card outline outline-2 outline-sign-black overflow-hidden ">
 												<img
 													src={photo}
 													alt="Profile"
@@ -426,10 +426,10 @@ const Onboarding = () => {
 										</div>
 									) : (
 										<div className="w-full max-w-md flex flex-col items-center gap-4">
-											<div className="relative w-full aspect-video bg-black rounded-[20px] overflow-hidden border border-border">
+											<div className="relative w-full aspect-video bg-black rounded-md overflow-hidden border border-border">
 												{cameraLoading && (
 													<div className="absolute inset-0 flex items-center justify-center bg-secondary/80 z-10">
-														<RefreshCw className="animate-spin h-5 w-5 text-primary" />
+														<RefreshCw className="animate-spin h-5 w-5 text-foreground" />
 													</div>
 												)}
 												<video
@@ -465,8 +465,8 @@ const Onboarding = () => {
 
 							{currentStep === 3 && (
 								<div className="flex flex-col items-center gap-5 w-full">
-									<div className="w-full max-w-md bg-surface border border-border rounded-[20px] p-4 text-center">
-										<p className="text-[10px] font-bold text-primary uppercase tracking-wider mb-1.5">
+									<div className="w-full max-w-md bg-surface border border-border rounded-md p-4 text-center">
+										<p className="type-sign-label text-foreground mb-1.5">
 											Read this aloud
 										</p>
 										<p className="text-[13px] font-medium text-foreground leading-relaxed italic">
@@ -475,7 +475,7 @@ const Onboarding = () => {
 										</p>
 									</div>
 									{audioUrl ? (
-										<div className="flex flex-col items-center gap-4 w-full max-w-md bg-card p-4 rounded-[20px] border border-border  animate-in zoom-in-95 duration-200">
+										<div className="flex flex-col items-center gap-4 w-full max-w-md bg-card p-4 rounded-md border border-border  animate-in zoom-in-95 duration-200">
 											<div className="flex items-center gap-2 w-full">
 												<Volume2 className="h-4 w-4 text-success" />
 												<span className="text-[13px] font-semibold">

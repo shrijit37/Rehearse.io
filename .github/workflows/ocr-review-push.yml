@@ -41,7 +41,8 @@ jobs:
   code-review:
     name: Automated Code Review (push)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Matches the PR workflow's cap; 15 minutes cut reviews off mid-run.
+    timeout-minutes: 45
     steps:
       # Full history: OCR computes merge-base(from, to) and needs both ends.
       - name: Checkout
@@ -61,7 +62,12 @@ jobs:
           OCR_LLM_URL: ${{ secrets.OCR_LLM_URL }}
           OCR_LLM_TOKEN: ${{ secrets.OCR_LLM_AUTH_TOKEN }}
         run: |
-          ocr config set llm.extra_body '{"enable_thinking": max}'
+          # `enable_thinking` and `thinking` are rejected by the upstream for
+          # cat-jam-free ("[unsupported_parameter] Unrecognized request
+          # argument supplied"), and an unquoted value here is invalid JSON
+          # anyway, which fails the step before any review runs.
+          # `reasoning_effort` is accepted, so the "max" intent lives there.
+          ocr config set llm.extra_body '{"reasoning_effort": "max"}'
           ocr config set language 'English'
 
       - name: Review pushed range
@@ -71,6 +77,10 @@ jobs:
           OCR_LLM_TOKEN: ${{ secrets.OCR_LLM_AUTH_TOKEN }}
           OCR_LLM_MODEL: cat-jam-free
           OCR_USE_ANTHROPIC: 'false'
+          # Single-request budget in seconds (default 300): with
+          # reasoning_effort max a request ran past 300s and the run failed with
+          # "LLM request timeout ... context deadline exceeded".
+          OCR_LLM_TIMEOUT: '900'
           BEFORE_SHA: ${{ github.event.before }}
           HEAD_SHA: ${{ github.sha }}
         run: |
@@ -81,16 +91,34 @@ jobs:
           if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
             BEFORE_SHA="$(git rev-list --max-parents=0 HEAD | head -1)"
             echo "New branch: reviewing from root commit $BEFORE_SHA"
+          elif ! git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+            # A force-push rewrites the tip, so `before` names a commit this
+            # checkout no longer has and OCR fails on the unresolvable ref.
+            # Review the tip's own commit instead.
+            BEFORE_SHA="$(git rev-parse "${HEAD_SHA}^" 2>/dev/null || git rev-list --max-parents=0 HEAD | head -1)"
+            echo "Force-push: previous tip is unreachable; reviewing from $BEFORE_SHA"
           fi
           echo "Reviewing $BEFORE_SHA..$HEAD_SHA"
 
           set +e
+          # No `--audience agent`: the default human audience streams [ocr]
+          # progress to stderr (OCR >= 1.9.8 keeps it out of the JSON stdout),
+          # and the tee mirrors it into the run log live while the same bytes
+          # land in /tmp/ocr-stderr.log for the artifact and the summary.
+          # `--timeout` lifts the per-task budget off its 15-minute default,
+          # under the job cap set above.
+          OCR_STDERR_FIFO="$(mktemp -u)"
+          mkfifo "$OCR_STDERR_FIFO"
+          tee /tmp/ocr-stderr.log < "$OCR_STDERR_FIFO" >&2 &
+          TEE_PID=$!
           ocr review \
             --from "$BEFORE_SHA" --to "$HEAD_SHA" \
             --effort low \
-            --format json --audience agent \
-            > /tmp/ocr-result.json 2> /tmp/ocr-stderr.log
+            --format json --timeout 40 \
+            > /tmp/ocr-result.json 2> "$OCR_STDERR_FIFO"
           OCR_EXIT=$?
+          wait "$TEE_PID"
+          rm -f "$OCR_STDERR_FIFO"
           set -e
           echo "OCR_EXIT_CODE=$OCR_EXIT" >> "$GITHUB_ENV"
           echo "=== OCR stderr ==="

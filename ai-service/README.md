@@ -20,8 +20,8 @@ use **Groq**. No database; stateless per request.
 - `GET /` — welcome message
 
 All `/api/*` routes require `Authorization: Bearer <API_KEY>` unless no key
-is configured (dev only; logs a warning, and a critical error if
-`APP_ENV=production`).
+is configured (dev only; logs a warning). With `APP_ENV=production` the
+service refuses to start without `API_KEY`.
 
 ## Setup
 
@@ -37,7 +37,7 @@ Requires Python 3.11+.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `APP_ENV` | No | `development` | Runtime environment, same var the backend reads. `production` upgrades the missing-`API_KEY` warning to a critical error. |
+| `APP_ENV` | No | `development` | Runtime environment, same var the backend reads. `production` makes the service refuse to start when `API_KEY` is unset, instead of serving `/api/*` unauthenticated. |
 | `GROQ_API_KEY` | Yes | — | Powers STT, TTS, and LLM (via litellm). Without it, STT/TTS report unavailable and audio evaluation returns 503. |
 | `API_KEY` | Prod | empty | Shared secret for backend→AI auth. Must match the backend's `AI_SERVICE_API_KEY`. Also accepts `AI_SERVICE_API_KEY`. Empty disables auth (dev only). |
 | `LITELLM_MODEL` | No | `groq/llama-3.3-70b-versatile` | LLM used for generation/evaluation. |

@@ -17,6 +17,7 @@ services:
       - LITELLM_MODEL
       - STT_MODEL
       - STT_BACKEND=${STT_BACKEND:-local}
+      - APP_ENV=${APP_ENV:-development}
       - API_KEY=${AI_SERVICE_API_KEY:-}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173}
     volumes:

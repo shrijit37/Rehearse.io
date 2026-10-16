@@ -100,9 +100,16 @@ if groq_api_key:
 API_KEY = os.getenv("API_KEY") or os.getenv("AI_SERVICE_API_KEY", "")
 
 if not API_KEY:
+    if (
+        os.environ.get("APP_ENV") == "production"
+        or os.environ.get("NODE_ENV") == "production"
+    ):
+        raise RuntimeError(
+            "Refusing to start: a production signal (APP_ENV or NODE_ENV is 'production') "
+            "is set but neither API_KEY nor AI_SERVICE_API_KEY is, so every /api/* route "
+            "would be unauthenticated."
+        )
     logger.warning("WARNING: API_KEY is not set. The AI service is running without authentication!")
-    if os.environ.get("NODE_ENV") == "production":
-        logger.error("CRITICAL: Running in production without API_KEY is a security risk!")
 
 
 

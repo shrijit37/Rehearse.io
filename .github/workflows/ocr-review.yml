@@ -7,7 +7,7 @@
 #   OCR_LLM_URL          — LLM endpoint (chat/completions)
 #   OCR_LLM_AUTH_TOKEN   — API key for the LLM endpoint
 #   OCR_LLM_MODEL        — Model to use for review (unused; the model is
-#                          pinned inline to space-bunny-free below)
+#                          pinned inline to cat-jam-free below)
 #
 # The Action is an orchestrator: it installs the OCR CLI from npm at run
 # time, so pinning only the Action ref does not freeze review behaviour.
@@ -31,7 +31,10 @@ jobs:
   code-review:
     name: Automated Code Review
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 15 minutes cancelled reviews mid-run (a review of PR #13 was killed at
+    # 15m01s with no findings published). The per-task budget below stays under
+    # this cap.
+    timeout-minutes: 45
     steps:
       # No pre-checkout: the composite action checks out the PR *base* and
       # fetches head blobs from git objects, so untrusted PR files are never
@@ -42,9 +45,25 @@ jobs:
           ocr_version: '1.13.0'
           llm_url: ${{ secrets.OCR_LLM_URL }}
           llm_auth_token: ${{ secrets.OCR_LLM_AUTH_TOKEN }}
-          llm_model: space-bunny-free
+          llm_model: cat-jam-free
           llm_use_anthropic: 'false'
-          llm_extra_body: '{"enable_thinking": false}'
+          # `enable_thinking` is rejected upstream for cat-jam-free
+          # ([unsupported_parameter] Unrecognized request argument supplied);
+          # `reasoning_effort` is accepted and carries the same "max" intent.
+          # Both verified against the model endpoint directly.
+          llm_extra_body: '{"reasoning_effort": "max"}'
+          # Human-audience [ocr] progress lines stream live into the workflow
+          # log (stderr) instead of appearing only after the run; the JSON
+          # result still lands on stdout. Needs OCR >= 1.9.8; we pin 1.13.0.
+          stream_progress: 'true'
+          # Per-file task budget, in minutes (default 15). Raised with the job
+          # cap so a long task is not dropped while the job still has time.
+          review_task_timeout: '40'
+          # Single-request budget, in seconds (default 300). With
+          # reasoning_effort max a request ran past 300s and the review failed
+          # with "LLM request timeout ... context deadline exceeded", so it gets
+          # room inside the task budget above.
+          llm_timeout: '900'
           github_token: ${{ secrets.GITHUB_TOKEN }}
           language: 'English'
           upload_artifacts: 'true'

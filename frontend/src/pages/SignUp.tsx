@@ -15,6 +15,7 @@ import {
 	Users,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { CONSENT_VERSION } from "@/lib/consent";
 import {
 	getSession,
 	signInWithEmail,
@@ -83,7 +84,7 @@ const SignUp: React.FC = () => {
 	): Promise<void> => {
 		const { user } = await api.post<{ user: AuthUser }>("/api/auth/claim", {
 			...claim,
-			consentVersion: "1.0",
+			consentVersion: CONSENT_VERSION,
 		});
 		localStorage.setItem("user", JSON.stringify(user));
 		window.dispatchEvent(new Event("storage"));

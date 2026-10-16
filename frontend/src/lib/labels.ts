@@ -26,6 +26,12 @@ const NAMES: Record<string, string> = {
   mixed: "Mixed",
 };
 
-/** Unmapped values fall back to a capitalised first letter. */
+/** Unmapped values fall back to their words capitalised. */
 export const label = (value?: string | null): string =>
-  value ? (NAMES[value] ?? value.charAt(0).toUpperCase() + value.slice(1)) : "";
+  value
+    ? (NAMES[value] ??
+      value
+        .split(/[_\-\s]+/)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" "))
+    : "";

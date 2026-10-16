@@ -309,7 +309,7 @@ There is no container component in use. Every plate in the shipped build is a ha
 - **Border:** `border border-border` (`#8f8f8c`, 1px) for an interior card; `border-2 border-sign-black` for a plate that is structurally part of the sign (the band, the product preview, the cookie notice, the error plate). An empty state uses `border-2 border-dashed border-border`.
 - **Shadow Strategy:** none — see Elevation & Depth.
 - **Internal Padding:** `p-4` for inner records, `p-5`/`p-6` for a panel, `p-8 sm:p-10` for a legal page.
-- **Vestigial:** the `Card` primitive (`components/ui/card.tsx`) is dead code from the discarded world — never imported, still documenting "Verge radius", and still exposing a `cardRadius?: 20 | 24 | 30` prop whose three branches are byte-identical (`rounded-md`). It has no visual effect and is not an instruction.
+- **Vestigial:** the `Card` primitive (`components/ui/card.tsx`) is dead code from the discarded world — never imported. Its `cardRadius?: 20 | 24 | 30` prop was removed (all three branches rendered the same `rounded-md`), so the primitive now paints one 2px plate. It has no visual effect and is not an instruction.
 
 ### Navigation
 The top bar **is a sign**: `<nav class="on-sign fixed top-0 w-full z-50 bg-sign-black h-14">`. Sign black ground, sign white ink, 56px tall, ruled off the page with a black bottom edge.
@@ -414,4 +414,4 @@ The cookie banner states only what the site stores and asks for nothing it canno
 - **Don't** use proportional figures in a column, or format a score with a redundant decimal (`8.0`).
 - **Don't** use the code well's black or the editor as a general-purpose dark surface — `bg-sign-black` is otherwise the sign layer or the selection plate.
 - **Don't** imply execution or test-case validation in any code-related surface: code is statically reviewed, and the copy must say so.
-- **Don't** carry the discarded world's shapes forward — the `Card` primitive's `cardRadius` prop and the `--sidebar-*` tokens are inert leftovers, not instructions.
+- **Don't** carry the discarded world's shapes forward — the `Card` primitive and the `--sidebar-*` tokens are inert leftovers, not instructions.

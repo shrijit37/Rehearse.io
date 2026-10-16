@@ -135,9 +135,11 @@ const Navbar = () => {
                       <div className="px-3 py-2.5 border-b border-border mb-1">
                         <p className="text-[13px] font-semibold text-foreground truncate">{user.name}</p>
                         <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
-                        <span className="mt-1 inline-block px-1.5 py-0.5 type-sign-label bg-sign-black text-sign-white rounded-sm">
-                          {label(user.role)}
-                        </span>
+                        {user.role && (
+                          <span className="mt-1 inline-block px-1.5 py-0.5 type-sign-label bg-sign-black text-sign-white rounded-sm">
+                            {label(user.role)}
+                          </span>
+                        )}
                       </div>
                       <button onClick={() => { navigate(isRecruiter ? "/recruiter" : "/dashboard"); setShowDropdown(false); }}
                         className="w-full text-left px-3 py-2 text-[13px] text-foreground hover:bg-surface-active rounded-md flex items-center gap-2 transition-colors">

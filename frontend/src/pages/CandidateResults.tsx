@@ -43,6 +43,9 @@ const STATE: Record<CandState, { label: string; mark: string; cls: string }> = {
 
 type SortKey = "name" | "round" | "behavioral" | "dsa" | "correctness" | "quality" | "state";
 
+/** Round order is the route's order, not the alphabet's. */
+const ROUND_RANK: Record<string, number> = { behavioral: 0, dsa: 1, done: 2 };
+
 const mean = (xs: (number | null | undefined)[]): number | null => {
 	const v = xs.filter((x): x is number => x != null);
 	return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
@@ -136,7 +139,7 @@ const CandidateResults: React.FC = () => {
 	const valueOf = (c: CandidateInvite, key: SortKey): string | number | null => {
 		switch (key) {
 			case "name": return nameOf(c).toLowerCase();
-			case "round": return c.currentRound;
+			case "round": return ROUND_RANK[c.currentRound] ?? c.currentRound;
 			case "behavioral": return behavioralOf(c);
 			case "dsa": return dsaOf(c);
 			case "correctness": return correctnessOf(c);

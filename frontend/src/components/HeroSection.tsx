@@ -5,11 +5,12 @@ import { useNavigate } from "react-router-dom";
 const HeroSection = () => {
   const navigate = useNavigate();
 
-  /* The one route every interview takes. Signage states the route, not a claim. */
+  /* The route every session follows, in order. A session that runs one round
+     takes its step of it. */
   const route = [
-    { label: "Behavioral", note: "voice round" },
-    { label: "DSA", note: "coding round" },
-    { label: "Done", note: "scored and recorded" },
+    { label: "Behavioral" },
+    { label: "DSA" },
+    { label: "Done" },
   ];
 
   // A sign system sizes a band to its content, so the hero is capped: a tall
@@ -19,7 +20,7 @@ const HeroSection = () => {
       {/* Route band — the world's next-decision band, showing the mechanism */}
       <div className="bg-sign-yellow text-sign-black">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center gap-x-6 gap-y-1">
-          <span className="text-[13px] font-semibold">Every interview runs one route</span>
+          <span className="text-[13px] font-semibold">Round order</span>
           <div className="flex items-center gap-3 text-[13px] font-bold">
             {route.map((step, i) => (
               <span key={step.label} className="flex items-center gap-3">
@@ -176,7 +177,7 @@ const HeroSection = () => {
 
       {/* Legend — the three properties, ruled apart as one panel rather than
           gapped as three cards. */}
-      <div id="how-it-works" className="scroll-mt-14 border-t-2 border-sign-black bg-background text-foreground">
+      <div className="scroll-mt-14 border-t-2 border-sign-black bg-background text-foreground">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
           <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 border-2 border-sign-black bg-card divide-y-2 md:divide-y-0 md:divide-x-2 divide-sign-black">
             <div className="p-6 space-y-3">

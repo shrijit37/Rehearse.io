@@ -75,6 +75,10 @@
    in a bright office, an hour into a register, with other tabs and a call open.
    Chrome is the saturated sign layer; the work area is the reading surface. */
 :root {
+  /* The app is light-only: keep native controls and scrollbars light even when
+     the operating system is in dark mode. */
+  color-scheme: light;
+
   --background: #e6e6e4;
   --foreground: #111111;
   --card: #ffffff;

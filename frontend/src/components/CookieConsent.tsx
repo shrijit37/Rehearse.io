@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { CONSENT_VERSION } from "@/lib/consent";
 import { ShieldCheck } from "lucide-react";
 
 const CONSENT_KEY = "rehearse_cookie_consent";
-const CONSENT_VERSION = "2026-10";
 
 /* This site stores only what keeps a session working. There is no analytics,
    advertising, or third-party code to consent to, so the notice states what is
@@ -14,10 +14,21 @@ const CookieConsent = () => {
 
 	useEffect(() => {
 		try {
-			if (!localStorage.getItem(CONSENT_KEY)) setVisible(true);
+			const stored = localStorage.getItem(CONSENT_KEY);
+			if (!stored) {
+				setVisible(true);
+				return;
+			}
+			const parsed: unknown = JSON.parse(stored);
+			const answered =
+				parsed && typeof parsed === "object" && "version" in parsed ? parsed.version : undefined;
+			// The stored record names the notice it answered, so a revised notice is
+			// asked again instead of being assumed answered.
+			if (typeof answered !== "string" || answered !== CONSENT_VERSION) setVisible(true);
 		} catch {
-			// Storage blocked (private mode, disabled cookies) — the notice cannot be
-			// remembered, but it should still be shown.
+			// Storage blocked (private mode, disabled cookies) or the record is
+			// unreadable — the notice cannot be remembered, but it should still be
+			// shown.
 			setVisible(true);
 		}
 	}, []);

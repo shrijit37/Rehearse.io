@@ -16,6 +16,7 @@ import {
 	CheckCircle2,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { CONSENT_VERSION } from "@/lib/consent";
 import type { User } from "@/types";
 
 const AccountSettings: React.FC = () => {
@@ -258,7 +259,7 @@ const AccountSettings: React.FC = () => {
 			setConsentError(null);
 			const data = await api.post<Record<string, unknown>>(
 				"/api/users/consent",
-				{ consentGiven: given, consentVersion: "1.0" },
+				{ consentGiven: given, consentVersion: CONSENT_VERSION },
 			);
 			if (data && typeof data === "object" && "consent" in data) {
 				setConsent(data.consent as typeof consent);

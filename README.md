@@ -69,8 +69,10 @@ SMOKE_BASE_URL=http://127.0.0.1:9000 make test
 placeholder claiming, GDPR export, and consent against a real Postgres.
 
 ## Deployment
+Deploy procedure (branches, workflows, secrets, gate failures) is in
+[DEPLOY.md](./DEPLOY.md). Live status is in [STATE.md](./STATE.md).
 
-- **backend** → GHCR (`:<sha>`) → Dokploy application, port 9000, health `/health`
+- **backend** → GHCR (`:<sha>`) → Dokploy **compose app** (`rehearse-api`), port 9000, health `/health`
 - **frontend** → static `dist/` → Cloudflare Pages
 - **ai-service** → Dokploy, port 8000
 - **secrets** → Infisical `platform` project, `REHEARSE_*` prefix, never in git
@@ -82,6 +84,7 @@ See `platform.yaml`, `frontend/platform.yaml`, and
 ## Docs
 
 - [STATE.md](./STATE.md) — honest current state (read first)
+- [DEPLOY.md](./DEPLOY.md) — how this repo deploys (read before deploying)
 - [AGENTS.md](./AGENTS.md) — agent/dev instructions per service
 - [PRODUCT.md](./PRODUCT.md) — product purpose and design principles
 - [backend/README.md](./backend/README.md) — API reference

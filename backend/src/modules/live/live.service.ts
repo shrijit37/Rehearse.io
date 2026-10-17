@@ -26,6 +26,8 @@ export interface LiveTicketClaims {
     purpose: "live";
     mode: "practice" | "interview";
     inviteId?: string;
+    /** Single-use id: a ticket is a bearer value for 60 s, so it is spent at the handshake. */
+    jti: string;
     /** The turn's question, so the relay can persist what was actually asked. */
     question: string;
     questionIndex: number;
@@ -75,8 +77,31 @@ export function liveSessionCount(): number {
 // Tickets
 // ---------------------------------------------------------------------------
 
-export function mintLiveTicket(claims: Omit<LiveTicketClaims, "purpose">): string {
-    return jwt.sign({ ...claims, purpose: "live" }, ticketSecret, { expiresIn: LIVE_TICKET_TTL_SECONDS });
+export function mintLiveTicket(claims: Omit<LiveTicketClaims, "purpose" | "jti">): string {
+    return jwt.sign(
+        { ...claims, purpose: "live", jti: crypto.randomUUID() },
+        ticketSecret,
+        { expiresIn: LIVE_TICKET_TTL_SECONDS },
+    );
+}
+
+/**
+ * Tickets spent since the process started, keyed by their id. A ticket is a
+ * bearer value with a 60 s life, so replaying it would open a second upstream
+ * session and a second slot for one answer; consuming it at the handshake makes
+ * it a one-shot credential.
+ */
+const spentTickets = new Map<string, number>();
+
+/** True the first time an id is seen, false afterwards. */
+export function consumeLiveTicket(id: string): boolean {
+    const now = Date.now();
+    for (const [seen, at] of spentTickets) {
+        if (now - at > LIVE_TICKET_TTL_SECONDS * 1000) spentTickets.delete(seen);
+    }
+    if (spentTickets.has(id)) return false;
+    spentTickets.set(id, now);
+    return true;
 }
 
 export function verifyLiveTicket(token: string): LiveTicketClaims | null {

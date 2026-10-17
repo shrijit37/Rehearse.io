@@ -51,20 +51,22 @@ const CandidateInterview: React.FC = () => {
 		(turn: LiveTurnResult) => {
 			setEvaluation({ score: turn.score, feedback: turn.feedback });
 			// Local mirror of what the backend has written, so the summary screen
-			// can show this answer without refetching the invite.
+			// can show this answer without refetching the invite. Keyed by the
+			// turn's own index: a score arrives seconds after the answer, by which
+			// time the candidate may have moved on.
 			const result: ResultItem = {
-				question: turn.question || questions[currentQuestionIndex],
+				question: turn.question || questions[turn.questionIndex],
 				transcription: turn.transcription,
 				score: turn.score,
 				feedback: turn.feedback,
 			};
 			setSessionResults((prev) => {
 				const updated = [...prev];
-				updated[currentQuestionIndex] = result;
+				updated[turn.questionIndex] = result;
 				return updated;
 			});
 		},
-		[currentQuestionIndex, questions],
+		[questions],
 	);
 
 	const handleLiveError = useCallback((message: string) => setError(message), []);
@@ -74,7 +76,10 @@ const CandidateInterview: React.FC = () => {
 	// token rides the ticket request the way it rides every other candidate call.
 	const live = useLiveAnswer({
 		active: phase === "behavioral" && !!invite?._id && questions.length > 0,
-		request: { mode: "interview", inviteId: invite?._id },
+		// The index travels with the ticket, not just with the `ask` effect: a
+		// restart (or a reload that resumes at question 3) otherwise opens a socket
+		// pinned to question 1 and overwrites the answer already stored for it.
+		request: { mode: "interview", inviteId: invite?._id, questionIndex: currentQuestionIndex },
 		tokenOverride: authToken,
 		onTurn: handleTurn,
 		onError: handleLiveError,

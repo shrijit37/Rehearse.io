@@ -117,11 +117,15 @@ process.env.GEMINI_LIVE_WS_URL = `ws://127.0.0.1:${upstreamPort}`;
 // Everything the relay logs, so the redaction guarantee can be asserted instead
 // of assumed: the API key rides in the upstream URL, and transcripts are the
 // candidate's own words.
-const captured = { log: [] as string[], warn: [] as string[], error: [] as string[] };
+const captured: string[] = [];
 for (const level of ["log", "warn", "error"] as const) {
     const original = console[level].bind(console);
     console[level] = (...args: unknown[]) => {
-        captured[level].push(args.map((a) => (typeof a === "string" ? a : String(a))).join(" "));
+        const line = args.map((a) => (typeof a === "string" ? a : String(a))).join(" ");
+        // The application's own lines only. The suite prints to the same console,
+        // and a failing assertion's detail would otherwise be captured as if the
+        // code had leaked it.
+        if (line.startsWith("[live]") || line.startsWith("Audit log error")) captured.push(line);
         original(...args);
     };
 }
@@ -190,6 +194,11 @@ upstream.on("connection", (socket) => {
             record.audioFrames.push(frame.realtimeInput.audio);
             // "AAAA" stands in for a spoken answer: the real upstream emits a
             // final input transcript and then closes the turn.
+            // "BBBB" is a final transcript whose turn never completes: the answer
+            // is in progress when the candidate moves on.
+            if (frame.realtimeInput.audio.data === "BBBB") {
+                socket.send(JSON.stringify({ serverContent: { inputTranscription: { text: "a pending answer" } } }));
+            }
             if (frame.realtimeInput.audio.data === "AAAA") {
                 const answer = `answer ${record.audioFrames.length}`;
                 socket.send(JSON.stringify({ serverContent: { inputTranscription: { text: answer } } }));
@@ -212,7 +221,8 @@ const scored: { question: string; transcription: string }[] = [];
 const recorded: LiveTurn[] = [];
 const saves: { userId: string; turns: LiveTurn[] }[] = [];
 let scoringFails = false;
-let saveFails = false;
+let saveStatus = 201;
+let saveThrows = false;
 attachLiveUpgrade(server, {
     async score(question, transcription) {
         scored.push({ question, transcription });
@@ -227,14 +237,15 @@ attachLiveUpgrade(server, {
     },
     async finishPracticeSession(claims, turns) {
         saves.push({ userId: claims._id, turns: [...turns] });
-        if (saveFails) {
-            // What a real failed insert looks like: the driver's message carries
-            // the SQL and its bound parameters, and the parameters are the
-            // candidate's transcript.
+        // A failed drizzle insert reports its statement and bound parameters in
+        // its *message*, which is why the relay must never log that message.
+        // Returning the status is what the real dependency does.
+        if (saveThrows) {
             throw new Error(
                 `Failed query: insert into "rehearsal_sessions" ... params: ${JSON.stringify(turns[0]?.transcription)}`,
             );
         }
+        return saveStatus;
     },
 });
 await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -418,6 +429,26 @@ check(
     JSON.stringify(secondAnswer?.proxy ?? {}),
 );
 
+// A pending utterance is an answer the candidate already gave: advancing the
+// question must close it, not drop it.
+good.socket.send(JSON.stringify({ realtimeInput: { audio: { data: "BBBB", mimeType: "audio/pcm;rate=16000" } } }));
+await sleep(200);
+good.socket.send(JSON.stringify({ proxy: { type: "ask", index: 2, question: "Third question?" } }));
+const closedPending = await waitFor(() => {
+    const frames = good.frames.filter((f) => f.proxy?.type === "turn");
+    return frames.find((f) => f.proxy?.transcription === "a pending answer");
+}, 5000);
+check(
+    "an answer that was still in progress is closed, not discarded",
+    Boolean(closedPending),
+    JSON.stringify(closedPending?.proxy ?? {}),
+);
+check(
+    "it is attributed to the question it was answering, not the one being advanced to",
+    closedPending?.proxy?.questionIndex === 1 && closedPending.proxy.question === "Second question?",
+    JSON.stringify(closedPending?.proxy ?? {}),
+);
+
 console.log("\n== concurrency ceiling ==");
 
 const second = await openClient(ticketFor("second"));
@@ -471,7 +502,7 @@ const runSaves = await waitFor(() => {
 check("practice persists once, when the session ends", runSaves?.length === 1, `saves=${runSaves?.length ?? 0}`);
 check(
     "one practice run is one stored session, not one per question",
-    runSaves?.[0]?.turns.length === 4,
+    runSaves?.[0]?.turns.length === 5,
     `turns in the single save=${runSaves?.[0]?.turns.length ?? 0}`,
 );
 check(
@@ -483,7 +514,7 @@ check(
 );
 check(
     "every saved turn knows which question it answered",
-    runSaves?.[0]?.turns.map((turn) => turn.questionIndex).join(",") === "0,0,0,1",
+    runSaves?.[0]?.turns.map((turn) => turn.questionIndex).join(",") === "0,0,0,1,1",
     runSaves?.[0]?.turns.map((turn) => turn.questionIndex).join(",") ?? "",
 );
 
@@ -519,9 +550,19 @@ check(
 interviewClient.socket.close();
 await waitUntil(() => liveSessionCount() === 0, 3000);
 
+const reusable = ticketFor("replay.");
+const firstUse = await openClient(reusable);
+await waitUntil(() => firstUse.socket.readyState === WsClient.OPEN, 3000);
+const secondUse = await openClient(reusable);
+await waitUntil(() => secondUse.close !== null || secondUse.error !== null, 3000);
+check("a ticket cannot open a second session", secondUse.socket.readyState !== WsClient.OPEN, `state=${secondUse.socket.readyState}`);
+check("the replay is refused as used", firstUse.socket.readyState === WsClient.OPEN, `first=${firstUse.socket.readyState}`);
+firstUse.socket.close();
+await waitUntil(() => liveSessionCount() === 0, 3000);
+
 console.log("\n== redaction and failure paths ==");
 
-const allLogs = [...captured.log, ...captured.warn, ...captured.error].join("\n");
+const allLogs = captured.join("\n");
 check("the API key never reaches a log line", !allLogs.includes("test-key"), "a log line carried the key");
 check(
     "spoken content never reaches a log line",
@@ -544,7 +585,7 @@ check(
     `code=${abnormal?.code}, reason=${abnormal?.reason}`,
 );
 
-saveFails = true;
+saveStatus = 500;
 const leaky = await openClient(ticketFor("save fails."));
 await waitUntil(() => leaky.socket.readyState === WsClient.OPEN, 3000);
 leaky.socket.send(JSON.stringify({ realtimeInput: { audio: { data: "AAAA", mimeType: "audio/pcm;rate=16000" } } }));
@@ -552,7 +593,7 @@ await waitUntil(() => leaky.frames.some((f) => f.proxy?.type === "turn"), 5000);
 leaky.socket.close();
 await waitUntil(() => liveSessionCount() === 0, 3000);
 await sleep(400);
-const afterFailure = [...captured.log, ...captured.warn, ...captured.error].join("\n");
+const afterFailure = captured.join("\n");
 const leakedTranscript = saves
     .flatMap((entry) => entry.turns.map((turn) => turn.transcription))
     .filter((text) => afterFailure.includes(text));
@@ -566,7 +607,31 @@ check(
     !afterFailure.includes('insert into "audit_logs"'),
     "the audit statement reached a log line",
 );
-saveFails = false;
+check(
+    "a failed write is still visible as an outcome",
+    afterFailure.includes("not saved (status 500)"),
+    "the failure was silently swallowed",
+);
+
+// The same invariant when the dependency throws instead of reporting: the throw
+// path must not print the driver's message either.
+saveStatus = 201;
+saveThrows = true;
+const throwing = await openClient(ticketFor("save throws."));
+await waitUntil(() => throwing.socket.readyState === WsClient.OPEN, 3000);
+throwing.socket.send(JSON.stringify({ realtimeInput: { audio: { data: "AAAA", mimeType: "audio/pcm;rate=16000" } } }));
+await waitUntil(() => throwing.frames.some((f) => f.proxy?.type === "turn"), 5000);
+throwing.socket.close();
+await waitUntil(() => liveSessionCount() === 0, 3000);
+await sleep(400);
+const afterThrow = captured.join("\n");
+check(
+    "a thrown write failure does not log its message",
+    !afterThrow.includes("Failed query") && !afterThrow.includes("params:"),
+    "the thrown driver message reached a log line",
+);
+saveStatus = 201;
+saveThrows = false;
 
 const { startLiveSessionSchema } = await import("../src/modules/live/live.validation");
 check(

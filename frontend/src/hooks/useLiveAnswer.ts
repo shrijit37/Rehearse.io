@@ -61,7 +61,7 @@ export function useLiveAnswer(options: UseLiveAnswerOptions): LiveAnswer {
 	useEffect(() => {
 		if (!active) return;
 
-		const { request, tokenOverride, onTurn, onError } = latestRef.current;
+		const { request, tokenOverride } = latestRef.current;
 		let cancelled = false;
 
 		setState("connecting");
@@ -87,13 +87,16 @@ export function useLiveAnswer(options: UseLiveAnswerOptions): LiveAnswer {
 			onTranscript: (speaker, text) => {
 				if (!cancelled && speaker === "you") setTranscript(text);
 			},
+			// Read at call time: a session lives across many renders, and a handler
+			// captured when it started would keep whatever state it closed over —
+			// the pages index results by question, so a stale one misfiles them.
 			onTurn: (turn) => {
 				if (cancelled) return;
 				if (turn.transcription) setTranscript(turn.transcription);
-				onTurn?.(turn);
+				latestRef.current.onTurn?.(turn);
 			},
 			onError: (message) => {
-				if (!cancelled) onError?.(message);
+				if (!cancelled) latestRef.current.onError?.(message);
 			},
 		})
 			.then((session) => {
@@ -104,7 +107,7 @@ export function useLiveAnswer(options: UseLiveAnswerOptions): LiveAnswer {
 				if (cancelled) return;
 				// `startLiveSession` has already reported the "error" state; this is
 				// the message that explains it (no ticket, or every coach busy).
-				onError?.(
+				latestRef.current.onError?.(
 					error instanceof Error
 						? error.message
 						: "Could not start the live session.",

@@ -210,7 +210,7 @@ const server: Server = createServer();
 // persistence paths. The relay's own behaviour is what is under test here.
 const scored: { question: string; transcription: string }[] = [];
 const recorded: LiveTurn[] = [];
-const saved: LiveTurn[][] = [];
+const saves: { userId: string; turns: LiveTurn[] }[] = [];
 let scoringFails = false;
 let saveFails = false;
 attachLiveUpgrade(server, {
@@ -222,8 +222,11 @@ attachLiveUpgrade(server, {
     async recordTurn(_claims, turn) {
         recorded.push(turn);
     },
-    async finishPracticeSession(_claims, turns) {
-        saved.push([...turns]);
+    async resolveQuestion(_claims, index) {
+        return `database question ${index}`;
+    },
+    async finishPracticeSession(claims, turns) {
+        saves.push({ userId: claims._id, turns: [...turns] });
         if (saveFails) {
             // What a real failed insert looks like: the driver's message carries
             // the SQL and its bound parameters, and the parameters are the
@@ -239,7 +242,14 @@ const wsUrl = `ws://127.0.0.1:${listeningPort(server)}${LIVE_WS_PATH}`;
 
 interface ClientFrame {
     setupComplete?: unknown;
-    proxy?: { type?: string; question?: string; transcription?: string; score?: number | null; feedback?: string };
+    proxy?: {
+        type?: string;
+        questionIndex?: number;
+        question?: string;
+        transcription?: string;
+        score?: number | null;
+        feedback?: string;
+    };
     serverContent?: {
         turnComplete?: unknown;
         outputTranscription?: { text?: string };
@@ -276,9 +286,11 @@ function openClient(ticket: string): Promise<TestClient> {
 }
 
 const PRACTICE_USER = "00000000-0000-0000-0000-000000000001";
-const ticketFor = (instruction: string): string =>
+/** The client that spans several questions — the one whose saves prove the shape. */
+const MULTI_QUESTION_USER = "00000000-0000-0000-0000-000000000002";
+const ticketFor = (instruction: string, userId = PRACTICE_USER): string =>
     mintLiveTicket({
-        _id: PRACTICE_USER,
+        _id: userId,
         mode: "practice",
         question: "Tell me about a time you had to make a decision with incomplete data.",
         questionIndex: 0,
@@ -298,7 +310,7 @@ check("forged ticket is refused", forged.socket.readyState !== WsClient.OPEN, `s
 
 console.log("\n== relay ==");
 
-const good = await openClient(ticketFor("You are a test coach."));
+const good = await openClient(ticketFor("You are a test coach.", MULTI_QUESTION_USER));
 const connected = await waitFor(() => (good.socket.readyState === WsClient.OPEN ? true : undefined));
 check("valid ticket upgrades", connected === true, `state=${good.socket.readyState}, error=${good.error ?? "none"}`);
 
@@ -374,6 +386,38 @@ check(
 );
 scoringFails = false;
 
+console.log("\n== one session, several questions ==");
+
+// Advancing a question must not need a new socket: a reconnect would store a
+// separate practice session per question and greet the candidate again each time.
+const beforeAsk = upstreamConnections[0]?.textTurns.length ?? 0;
+good.socket.send(JSON.stringify({ proxy: { type: "ask", index: 1, question: "Second question?" } }));
+const asked = await waitFor(
+    () => (upstreamConnections[0] && upstreamConnections[0].textTurns.length > beforeAsk ? upstreamConnections[0].textTurns[beforeAsk] : undefined),
+    4000,
+);
+check("a question can be advanced on the open socket", (asked ?? "").includes("Second question?"), String(asked));
+
+const turnsBefore = upstreamConnections[0]?.textTurns.length ?? 0;
+good.socket.send(JSON.stringify({ proxy: { type: "ask", index: 1, question: "Second question?" } }));
+await sleep(250);
+check(
+    "re-asking the question it is already on is ignored",
+    (upstreamConnections[0]?.textTurns.length ?? 0) === turnsBefore,
+    `textTurns=${upstreamConnections[0]?.textTurns.length}`,
+);
+
+good.socket.send(JSON.stringify({ realtimeInput: { audio: { data: "AAAA", mimeType: "audio/pcm;rate=16000" } } }));
+const secondAnswer = await waitFor(() => {
+    const frames = good.frames.filter((f) => f.proxy?.type === "turn");
+    return frames.find((f) => f.proxy?.questionIndex === 1);
+}, 5000);
+check(
+    "the answer is attributed to the question that was asked",
+    secondAnswer?.proxy?.question === "Second question?",
+    JSON.stringify(secondAnswer?.proxy ?? {}),
+);
+
 console.log("\n== concurrency ceiling ==");
 
 const second = await openClient(ticketFor("second"));
@@ -420,15 +464,60 @@ console.log("\n== teardown ==");
 
 capped.socket.close();
 check("the last client releases its slot", await waitUntil(() => liveSessionCount() === 0, 5000), `count=${liveSessionCount()}`);
-const practiceSaved = await waitFor(() => (saved.length > 0 ? saved[0] : undefined), 5000);
-check("practice persists once, when the session ends", practiceSaved?.length === 3, `turns=${practiceSaved?.length ?? 0}`);
+const runSaves = await waitFor(() => {
+    const mine = saves.filter((entry) => entry.userId === MULTI_QUESTION_USER);
+    return mine.length > 0 ? mine : undefined;
+}, 5000);
+check("practice persists once, when the session ends", runSaves?.length === 1, `saves=${runSaves?.length ?? 0}`);
+check(
+    "one practice run is one stored session, not one per question",
+    runSaves?.[0]?.turns.length === 4,
+    `turns in the single save=${runSaves?.[0]?.turns.length ?? 0}`,
+);
 check(
     "the saved rows carry question, transcript, score and feedback",
-    practiceSaved?.[0]?.question?.includes("incomplete data") === true &&
-        practiceSaved?.[0]?.transcription === "answer 1" &&
-        practiceSaved?.[0]?.score === 7,
-    JSON.stringify(practiceSaved?.[0] ?? {}),
+    runSaves?.[0]?.turns[0]?.question?.includes("incomplete data") === true &&
+        runSaves?.[0]?.turns[0]?.transcription === "answer 1" &&
+        runSaves?.[0]?.turns[0]?.score === 7,
+    JSON.stringify(runSaves?.[0]?.turns[0] ?? {}),
 );
+check(
+    "every saved turn knows which question it answered",
+    runSaves?.[0]?.turns.map((turn) => turn.questionIndex).join(",") === "0,0,0,1",
+    runSaves?.[0]?.turns.map((turn) => turn.questionIndex).join(",") ?? "",
+);
+
+const interviewTicket = mintLiveTicket({
+    _id: PRACTICE_USER,
+    mode: "interview",
+    inviteId: "55555555-5555-4555-8555-555555555555",
+    question: "First interview question?",
+    questionIndex: 0,
+    targetRole: "Software Engineer",
+    instruction: "You are a test coach.",
+    kickoff: "Greet and ask.",
+});
+const connectionsBeforeInterview = upstreamConnections.length;
+const interviewClient = await openClient(interviewTicket);
+await waitUntil(() => upstreamConnections.length > connectionsBeforeInterview, 3000);
+const interviewConnection = connectionsBeforeInterview;
+const beforeInterviewAsk = upstreamConnections[interviewConnection]?.textTurns.length ?? 0;
+interviewClient.socket.send(JSON.stringify({ proxy: { type: "ask", index: 1 } }));
+const askedFromDatabase = await waitFor(
+    () => {
+        const record = upstreamConnections[interviewConnection];
+        if (!record || record.textTurns.length <= beforeInterviewAsk) return undefined;
+        return record.textTurns[beforeInterviewAsk];
+    },
+    4000,
+);
+check(
+    "an interview question comes from the database, not the caller",
+    (askedFromDatabase ?? "").includes("database question 1"),
+    String(askedFromDatabase),
+);
+interviewClient.socket.close();
+await waitUntil(() => liveSessionCount() === 0, 3000);
 
 console.log("\n== redaction and failure paths ==");
 
@@ -464,10 +553,18 @@ leaky.socket.close();
 await waitUntil(() => liveSessionCount() === 0, 3000);
 await sleep(400);
 const afterFailure = [...captured.log, ...captured.warn, ...captured.error].join("\n");
+const leakedTranscript = saves
+    .flatMap((entry) => entry.turns.map((turn) => turn.transcription))
+    .filter((text) => afterFailure.includes(text));
 check(
     "a failed database write does not log its parameters",
-    !afterFailure.includes("Failed query") && !afterFailure.includes("answer 1"),
-    "the driver's message (SQL + bound transcript) reached a log line",
+    leakedTranscript.length === 0,
+    `transcripts in logs: ${JSON.stringify(leakedTranscript)}`,
+);
+check(
+    "a failed audit write does not log its statement",
+    !afterFailure.includes('insert into "audit_logs"'),
+    "the audit statement reached a log line",
 );
 saveFails = false;
 

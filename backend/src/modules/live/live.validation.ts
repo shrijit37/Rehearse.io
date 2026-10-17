@@ -1,7 +1,5 @@
 import z from "zod";
-
-const MAX_QUESTIONS = 8;
-const MAX_QUESTION_CHARS = 600;
+import { LIVE_MAX_QUESTIONS, LIVE_MAX_QUESTION_CHARS } from "./live.config";
 
 /**
  * Practice questions are client-held today — `GET /api/rehearsal/start` never
@@ -15,11 +13,11 @@ export const startLiveSessionSchema = z
         mode: z.enum(["practice", "interview"]),
         targetRole: z.string().trim().max(200).optional().default("Software Engineer"),
         questions: z
-            .array(z.string().trim().min(1).max(MAX_QUESTION_CHARS))
-            .max(MAX_QUESTIONS)
+            .array(z.string().trim().min(1).max(LIVE_MAX_QUESTION_CHARS))
+            .max(LIVE_MAX_QUESTIONS)
             .optional()
             .default([]),
-        questionIndex: z.coerce.number().int().min(0).max(MAX_QUESTIONS - 1).optional().default(0),
+        questionIndex: z.coerce.number().int().min(0).max(LIVE_MAX_QUESTIONS - 1).optional().default(0),
         inviteId: z.string().min(1).optional(),
     })
     .refine(

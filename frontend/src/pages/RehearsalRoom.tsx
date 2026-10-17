@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,20 +49,24 @@ const RehearsalRoom: React.FC = () => {
 
 	const handleLiveError = useCallback((message: string) => setError(message), []);
 
-	// One live session per question: the coach asks `questions[questionIndex]`
-	// and the backend scores and persists that answer when the socket closes.
+	// One live session for the whole run: the socket opens when the interview
+	// step does and every question is asked over it. The backend writes one
+	// session row when it closes, so the run stays one session in the history.
 	const live = useLiveAnswer({
 		active: step === "interview" && questions.length > 0,
-		restartKey: currentQuestionIndex,
-		request: {
-			mode: "practice",
-			targetRole,
-			questions,
-			questionIndex: currentQuestionIndex,
-		},
+		request: { mode: "practice", targetRole, questions },
 		onTurn: handleTurn,
 		onError: handleLiveError,
 	});
+
+	// Advance the conversation in place when the candidate moves on. Question 0 is
+	// the one the ticket starts on, and the backend ignores an ask for the
+	// question it is already on, so this is safe to fire on every change.
+	const askQuestion = live.ask;
+	useEffect(() => {
+		if (step !== "interview") return;
+		askQuestion(currentQuestionIndex, questions[currentQuestionIndex]);
+	}, [askQuestion, step, currentQuestionIndex, questions]);
 
 	const startInterview = async (role: string) => {
 		setTargetRole(role);

@@ -8,10 +8,8 @@ import {
 import type { LiveTurnState } from "@/lib/live/types";
 
 export interface UseLiveAnswerOptions {
-	/** The question screen is showing. False tears the session down (round change, unmount). */
+	/** The conversation is showing. False tears the session down (round change, unmount). */
 	active: boolean;
-	/** Change this to move to another question: the session restarts against it. */
-	restartKey: string | number;
 	/** Ticket body for the session this hook is about to start. */
 	request: LiveSessionOptions["request"];
 	/** Invited-candidate JWT; omit for a signed-in user (cookie auth). */
@@ -28,18 +26,25 @@ export interface LiveAnswer {
 	stop(): void;
 	/** Start a fresh session for the same request — after a stop, or after a failure. */
 	restart(): void;
+	/**
+	 * Move to another question without tearing the socket down. Reconnecting per
+	 * question would split one practice run into a stored session per question and
+	 * greet the candidate again each time; the backend ignores an ask for the
+	 * question it is already on, so a caller can fire this on every index change.
+	 */
+	ask(questionIndex: number, question?: string): void;
 }
 
 /**
- * Owns one live spoken session per question: it starts when the question screen
- * is showing, is replaced when `restartKey` changes, and stops on unmount or
- * when `active` goes false.
+ * Owns one live spoken session for a whole run: it starts when the conversation
+ * screen is showing and stops on unmount or when `active` goes false. Questions
+ * are advanced on that one socket with `ask`; only `restart()` replaces it.
  *
  * `request` and the callbacks are read through a ref, so an unrelated re-render
- * cannot restart a live conversation — only `restartKey` or `restart()` can.
+ * cannot restart a live conversation.
  */
 export function useLiveAnswer(options: UseLiveAnswerOptions): LiveAnswer {
-	const { active, restartKey } = options;
+	const { active } = options;
 	const [state, setState] = useState<LiveTurnState>("idle");
 	const [transcript, setTranscript] = useState("");
 	const [generation, setGeneration] = useState(0);
@@ -110,7 +115,7 @@ export function useLiveAnswer(options: UseLiveAnswerOptions): LiveAnswer {
 			leave();
 			setState("idle");
 		};
-	}, [active, restartKey, generation]);
+	}, [active, generation]);
 
 	const stop = useCallback(() => {
 		leaveRef.current();
@@ -119,5 +124,9 @@ export function useLiveAnswer(options: UseLiveAnswerOptions): LiveAnswer {
 
 	const restart = useCallback(() => setGeneration((value) => value + 1), []);
 
-	return { state, transcript, stop, restart };
+	const ask = useCallback((questionIndex: number, question?: string) => {
+		sessionRef.current?.ask(questionIndex, question);
+	}, []);
+
+	return { state, transcript, stop, restart, ask };
 }

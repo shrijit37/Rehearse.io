@@ -41,7 +41,9 @@ export async function logAudit({
 
         await writeAuditLog({ userId, action, details, metadata, ipHash });
     } catch (err) {
-        const message = err instanceof Error ? err.message : "unknown error";
-        console.error("Audit log error:", message);
+        // The driver's message carries the statement and, on a failed insert, its
+        // bound parameters — and those can be the audit row's own details. Log
+        // the error's kind, not its text.
+        console.error(`Audit log error (${err instanceof Error ? err.name : typeof err})`);
     }
 }

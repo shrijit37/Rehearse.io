@@ -103,8 +103,10 @@ export function relayLiveSession({ client, claims, apiKey }: RelayOptions): void
         }
         if (frame.setupComplete) {
             // The model answers a turn, it does not open one: without this the
-            // candidate hears silence after connecting.
-            if (upstream?.readyState === WebSocket.OPEN) {
+            // candidate hears silence after connecting. Only the first
+            // connection gets it — a resumed socket also reports setupComplete,
+            // and re-sending would make the coach greet twice.
+            if (resumptions === 0 && upstream?.readyState === WebSocket.OPEN) {
                 upstream.send(JSON.stringify({ realtimeInput: { text: claims.kickoff } }));
             }
             return;

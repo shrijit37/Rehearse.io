@@ -10,16 +10,19 @@ import {
 	ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { LiveTurnState } from "@/lib/live/types";
 
 export interface BehavioralRoundProps {
 	interview: { title: string; targetRole: string } | null;
 	questions: string[];
 	currentQuestionIndex: number;
 	currentQuestion: string;
-	isRecording: boolean;
-	isEvaluating: boolean;
-	evaluation: { score: number; feedback: string } | null;
-	recordingSeconds: number;
+	/** Turn state of the live spoken session; "idle" when no session is running. */
+	liveState: LiveTurnState;
+	/** The candidate's transcript for the answer in progress. */
+	liveTranscript: string;
+	/** Set once the backend has scored this answer; the score is null when it could not. */
+	evaluation: { score: number | null; feedback: string } | null;
 	isLastQuestion: boolean;
 	hasDsaAfter: boolean;
 	error: string | null;
@@ -27,15 +30,33 @@ export interface BehavioralRoundProps {
 	ttsSupported: boolean;
 	onBack: () => void;
 	onSpeakQuestion: () => void;
-	onToggleRecording: () => void;
-	onResetEvaluation: () => void;
+	/** Leave the live conversation. */
+	onStopSession: () => void;
+	/** Start a fresh conversation for the same question, after a stop or a failure. */
+	onRestartSession: () => void;
+	/** Clear the score and let the candidate answer the question again. */
+	onRetryAnswer: () => void;
 	onNext: () => void;
 }
 
-const formatTimer = (secs: number): string => {
-	const m = Math.floor(secs / 60);
-	const s = secs % 60;
-	return `${m}:${s < 10 ? "0" : ""}${s}`;
+/** What the candidate is told while the coach's socket is in each state. */
+const LIVE_STATUS: Record<LiveTurnState, string> = {
+	idle: "The conversation is not running.",
+	connecting: "Connecting to your coach...",
+	listening: "Listening — answer out loud.",
+	thinking: "Going over your answer...",
+	speaking: "Your coach is speaking...",
+	error: "The conversation stopped.",
+};
+
+/** The indicator pill, which borrows the old "Live" badge and extends it. */
+const LIVE_BADGE: Record<LiveTurnState, string> = {
+	idle: "Ended",
+	connecting: "Connecting",
+	listening: "Live",
+	thinking: "Thinking",
+	speaking: "Speaking",
+	error: "Ended",
 };
 
 const BehavioralRound: React.FC<BehavioralRoundProps> = ({
@@ -43,10 +64,9 @@ const BehavioralRound: React.FC<BehavioralRoundProps> = ({
 	questions,
 	currentQuestionIndex,
 	currentQuestion,
-	isRecording,
-	isEvaluating,
+	liveState,
+	liveTranscript,
 	evaluation,
-	recordingSeconds,
 	isLastQuestion,
 	hasDsaAfter,
 	error,
@@ -54,14 +74,17 @@ const BehavioralRound: React.FC<BehavioralRoundProps> = ({
 	ttsSupported,
 	onBack,
 	onSpeakQuestion,
-	onToggleRecording,
-	onResetEvaluation,
+	onStopSession,
+	onRestartSession,
+	onRetryAnswer,
 	onNext,
 }) => {
 	const progressPercent =
 		questions.length > 0
 			? ((currentQuestionIndex + 1) / questions.length) * 100
 			: 0;
+	const isLive = liveState !== "idle" && liveState !== "error";
+	const isWaiting = liveState === "connecting" || liveState === "thinking";
 
 	return (
 		<div className="min-h-screen bg-background flex flex-col pt-14">
@@ -123,7 +146,7 @@ const BehavioralRound: React.FC<BehavioralRoundProps> = ({
 								<Volume2 className="h-7 w-7 text-sign-yellow" />
 							</div>
 							<p className="text-[12px] text-muted-foreground text-center">
-								Listen carefully, then record your response.
+								Listen carefully, then answer out loud.
 							</p>
 						</div>
 						<div className="border-t border-border p-5 bg-background space-y-2">
@@ -134,8 +157,14 @@ const BehavioralRound: React.FC<BehavioralRoundProps> = ({
 								{ttsSupported && (
 									<button
 										onClick={onSpeakQuestion}
-										disabled={isRecording || isEvaluating}
-										title={speaking ? "Stop" : "Play question aloud"}
+										disabled={isLive}
+										title={
+											liveState === "listening"
+												? "Leave the conversation to replay the question"
+												: speaking
+													? "Stop"
+													: "Play question aloud"
+										}
 										className={`p-1.5 rounded-full transition-all ${
 											speaking
 												? "bg-sign-black text-sign-white animate-pulse"
@@ -167,14 +196,7 @@ const BehavioralRound: React.FC<BehavioralRoundProps> = ({
 					)}
 					<div className="border border-border bg-card rounded-md flex-1 flex flex-col overflow-hidden relative min-h-[340px]">
 						<div className="flex-1 bg-black relative flex flex-col justify-center items-center overflow-hidden">
-							{isEvaluating ? (
-								<div className="absolute inset-0 bg-background/95 z-20 flex flex-col items-center justify-center gap-3">
-									<Loader2 className="w-8 h-8 text-foreground animate-spin" />
-									<p className="text-[13px] font-semibold">
-										Evaluating your response...
-									</p>
-								</div>
-							) : evaluation ? (
+							{evaluation ? (
 								<div className="absolute inset-0 bg-background/95 z-20 flex flex-col justify-between p-5 overflow-y-auto">
 									<div className="space-y-3">
 										<div className="flex items-center justify-between border-b border-border pb-3">
@@ -185,7 +207,7 @@ const BehavioralRound: React.FC<BehavioralRoundProps> = ({
 												<h3 className="text-base font-bold pt-1">Score</h3>
 											</div>
 											<span className="text-xl font-bold">
-												{evaluation.score}
+												{evaluation.score ?? "—"}
 												<span className="text-[11px] text-muted-foreground">
 													/10
 												</span>
@@ -199,10 +221,10 @@ const BehavioralRound: React.FC<BehavioralRoundProps> = ({
 										<Button
 											variant="outline"
 											size="sm"
-											onClick={onResetEvaluation}
+											onClick={onRetryAnswer}
 											className="font-medium"
 										>
-											Re-record
+											Answer again
 										</Button>
 										<Button
 											onClick={onNext}
@@ -219,52 +241,60 @@ const BehavioralRound: React.FC<BehavioralRoundProps> = ({
 									</div>
 								</div>
 							) : (
-								<div className="absolute inset-0 flex flex-col items-center justify-center p-5">
-									<Mic className="h-10 w-10 text-white/20 mb-2" />
-									<span className="text-[11px] text-white/40">
-										{isRecording ? "Recording..." : "Ready to record"}
+								<div className="absolute inset-0 flex flex-col items-center justify-center p-6">
+									{isWaiting ? (
+										<Loader2 className="h-10 w-10 text-sign-yellow animate-spin mb-2" />
+									) : liveState === "speaking" ? (
+										<Volume2 className="h-10 w-10 text-sign-yellow mb-2" />
+									) : (
+										<Mic className="h-10 w-10 text-white/20 mb-2" />
+									)}
+									<span className="text-[11px] text-white/40 text-center">
+										{LIVE_STATUS[liveState]}
 									</span>
+									{liveTranscript && (
+										<p className="mt-4 max-h-28 overflow-y-auto max-w-md text-center text-[13px] leading-relaxed text-white/75">
+											“{liveTranscript}”
+										</p>
+									)}
 								</div>
 							)}
 
-							{isRecording && (
-								<>
-									<div className="absolute top-3 right-3 flex items-center gap-1.5 bg-destructive/10 border border-destructive/20 px-2.5 py-1 rounded-full">
-										<span className="w-1.5 h-1.5 bg-destructive rounded-full animate-pulse" />
-										<span className="type-sign-label text-white ">
-											Live
-										</span>
-									</div>
-									<div className="absolute bottom-3 left-3 bg-black/50 border border-white/10 px-2.5 py-1 rounded-full text-white text-[11px] tabular-nums">
-										{formatTimer(recordingSeconds)}
-									</div>
-								</>
+							{isLive && (
+								<div className="absolute top-3 right-3 flex items-center gap-1.5 bg-destructive/10 border border-destructive/20 px-2.5 py-1 rounded-full">
+									<span className="w-1.5 h-1.5 bg-destructive rounded-full animate-pulse" />
+									<span className="type-sign-label text-white ">
+										{LIVE_BADGE[liveState]}
+									</span>
+								</div>
 							)}
 						</div>
 
 						{!evaluation && (
 							<div className="border-t border-border p-4 bg-background flex flex-col sm:flex-row items-center justify-between gap-3">
 								<p className="text-[12px] text-muted-foreground font-medium">
-									{isRecording
-										? "Click stop when finished."
-										: "Click to start recording."}
+									{!isLive
+										? "Start a new conversation to answer this question."
+										: liveState === "speaking"
+											? "Your coach is replying — wait for your turn."
+											: "Answer out loud; your coach replies when you pause."}
 								</p>
-								<Button
-									variant={isRecording ? "destructive" : "default"}
-									onClick={onToggleRecording}
-									disabled={isEvaluating}
-									className="w-full sm:w-40 font-semibold shrink-0 h-9 rounded-full gap-2"
-								>
-									{isRecording ? (
-										<>
-											<MicOff className="h-3.5 w-3.5" /> Stop
-										</>
-									) : (
-										<>
-											<Mic className="h-3.5 w-3.5" /> Record
-										</>
-									)}
-								</Button>
+								{isLive ? (
+									<Button
+										variant="destructive"
+										onClick={onStopSession}
+										className="w-full sm:w-40 font-semibold shrink-0 h-9 rounded-full gap-2"
+									>
+										<MicOff className="h-3.5 w-3.5" /> Stop
+									</Button>
+								) : (
+									<Button
+										onClick={onRestartSession}
+										className="w-full sm:w-40 font-semibold shrink-0 h-9 rounded-full gap-2"
+									>
+										<Mic className="h-3.5 w-3.5" /> Try again
+									</Button>
+								)}
 							</div>
 						)}
 					</div>

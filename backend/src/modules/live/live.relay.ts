@@ -1,6 +1,8 @@
 import { WebSocket as WsServer, type WebSocket as ClientSocket } from "ws";
 import { logAudit } from "../../middleware/auditLog";
 import {
+    LIVE_MAX_QUESTIONS,
+    LIVE_MAX_QUESTION_CHARS,
     LIVE_MAX_RESUMPTIONS,
     LIVE_MODEL,
     LIVE_SETUP_TIMEOUT_MS,
@@ -46,6 +48,29 @@ function closableCode(code: number): number {
     const reserved = code === 1004 || code === 1005 || code === 1006;
     if (!reserved && ((code >= 1000 && code <= 1015) || (code >= 3000 && code <= 4999))) return code;
     return 1011;
+}
+
+/**
+ * The one frame the browser sends that is not a Live frame: "ask question N".
+ * The socket outlives a single question, so moving on is a control message
+ * rather than a reconnect — which is what keeps a practice run one session in
+ * the database, one greeting, and one slot against the concurrency cap.
+ */
+function parseQuestionRequest(payload: string): { index: number; question?: string } | null {
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(payload);
+    } catch {
+        return null;
+    }
+    if (typeof parsed !== "object" || parsed === null) return null;
+    const proxy = (parsed as { proxy?: unknown }).proxy;
+    if (typeof proxy !== "object" || proxy === null) return null;
+    const { type, index, question } = proxy as { type?: unknown; index?: unknown; question?: unknown };
+    if (type !== "ask") return null;
+    const parsedIndex = Number(index);
+    if (!Number.isInteger(parsedIndex) || parsedIndex < 0 || parsedIndex >= LIVE_MAX_QUESTIONS) return null;
+    return { index: parsedIndex, question: typeof question === "string" ? question : undefined };
 }
 
 function buildSetup(claims: LiveTicketClaims, handle: string | null) {
@@ -101,6 +126,10 @@ export function relayLiveSession({ client, claims, apiKey, deps = liveDeps }: Re
     const turns: LiveTurn[] = [];
     let answerInProgress = "";
     let scoring = Promise.resolve();
+    // The ticket in the claims is the question the session *starts* on; these
+    // move with the conversation.
+    let currentIndex = claims.questionIndex;
+    let currentQuestion = claims.question;
 
     const sendToClient = (frame: unknown): void => {
         if (client.readyState === WsServer.OPEN) client.send(JSON.stringify(frame));
@@ -148,8 +177,8 @@ export function relayLiveSession({ client, claims, apiKey, deps = liveDeps }: Re
      * order matches the order the answers were given.
      */
     const closeTurn = (transcription: string): void => {
-        const question = claims.question;
-        turns.push({ question, transcription, score: null, feedback: UNSCORED_FEEDBACK });
+        const question = currentQuestion;
+        turns.push({ questionIndex: currentIndex, question, transcription, score: null, feedback: UNSCORED_FEEDBACK });
         const turn = turns[turns.length - 1]!;
 
         scoring = scoring
@@ -171,6 +200,32 @@ export function relayLiveSession({ client, claims, apiKey, deps = liveDeps }: Re
                 // and its parameters, and the parameters are the transcript.
                 console.warn(`[live] turn scoring failed (${error instanceof Error ? error.name : typeof error})`);
             });
+    };
+
+    /**
+     * Moves the conversation on to another question without touching the socket.
+     * An interview's text comes from the database (the caller cannot choose what
+     * it is asked); practice's comes from the page, which owns those questions.
+     */
+    const askQuestion = (index: number, fromClient: string | undefined): void => {
+        if (finished || index === currentIndex) return;
+        void (async () => {
+            const question =
+                claims.mode === "interview"
+                    ? await deps.resolveQuestion(claims, index)
+                    : fromClient?.trim().slice(0, LIVE_MAX_QUESTION_CHARS);
+            if (finished || index === currentIndex) return;
+            if (!question) {
+                console.warn("[live] could not resolve the next question");
+                return;
+            }
+            currentIndex = index;
+            currentQuestion = question;
+            answerInProgress = "";
+            if (upstream?.readyState === WebSocket.OPEN) {
+                upstream.send(JSON.stringify({ realtimeInput: { text: `Now ask this next question: "${question}"` } }));
+            }
+        })();
     };
 
     const inspect = (text: string): void => {
@@ -262,6 +317,13 @@ export function relayLiveSession({ client, claims, apiKey, deps = liveDeps }: Re
         // The browser sends text frames (base64 audio JSON); binary is passed
         // through unchanged in case a client ever streams raw PCM.
         const payload = isBinary ? Buffer.from(data as Buffer) : data.toString();
+        if (!isBinary && typeof payload === "string") {
+            const next = parseQuestionRequest(payload);
+            if (next) {
+                askQuestion(next.index, next.question);
+                return;
+            }
+        }
         framesUp++;
         bytesUp += payload.length;
         if (upstream.readyState === WebSocket.OPEN) upstream.send(payload);

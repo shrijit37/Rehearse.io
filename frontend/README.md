@@ -45,7 +45,8 @@ clears the session and redirects to `/signup`.
   mints a 60 s ticket, `src/lib/live/` (mic capture, 24 kHz playback, the socket)
   opens `wss://<api-host>/ws/live`, and the backend owns the setup frame, the
   coaching turn, the score and the persistence. `src/hooks/useLiveAnswer.ts`
-  drives one session per question for `RehearsalRoom`/`CandidateInterview`.
+  drives one session per run for `RehearsalRoom`/`CandidateInterview` — questions are
+  advanced on the same socket, so a practice run stays one stored session.
   `MediaRecorder` survives only for profile voice samples
   (`Onboarding`, `AccountSettings`).
 - Styling: TailwindCSS 4 via the Vite plugin (no config file), shadcn/ui

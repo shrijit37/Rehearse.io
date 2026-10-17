@@ -272,6 +272,13 @@ Chromium. The product flows are wired: both the practice room and the invited
 interview run the conversation over the socket, render the candidate's live
 transcript, and take their score from the relay.
 
+A session is one socket: `ask` frames advance the question inside it, because a
+socket per question stored a separate practice session per question, greeted the
+candidate again each time, and spent one of the four slots per question. Verified
+against the real API: the coach asked the second question in its own words
+mid-session, both answers were attributed and scored separately, and the run
+persisted as **one** session row.
+
 Answer scoring is one provider: `gemini-3.8-flash` on the REST text endpoint
 (6.8 s measured, so it runs *after* the turn, never inside it) replaces the batch
 path's Groq re-transcription. The relay writes each interview answer onto the

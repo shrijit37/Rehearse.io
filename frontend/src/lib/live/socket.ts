@@ -9,6 +9,8 @@ import type { LiveSpeaker, LiveTurnState } from "./types";
 
 /** One completed answer, scored server-side. */
 export interface LiveTurnResult {
+  /** Which question of the session this answered — the socket outlives a question. */
+  questionIndex: number;
   question: string;
   transcription: string;
   score: number | null;
@@ -39,6 +41,16 @@ export interface LiveSessionOptions {
 export interface LiveSession {
   stop(): void;
   sendText(text: string): void;
+  /**
+   * Move the conversation on to another question on the *same* socket. The
+   * socket's lifetime is the session, not the question: reconnecting per question
+   * would split one practice run into as many stored sessions, greet the candidate
+   * again for each, and spend a slot against the concurrency cap.
+   *
+   * `question` is required in practice mode (the page owns those questions) and
+   * ignored in interview mode, where the backend reads them from the database.
+   */
+  ask(questionIndex: number, question?: string): void;
 }
 
 interface LiveTicket {
@@ -72,6 +84,7 @@ interface ServerContent {
  */
 interface ProxyFrame {
   type?: string;
+  questionIndex?: number;
   question?: string;
   transcription?: string;
   score?: number | null;
@@ -156,6 +169,7 @@ export async function startLiveSession(options: LiveSessionOptions): Promise<Liv
     if (proxy) {
       if (proxy.type === "turn") {
         options.onTurn?.({
+          questionIndex: proxy.questionIndex ?? 0,
           question: proxy.question ?? "",
           transcription: proxy.transcription ?? "",
           score: proxy.score ?? null,
@@ -294,6 +308,14 @@ export async function startLiveSession(options: LiveSessionOptions): Promise<Liv
 
   return {
     stop,
+    ask(questionIndex: number, question?: string) {
+      if (stopped) return;
+      if (socket.readyState !== WebSocket.OPEN) {
+        options.onError("Cannot change question: the live session is not connected");
+        return;
+      }
+      socket.send(JSON.stringify({ proxy: { type: "ask", index: questionIndex, question } }));
+    },
     sendText(text: string) {
       if (stopped) return;
       if (socket.readyState !== WebSocket.OPEN) {

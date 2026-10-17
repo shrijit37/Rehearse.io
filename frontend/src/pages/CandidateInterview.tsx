@@ -69,21 +69,24 @@ const CandidateInterview: React.FC = () => {
 
 	const handleLiveError = useCallback((message: string) => setError(message), []);
 
-	// One live session per behavioural question: the backend loads the question
-	// from the invite and persists the scored turn itself. The candidate token
-	// rides the ticket request the same way it rides every other candidate call.
+	// One live session for the whole behavioural round: the backend reads each
+	// question from the invite and persists every scored turn itself. The candidate
+	// token rides the ticket request the way it rides every other candidate call.
 	const live = useLiveAnswer({
 		active: phase === "behavioral" && !!invite?._id && questions.length > 0,
-		restartKey: currentQuestionIndex,
-		request: {
-			mode: "interview",
-			inviteId: invite?._id,
-			questionIndex: currentQuestionIndex,
-		},
+		request: { mode: "interview", inviteId: invite?._id },
 		tokenOverride: authToken,
 		onTurn: handleTurn,
 		onError: handleLiveError,
 	});
+
+	// The interview's question text comes from the database, so the page sends only
+	// the index; the backend ignores an ask for the question it is already on.
+	const askQuestion = live.ask;
+	useEffect(() => {
+		if (phase !== "behavioral") return;
+		askQuestion(currentQuestionIndex);
+	}, [askQuestion, phase, currentQuestionIndex]);
 
 	useEffect(() => {
 		if (!token) {

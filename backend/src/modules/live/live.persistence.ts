@@ -6,6 +6,8 @@ import type { LiveTicketClaims } from "./live.service";
 
 /** One completed answer: what the candidate said, and what it was worth. */
 export interface LiveTurn {
+    /** Which question of the session this answered — the socket outlives a question. */
+    questionIndex: number;
     question: string;
     transcription: string;
     score: number | null;
@@ -19,6 +21,12 @@ export interface LiveTurn {
  */
 export interface LiveDeps {
     score(question: string, transcription: string): Promise<AnswerScore | null>;
+    /**
+     * The text of question `index`. Practice questions belong to the client (it
+     * is handed them by `GET /api/rehearsal/start` and already sends them with
+     * the ticket), so the relay only asks the database for an interview's.
+     */
+    resolveQuestion(claims: LiveTicketClaims, index: number): Promise<string | null>;
     /** Practice accumulates and writes once; an interview writes per turn. */
     recordTurn(claims: LiveTicketClaims, turn: LiveTurn): Promise<void>;
     finishPracticeSession(claims: LiveTicketClaims, turns: LiveTurn[]): Promise<void>;
@@ -47,7 +55,7 @@ async function recordInterviewTurn(claims: LiveTicketClaims, turn: LiveTurn): Pr
     const questions = interview.questions ?? [];
     const results: ResultItem[] = [...invite.results];
     const record: ResultItem = {
-        question: questions[claims.questionIndex] ?? turn.question,
+        question: questions[turn.questionIndex] ?? turn.question,
         transcription: turn.transcription,
         score: turn.score,
         feedback: turn.feedback,
@@ -62,6 +70,15 @@ async function recordInterviewTurn(claims: LiveTicketClaims, turn: LiveTurn): Pr
 export const liveDeps: LiveDeps = {
     score: scoreAnswer,
     recordTurn: recordInterviewTurn,
+
+    async resolveQuestion(claims, index) {
+        if (!claims.inviteId) return null;
+        const invite = await findInviteById(claims.inviteId);
+        if (!invite) return null;
+        const interview = await findInterviewRowById(invite.interviewId);
+        return interview?.questions?.[index] ?? null;
+    },
+
     /** Practice mode's only persistence, at the end of the session — as before. */
     async finishPracticeSession(claims, turns) {
         const results: ResultItem[] = turns.map((turn) => ({

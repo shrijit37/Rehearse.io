@@ -54,7 +54,10 @@ const RehearsalRoom: React.FC = () => {
 	// session row when it closes, so the run stays one session in the history.
 	const live = useLiveAnswer({
 		active: step === "interview" && questions.length > 0,
-		request: { mode: "practice", targetRole, questions },
+		// `questionIndex` matters on a restart as much as on the first start: the
+		// ticket pins the question the session opens on, and a restart at question
+		// 3 whose ticket says 0 asks the wrong question and scores it as the first.
+		request: { mode: "practice", targetRole, questions, questionIndex: currentQuestionIndex },
 		onTurn: handleTurn,
 		onError: handleLiveError,
 	});

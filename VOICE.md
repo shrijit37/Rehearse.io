@@ -81,6 +81,20 @@ decode UTF-8, then `JSON.parse`).
 | `sessionResumptionUpdate.newHandle` / `.resumable` | handle for reconnecting into the same session |
 | `goAway.timeLeft` | the server will close this session in N seconds |
 
+## Our session protocol (the part we invented)
+
+Three things ride this socket that are ours, not Google's:
+
+| Frame | Direction | Why |
+|---|---|---|
+| `Authorization`-free handshake with the ticket as a WebSocket **subprotocol** (`["bearer", ticket]`) | browser → API | a browser cannot set headers on a WebSocket, and a query param would land in access logs |
+| `{"proxy":{"type":"ask","index":n,"question":"…"}}` | browser → API | advances the question **inside** the session. Reconnecting per question stored a separate practice session per question, greeted the candidate again each time and spent one of the four slots per question |
+| `{"proxy":{"type":"turn",…}}` | API → browser | the only way the page learns a score: the score is decided server-side and the page has no audio to upload |
+
+Tickets are 60 s, signed with a key **derived** from `JWT_SECRET` (so a ticket
+cannot open the REST API) and **single-use** — a bearer value that lived for a
+minute would otherwise buy a second upstream session and a second slot.
+
 ## Client requirements
 
 - **Secure context.** `http://localhost` (or https). A LAN IP will not get mic access.

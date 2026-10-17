@@ -155,11 +155,19 @@ export function relayLiveSession({ client, claims, apiKey, deps = liveDeps }: Re
         if (claims.mode === "practice") {
             // Practice has always persisted once, at the end of a session; a
             // socket that closes before any answer leaves no row, as before.
-            // Only the error's *name* is logged: a failed insert reports its SQL
-            // and bound parameters, and those parameters are the transcript.
-            void deps.finishPracticeSession(claims, turns).catch((error: unknown) => {
-                console.warn(`[live] practice session save failed (${error instanceof Error ? error.name : typeof error})`);
-            });
+            // Chained onto the scoring queue so a candidate who stops while a
+            // score is still being computed gets that score written, rather than
+            // a row that says the answer could not be scored.
+            void scoring
+                .then(async () => {
+                    const status = await deps.finishPracticeSession(claims, turns);
+                    if (status !== 201) console.warn(`[live] practice session was not saved (status ${status})`);
+                })
+                .catch((error: unknown) => {
+                    // Only the error's *name*: a failed insert reports its SQL and
+                    // bound parameters, and those parameters are the transcript.
+                    console.warn(`[live] practice session save failed (${error instanceof Error ? error.name : typeof error})`);
+                });
         } else {
             // Counters and outcomes only: an invite id maps back to a candidate,
             // and no transcript or audio ever reaches this table.
@@ -219,12 +227,21 @@ export function relayLiveSession({ client, claims, apiKey, deps = liveDeps }: Re
                 console.warn("[live] could not resolve the next question");
                 return;
             }
+            // Check before mutating, not after: advancing the bookkeeping while
+            // the upstream is between sockets would leave the coach asking the old
+            // question while every later answer is attributed to the new one.
+            if (upstream?.readyState !== WebSocket.OPEN) {
+                console.warn("[live] dropping a question change: upstream is not connected");
+                return;
+            }
+            // An utterance that already produced a final transcript is a real
+            // answer — close it against the question it was given to instead of
+            // discarding it.
+            if (answerInProgress.trim()) closeTurn(answerInProgress.trim());
+            answerInProgress = "";
             currentIndex = index;
             currentQuestion = question;
-            answerInProgress = "";
-            if (upstream?.readyState === WebSocket.OPEN) {
-                upstream.send(JSON.stringify({ realtimeInput: { text: `Now ask this next question: "${question}"` } }));
-            }
+            upstream.send(JSON.stringify({ realtimeInput: { text: `Now ask this next question: "${question}"` } }));
         })();
     };
 
@@ -302,6 +319,9 @@ export function relayLiveSession({ client, claims, apiKey, deps = liveDeps }: Re
             if (canResume) {
                 resumptions++;
                 goAwaySeen = false;
+                // The upstream replays nothing, and a half-heard utterance across
+                // the gap must not be glued onto the next answer.
+                answerInProgress = "";
                 console.log(`[live] upstream closed ${event.code} — resuming (${resumptions}/${LIVE_MAX_RESUMPTIONS})`);
                 openUpstream();
                 return;

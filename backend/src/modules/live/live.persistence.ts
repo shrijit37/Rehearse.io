@@ -29,7 +29,13 @@ export interface LiveDeps {
     resolveQuestion(claims: LiveTicketClaims, index: number): Promise<string | null>;
     /** Practice accumulates and writes once; an interview writes per turn. */
     recordTurn(claims: LiveTicketClaims, turn: LiveTurn): Promise<void>;
-    finishPracticeSession(claims: LiveTicketClaims, turns: LiveTurn[]): Promise<void>;
+    /**
+     * Writes the run's turns and resolves with the HTTP status the write ended
+     * with (201 when stored). It deliberately does not log: `saveSession` reports
+     * a failure in its message, and that message carries the statement and its
+     * bound parameters — which are the candidate's transcripts.
+     */
+    finishPracticeSession(claims: LiveTicketClaims, turns: LiveTurn[]): Promise<number>;
 }
 
 /** What a turn looks like when scoring could not run — kept explicit, never invented. */
@@ -87,12 +93,12 @@ export const liveDeps: LiveDeps = {
             score: turn.score,
             feedback: turn.feedback,
         }));
-        if (results.length === 0) return;
+        if (results.length === 0) return 201;
         const saved = await saveSession(claims._id, {
             targetRole: claims.targetRole,
             sessionType: "behavioral",
             results,
         });
-        if (saved.status !== 201) console.warn(`[live] practice session was not saved: ${saved.message}`);
+        return saved.status;
     },
 };

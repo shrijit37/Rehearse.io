@@ -6,7 +6,7 @@ import { env } from "../../config/env";
 import { LIVE_WS_PATH } from "./live.config";
 import { relayLiveSession } from "./live.relay";
 import { liveDeps, type LiveDeps } from "./live.persistence";
-import { verifyLiveTicket } from "./live.service";
+import { consumeLiveTicket, verifyLiveTicket } from "./live.service";
 
 /**
  * The ticket arrives as a WebSocket subprotocol rather than a query parameter:
@@ -53,6 +53,10 @@ export function attachLiveUpgrade(server: Server, deps: LiveDeps = liveDeps): vo
         const claims = verifyLiveTicket(ticketFromRequest(req.headers));
         if (!apiKey || !claims) {
             refuse(socket, 401, "Invalid or expired live ticket");
+            return;
+        }
+        if (!consumeLiveTicket(claims.jti)) {
+            refuse(socket, 401, "This live ticket has already been used");
             return;
         }
 

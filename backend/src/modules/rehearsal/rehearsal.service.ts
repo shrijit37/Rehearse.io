@@ -4,7 +4,6 @@ import { createRehearsalSession, listRehearsalSessions } from "../../db/reposito
 import { extractTextFromBase64Pdf } from "../../utils/pdfParser";
 import {
     generateScenario,
-    evaluateAudio,
     generateDsaProblems,
     evaluateDsa as aiEvaluateDsa,
 } from "../../utils/aiClient";
@@ -51,29 +50,6 @@ export const startRehearsal = async (userId: string, targetRole: string): Promis
         return {
             status: 502,
             message: "AI service failed to generate questions. Please try again later.",
-            data: { error: message },
-        };
-    }
-};
-
-export const evaluateAnswer = async (params: {
-    audioBuffer: Buffer;
-    mimetype: string;
-    filename: string;
-    question: string;
-}): Promise<ServiceResult> => {
-    try {
-        const result = await evaluateAudio(params);
-        return {
-            status: 200,
-            message: "Answer evaluated",
-            data: result,
-        };
-    } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "unknown error";
-        return {
-            status: 502,
-            message: "AI service failed to evaluate your answer. Please try again.",
             data: { error: message },
         };
     }

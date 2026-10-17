@@ -2,8 +2,8 @@
 
 > Honest repo state lives in [STATE.md](./STATE.md). Read it first.
 > Production is live (API `GET /health` returns `checks.database: up`, frontend on
-> Cloudflare Pages); verify live URLs before trusting them, and note
-> `GROQ_API_KEY` is not yet in prod.
+> Cloudflare Pages); verify live URLs before trusting them, and note that
+> `GEMINI_API_KEY` and the `LLM_*` text-inference endpoint are not yet in prod.
 
 ## Project structure
 
@@ -12,7 +12,7 @@ Monorepo with three services:
 ```text
 ├── backend/     # Bun + Express 5 + TypeScript + Drizzle/Postgres, port 9000
 ├── frontend/    # React 19 + TypeScript + Vite 7 + TailwindCSS 4 (static SPA)
-└── ai-service/  # FastAPI (Python 3.11+) — AI evaluation + STT + TTS, port 8000
+└── ai-service/  # FastAPI (Python 3.11+) — text inference (scenario/DSA), port 8000
 ```
 
 Database is **shared PostgreSQL** (not in this repo). One DB per env:
@@ -61,8 +61,9 @@ pip install -r requirements.txt
 cd app && uvicorn main:app --reload --port 8000
 ```
 
-`GROQ_API_KEY` required for STT/TTS/LLM. `API_KEY` must match backend
-`AI_SERVICE_API_KEY` (empty disables auth — dev only).
+`LLM_BASE_URL` + `LLM_MODEL` (any OpenAI-compatible endpoint) for text
+inference. `API_KEY` must match backend `AI_SERVICE_API_KEY` (empty disables
+auth — dev only).
 
 ## Key architecture notes
 
@@ -81,10 +82,11 @@ cd app && uvicorn main:app --reload --port 8000
 - **Routes**: `/api/auth` (public, strict rate limit), `/api/users`
   (auth all), `/api/rehearsal` (candidate practice), `/api/org`
   (auth all, recruiter for create/invite), `/api/interviews`
-  (recruiter CRUD + candidate invite flow), `/api/tts` (auth, Groq proxy).
+  (recruiter CRUD + candidate invite flow), `/api/live` (spoken session
+  tickets; the socket is `wss://<host>/ws/live`).
 - **AI integration**: backend `src/utils/aiClient.ts` calls FastAPI at
-  `AI_SERVICE_URL` — JSON for generation/evaluation, multipart for audio.
-  Shared-secret `Authorization: Bearer`.
+  `AI_SERVICE_URL` — JSON only (the multipart audio path went with the batch
+  interview flow). Shared-secret `Authorization: Bearer`.
 - **Invite tokens**: raw token returned once at creation, sha256-hashed at
   rest; lookup hashes again (`findInviteByRawToken`). Never store raw tokens.
 - **Frontend entrypoint**: `src/main.tsx` → `App.tsx`, React Router with flat
@@ -94,16 +96,17 @@ cd app && uvicorn main:app --reload --port 8000
 - **Frontend API**: shared client in `src/lib/api.ts` (`api.get/post/put/
   patch/delete`), `VITE_API_URL` base with localhost fallback, Bearer
   injection, 401 clears session and redirects to `/signup`.
-- **TTS**: `useSpeak` hook — browser SpeechSynthesis by default, Groq Orpheus
-  via `/api/tts` when `useGroqTts` is passed, automatic fallback.
-- **Spoken interview provider**: decided as `gemini-3.8-live` over the Google AI
-  Studio Live API (WebSocket) — one socket transcribes the candidate and speaks
-  the reply. Decided but not yet implemented; read [VOICE.md](./VOICE.md) before
-  writing any voice code — it carries the working setup frame, the measured
-  latency, the 4–6 concurrent-session ceiling, the traps, and the phased
-  migration plan (backend proxy → frontend PCM primitives → wire both flows →
-  cutover). Two constraints drive that plan: the browser cannot hold the API key
-  (ephemeral tokens do not authenticate the socket on their own), and the
+- **TTS**: `useSpeak` hook — browser `SpeechSynthesis` only (the Groq
+  `/api/tts` branch was deleted with the batch audio path). The coach's voice
+  in a spoken session comes from the Live socket, never from here.
+- **Spoken interview provider**: `gemini-3.8-live` over the Google AI Studio
+  Live API (WebSocket) — one socket transcribes the candidate and speaks the
+  reply, relayed by the backend (`/ws/live`). Implemented on this branch and
+  the only conversation transport (the batch audio path was retired
+  2026-10-18). Read [VOICE.md](./VOICE.md) before touching voice code — it
+  carries the working setup frame, the measured latency, the 4-concurrent-session
+  ceiling, and the traps. Two constraints shaped it: the browser cannot hold the
+  API key (ephemeral tokens do not authenticate the socket on their own), and the
   backend is the only service this repo deploys — ai-service is not.
 
 ## Conventions
@@ -113,8 +116,9 @@ cd app && uvicorn main:app --reload --port 8000
   HTTP.
 - **Frontend**: TypeScript strict, `@/` → `src/` alias, ESLint with
   react-hooks + react-refresh plugins.
-- **AI service**: FastAPI, pydantic models, LiteLLM for LLM calls, Groq
-  OpenAI-compatible client for Whisper STT and Orpheus TTS.
+- **AI service**: FastAPI, pydantic models, OpenAI SDK pointed at an
+  env-configured OpenAI-compatible endpoint (`LLM_BASE_URL`/`LLM_MODEL`) for
+  text inference. It holds no audio code and no Groq client.
 - **No shared config** — each service owns its dependencies and env files.
 
 ## Gotchas

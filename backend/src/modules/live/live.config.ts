@@ -48,6 +48,13 @@ export const LIVE_SCORING_MODEL = process.env.GEMINI_SCORING_MODEL || "gemini-3.
 /** A rubric that has not answered by then is not worth waiting for. */
 export const LIVE_SCORING_TIMEOUT_MS = Number.parseInt(process.env.GEMINI_SCORING_TIMEOUT_MS || "20000", 10);
 
+/**
+ * The rubric's REST origin. A constant, deliberately not env-derived: the API
+ * key travels in this request's header, so nothing outside this file may
+ * choose where it goes. HTTPS is fixed here, not checked at call time.
+ */
+export const LIVE_SCORING_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta";
+
 const DEFAULT_UPSTREAM =
     "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
 

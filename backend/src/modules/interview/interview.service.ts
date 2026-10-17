@@ -19,7 +19,6 @@ import {
 import { withId } from "../../db/shape";
 import type { DsaResultItem, ResultItem } from "../../db/schema";
 import {
-    evaluateAudio,
     evaluateDsa as aiEvaluateDsa,
     generateDsaProblems,
 } from "../../utils/aiClient";
@@ -306,60 +305,6 @@ export const acceptInvite = async (rawToken: string): Promise<InterviewResult> =
     } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "unknown error";
         return { status: 500, message: `Failed to accept invite: ${message}` };
-    }
-};
-
-export const evaluateCandidateAnswer = async (
-    userId: string,
-    params: { audioBuffer: Buffer; mimetype: string; filename: string; question: string; inviteId: string },
-): Promise<InterviewResult> => {
-    try {
-        if (!isValidId(params.inviteId)) return { status: 400, message: "Invalid inviteId" };
-        const invite = await findInviteById(params.inviteId);
-        if (!invite) return { status: 404, message: "Invite not found" };
-        if (invite.candidateId !== userId) return { status: 403, message: "Not authorized for this invite" };
-        if (invite.status !== "started") return { status: 400, message: "Invite is not active" };
-
-        const interview = await findInterviewRowById(invite.interviewId);
-        if (!interview) return { status: 404, message: "Interview not found" };
-
-        const questionIndex = interview.questions.indexOf(params.question);
-        if (questionIndex === -1) {
-            return { status: 400, message: "Question not found in this interview" };
-        }
-
-        const ai = await evaluateAudio({
-            audioBuffer: params.audioBuffer,
-            mimetype: params.mimetype,
-            filename: params.filename,
-            question: params.question,
-        });
-
-        const results: ResultItem[] = [...invite.results];
-        const existingIndex = results.findIndex(
-            (r) => interview.questions.indexOf(r.question) === questionIndex,
-        );
-        const record: ResultItem = {
-            question: interview.questions[questionIndex]!,
-            transcription: ai.transcription,
-            score: ai.score,
-            feedback: ai.feedback,
-        };
-        if (existingIndex >= 0) {
-            results[existingIndex] = record;
-        } else {
-            results.push(record);
-        }
-        await updateInvite(invite.id, { results });
-
-        return {
-            status: 200,
-            message: "Answer evaluated",
-            data: { score: ai.score, feedback: ai.feedback, transcription: ai.transcription || "No transcription available" },
-        };
-    } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "unknown error";
-        return { status: 502, message: "AI service failed to evaluate your answer. Please try again.", data: { error: message } };
     }
 };
 

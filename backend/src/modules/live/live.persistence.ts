@@ -44,9 +44,10 @@ export const UNSCORED_FEEDBACK = "This answer could not be scored. Your transcri
 /**
  * Writes one answered turn onto the invite.
  *
- * Mirrors `evaluateCandidateAnswer` exactly, so the row shape and the
- * replace-on-re-answer behaviour stay identical to the batch path: it does not
- * touch round or status transitions, which belong to `submitInterviewAnswer`.
+ * The row shape matches what the retired batch evaluator wrote — same fields,
+ * same replace-on-re-answer behaviour — so the recruiter views need no change.
+ * It does not touch round or status transitions, which belong to
+ * `submitInterviewAnswer`.
  */
 async function recordInterviewTurn(claims: LiveTicketClaims, turn: LiveTurn): Promise<void> {
     if (!claims.inviteId) return;

@@ -1,6 +1,6 @@
 import z from "zod";
 import { env } from "../../config/env";
-import { LIVE_SCORING_MODEL, LIVE_SCORING_TIMEOUT_MS } from "./live.config";
+import { LIVE_SCORING_ENDPOINT, LIVE_SCORING_MODEL, LIVE_SCORING_TIMEOUT_MS } from "./live.config";
 
 /**
  * The two shapes the scoring call has to survive: the provider's envelope, and
@@ -31,11 +31,11 @@ export interface AnswerScore {
 /**
  * Scores one spoken answer from its transcript.
  *
- * This replaces the batch path's `ai-service /api/evaluate-audio`, which
- * re-transcribed the audio with Groq before scoring it. Live already delivered
- * the transcript, so the only missing half was the rubric — and one provider for
- * both halves is why this is Gemini rather than a second vendor. `VOICE.md`
- * records that choice.
+ * This replaced the batch path's `ai-service /api/evaluate-audio` (deleted
+ * 2026-10-18), which re-transcribed the audio before scoring it. Live already
+ * delivered the transcript, so the only missing half was the rubric — and one
+ * provider for both halves is why this is Gemini rather than a second vendor.
+ * `VOICE.md` records that choice.
  *
  * Returns null when the call fails or answers with something that is not a
  * usable score, so a bad rubric response cannot invent a grade.
@@ -56,7 +56,7 @@ export async function scoreAnswer(question: string, transcription: string): Prom
 
     try {
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${LIVE_SCORING_MODEL}:generateContent`,
+            `${LIVE_SCORING_ENDPOINT}/models/${LIVE_SCORING_MODEL}:generateContent`,
             {
                 method: "POST",
                 headers: {
@@ -68,6 +68,10 @@ export async function scoreAnswer(question: string, transcription: string): Prom
                     // one is documented as the reason the socket is proxied.)
                     "x-goog-api-key": apiKey,
                 },
+                // A redirect would replay the key (and the candidate's
+                // transcript) against whatever host answered with a 3xx —
+                // refuse instead: the origin above is the only one allowed.
+                redirect: "error",
                 body: JSON.stringify({
                     contents: [{ parts: [{ text: prompt }] }],
                     generationConfig: { responseMimeType: "application/json", temperature: 0.2 },

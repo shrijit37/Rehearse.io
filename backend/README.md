@@ -68,8 +68,8 @@ POST /api/auth/signup   POST /api/auth/login  public, strict rate limit
   DELETE /delete-account                      anonymize + purge dependents
 
 /api/rehearsal        (candidate practice)
-  GET /start?targetRole=     POST /evaluate (audio)   behavioral
-  POST /session              GET /history             save + history
+  GET /start?targetRole=     POST /session            start + save
+  GET /history                                        history
   POST /dsa/start            POST /dsa/evaluate       DSA practice
 
 /api/org              (all require auth)
@@ -81,11 +81,11 @@ POST /api/auth/signup   POST /api/auth/login  public, strict rate limit
   recruiter: POST /  GET /  GET /:id  PUT /:id  POST /:id/invite
              POST /generate-dsa
   candidate: GET /candidate/my-interviews
-             POST /candidate/evaluate (audio)  POST /candidate/submit
-             POST /candidate/evaluate-dsa
+             POST /candidate/submit              POST /candidate/evaluate-dsa
   public:    GET /candidate/accept/:token     invite link
 
-POST /api/tts          auth, multipart (text, voice) → Groq audio proxy
+POST /api/live/session  auth, mints a one-time ticket for the spoken session
+/ws/live                the Gemini Live socket itself (upgrade, same port)
 ```
 
 Auth chain: `authenticateToken` → `authorize(...roles)` →

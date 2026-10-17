@@ -24,7 +24,7 @@ and speaks the coach's reply — which is why it replaces two REST services.
 | REST `gemini-3.8-flash-tts` | **7.6–9.0 s** latency, **10 requests/day** | unusable interactively |
 | REST `gemini-3.8-flash-lite-tts` | 3 req/min, **10 requests/day** | unusable interactively |
 | REST `gemini-3.5-transcribe` | **3 req/min, 25 req/day**, 10 k input tokens/min | cannot serve one interview; batch only |
-| Groq Orpheus (today's `ai-service`) | synchronous request/response TTS, no streaming conversation loop | keep for non-interactive synthesis, not for the interview turn |
+| Groq Orpheus (then the `ai-service` TTS) | synchronous request/response TTS, no streaming conversation loop | rejected for the interview turn; the whole Groq audio path was retired in Phase 4 (2026-10-18) |
 
 The free-tier REST quotas were exhausted in a single sitting of testing. At
 25 transcriptions/day, a per-turn REST design breaks after one or two answers.
@@ -141,9 +141,11 @@ concurrency, not request rate.
 
 ## Scope
 
-- **This decides the interactive spoken path only.** It does not change the
-  existing `ai-service` Groq endpoints (`/api/stt`, `/api/tts`) or the LLM
-  evaluation flow; browser `SpeechSynthesis` remains a fallback.
+- **This decides the interactive spoken path only.** While the batch path
+  lived it kept using the `ai-service` Groq endpoints (`/api/stt`, `/api/tts`)
+  and the LLM evaluation flow untouched; both were deleted in Phase 4
+  (2026-10-18). Browser `SpeechSynthesis` remains a fallback for reading a
+  question aloud.
 - **Batch transcription stays REST** (`gemini-3.5-transcribe`) for anything needing
   word timings or diarization — that is 25 requests/day on the free tier, so it needs
   paid billing to exist for real users.
@@ -313,14 +315,17 @@ and role; an interview answer lands on the invite in the same shape the batch pa
 writes; re-answering replaces rather than appends; round and status stay
 untouched; and a completed invite is refused.
 
-Phase 4 (deleting the batch endpoints, `aiClient.evaluateAudio` and the multer
-audio config) is deliberately **not** done: it is the irreversible step and waits
-until a live session has been verified in production.
+Phase 4 (deleting the batch endpoints, `aiClient.evaluateAudio`, the multer
+audio plumbing and every Groq client) was taken on **2026-10-18** at the
+owner's direction: nothing in production served or could serve the batch path
+(no `ai-service` container and no Groq secret existed), so the "fallback" was
+already theoretical — see the Phase 4 section below.
 
 #### Phase 0 — unblock the dependency (S)
 
-- Create the Gemini API key and put it in Infisical `prod` as `REHEARSE_GEMINI_API_KEY`.
-- Add it to the Dokploy compose app env as `${{vault.infisical-prod.REHEARSE_GEMINI_API_KEY}}`
+- Create the Gemini API key and put it in Doppler `platform`/`prd` as
+  `REHEARSE_GEMINI_API_KEY`.
+- Add it to the Dokploy compose app env as `${{vault.doppler-prod.REHEARSE_GEMINI_API_KEY}}`
   (the env block is asserted on every deploy — `DEPLOY.md:54-65`) and to
   `backend/src/config/env.ts` + `.env.example`.
 - **Must verify:** a WebSocket survives Traefik for ≥5 minutes through
@@ -394,19 +399,31 @@ reply with the transcript appearing live.
 **Done when:** a full practice session and a full invited interview run end to end with
 turns persisted, and the resulting rows match today's `ResultItem` shape.
 
-#### Phase 4 — cutover and cleanup (S)
+#### Phase 4 — cutover and cleanup (done 2026-10-18)
 
-- Delete the batch path in one commit: `POST /api/rehearsal/evaluate` and
-  `POST /api/interviews/candidate/evaluate` (+ their controllers, multer config,
-  `aiClient.evaluateAudio`, `MAX_AUDIO_SIZE` if nothing else uses it) and the
-  `ResultDetailPanel` assumption that a transcript only exists post-session.
-- Leave ai-service's now-unused `evaluate_audio` / `text_to_speech` endpoints alone
-  (owned outside this repo) and note them as retired in `VOICE.md`.
-- Update `DEPLOY.md` (new secret, WS route), `AGENTS.md` (this is no longer "not yet
-  implemented"), and `STATE.md` once it is deployed and verified.
+- The batch path is gone: `POST /api/rehearsal/evaluate`,
+  `POST /api/interviews/candidate/evaluate`, their controllers and services,
+  the multer config and `config/constants.ts`, `aiClient.evaluateAudio`, and
+  the backend `/api/tts` proxy. `ResultDetailPanel` already renders transcripts
+  conditionally, so it needed no change.
+- The ai-service audio endpoints were retired **in-repo**: `/api/evaluate-audio`,
+  `/api/tts`, the Groq Whisper provider, the Orpheus client, `GROQ_API_KEY`,
+  the audio upload limits, `python-multipart`, and the local `whisper_cache`
+  volume. The earlier plan said to leave them alone because "that service
+  deploys outside this repo" — that is no longer true of anything: no workflow
+  builds it and no container runs it (verified against Dokploy). ai-service is
+  now text inference only.
+- Docs updated: `DEPLOY.md`, `AGENTS.md`, `STATE.md`, `PRODUCT.md`, `README.md`,
+  the privacy policy's processor list (Groq → Google Gemini + the configured
+  inference provider), and this file.
+- **Not verified:** a live session in production. The step was taken early, on
+  the owner's explicit call, because the fallback it protected existed only on
+  paper: prod had no `ai-service` and no Groq key, so both paths were equally
+  unavailable there.
 
-**Done when:** no code path uploads answer audio, and the repo has one conversation
-transport.
+**Done when:** no code path uploads answer audio, and the repo has one
+conversation transport. — **Met:** no multer, no multipart endpoint, and no
+audio handling outside the `/ws/live` relay remain in the repo.
 
 ### Risks
 
@@ -421,10 +438,11 @@ transport.
 
 ### Rollback
 
-Phases 1–3 are additive: the batch endpoints still exist and still work, so
-`deploy-backend`/`deploy-frontend` of the previous SHA restores today's behaviour.
-Phase 4 is the only irreversible step — take it after a session has been verified in
-production, and revert by re-pushing the commit that removes the batch path.
+Phase 4 is taken, so rollback is "revert the commit that removed the batch
+path": the previous SHA's backend and frontend images plus that revert restore
+the old code. Note what that would restore to production: a path nothing has
+served since 2026-10-18 (no `ai-service` container, no Groq secret), i.e. untested
+code behind a 503.
 
 Deploy mechanics: `backend/**` pushes run the full backend pipeline (test → build →
 Trivy → Dokploy → SHA gate); `frontend/**` pushes deploy Pages; **`.md`-only pushes
@@ -433,10 +451,10 @@ Deploy truth is `DEPLOY.md`; `.github/workflows/deploy-*.yml` outranks any doc.
 
 ### Open decisions (owner)
 
-1. **Who scores the answer.** Keeping Groq means provisioning the key that was
-   deliberately never created; moving the rubric to a Gemini text call means one
-   provider and one secret. Recommendation: **one provider — Gemini** — since the
-   conversation half already depends on it, and the Groq key is absent by choice.
+1. **Who scores the answer.** **Resolved: Gemini** — the rubric runs on the
+   Gemini REST text endpoint (`gemini-3.8-flash`), one provider and one secret
+   for the whole conversation half. The batch Groq rubric was deleted in
+   Phase 4.
 2. **Does the coach speak per turn, or only score?** A spoken reply per answer (what
    `gemini-3.8-live` is good at) is a different product from "answer, get a score".
    Recommendation: spoken coach replies, score in the UI, since that is what the
@@ -444,8 +462,10 @@ Deploy truth is `DEPLOY.md`; `.github/workflows/deploy-*.yml` outranks any doc.
 3. **Practice-mode reload resume.** Questions are generated per request and lost on
    reload today. With a live session in flight, either persist them at start or accept
    that a reload ends the session.
-4. **Retire ai-service STT/TTS entirely?** They become dead once this lands, but that
-   service deploys outside this repo.
+4. **Retire ai-service STT/TTS entirely?** **Resolved 2026-10-18: retired
+   in-repo.** The service is not deployed from anywhere else (verified: no
+   workflow, no container), so the dead endpoints and their Groq clients were
+   deleted rather than left standing.
 
 ### Not in this plan
 

@@ -5,7 +5,6 @@ import userRoutes from "./modules/user/user.routes";
 import rehearsalRoutes from "./modules/rehearsal/rehearsal.routes";
 import organizationRoutes from "./modules/organization/organization.routes";
 import interviewRoutes from "./modules/interview/interview.routes";
-import ttsRoutes from "./modules/tts/tts.routes";
 import liveRoutes from "./modules/live/live.routes";
 import { attachLiveUpgrade } from "./modules/live/live.upgrade";
 import { connectDB } from "./config/db";
@@ -102,7 +101,6 @@ app.use("/api/users", authenticateToken, userRoutes);
 app.use("/api/rehearsal", rehearsalRoutes);
 app.use("/api/org", organizationRoutes);
 app.use("/api/interviews", interviewRoutes);
-app.use("/api/tts", ttsRoutes);
 app.use("/api/live", liveRoutes);
 
 // Uniform fleet health contract (standards/platform.md#health): exactly

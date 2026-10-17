@@ -143,8 +143,11 @@ To rotate a prod secret: update it in Doppler `platform`/`prd`, then dispatch
 `deploy-backend` — the `deploy-prod` job redeploys and Dokploy re-resolves the
 refs. Vault-only changes never touch git, so `workflow_dispatch` exists.
 
-`REHEARSE_GROQ_API_KEY` is deliberately absent (never created; the only key
-available was compromised). Voice and DSA features error until it exists.
+Groq is fully retired (2026-10-18): the batch audio endpoints, the Whisper and
+Orpheus clients, and the `REHEARSE_GROQ_API_KEY` they would have needed are all
+gone — nothing sends data to Groq. Text inference runs on any OpenAI-compatible
+endpoint named by `LLM_BASE_URL`/`LLM_MODEL`/`LLM_API_KEY` (not provisioned
+either), and nothing in this repo deploys ai-service at all.
 
 **Voice (Live API).** The spoken-session transport expects
 `GEMINI_API_KEY` in the app env, added as

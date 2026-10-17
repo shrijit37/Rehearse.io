@@ -279,13 +279,18 @@ invite exactly as `evaluateCandidateAnswer` does, and writes a practice session
 once when the socket closes; a client can no longer post its own results.
 
 **Not verified**: a real microphone (headless has no mic — capture is exercised
-with synthetic audio through the same framing and socket code); the new
-relay→database **write** against a live database (the insert is emitted with the
-correct columns and JSON, but the local run pointed at a dummy URL, so CI and
-production are its first real test); long-lived upgrades through Traefik (nothing
-has ever held a WebSocket through this proxy); and concurrency under real
-multi-user load. Phase 0's secret is **not** provisioned: while `GEMINI_API_KEY`
-is missing, `POST /api/live/session` answers 503 and nothing else changes.
+with synthetic audio through the same framing and socket code); long-lived
+upgrades through Traefik (nothing has ever held a WebSocket through this proxy);
+and concurrency under real multi-user load. Phase 0's secret is **not**
+provisioned: while `GEMINI_API_KEY` is missing, `POST /api/live/session` answers
+503 and nothing else changes.
+
+The relay's database writes **were** verified against a real Postgres (throwaway
+cluster, the repo's own migrations, a deterministic rubric so the only variable
+was the write): a practice session lands on socket close with the right row shape
+and role; an interview answer lands on the invite in the same shape the batch path
+writes; re-answering replaces rather than appends; round and status stay
+untouched; and a completed invite is refused.
 
 Phase 4 (deleting the batch endpoints, `aiClient.evaluateAudio` and the multer
 audio config) is deliberately **not** done: it is the irreversible step and waits

@@ -146,6 +146,19 @@ refs. Vault-only changes never touch git, so `workflow_dispatch` exists.
 `REHEARSE_GROQ_API_KEY` is deliberately absent (never created; the only key
 available was compromised). Voice and DSA features error until it exists.
 
+**Voice (Live API).** The spoken-session transport expects
+`GEMINI_API_KEY` in the app env, added as
+`${{vault.doppler-prod.REHEARSE_GEMINI_API_KEY}}` alongside the refs above
+(see `VOICE.md` for the provider decision). It is **not provisioned yet**: while
+it is unset, `POST /api/live/session` answers `503 Voice sessions are not
+configured on this server` and every other route is unaffected, so the backend
+boots and deploys without it. The socket itself is `wss://<api-host>/ws/live`,
+upgraded from the same HTTP server and port as the REST API — there is no second
+service and no separate Traefik router. **Long-lived upgrades through this
+Traefik have not been proven**: nothing has ever held a WebSocket open through
+this proxy, so the first deployment that enables voice must confirm a socket
+stays up past five minutes before an interview is trusted to it.
+
 Repo secrets the *pipeline* needs — not app secrets: `DOPPLER_TOKEN`,
 `DOKPLOY_API_KEY`, `GHCR_PULL_TOKEN`, `CLOUDFLARE_API_TOKEN`,
 `CLOUDFLARE_ACCOUNT_ID`. (`GHCR_PULL_TOKEN` is a long-lived pull token; the

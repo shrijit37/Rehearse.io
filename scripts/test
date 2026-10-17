@@ -9,6 +9,9 @@ set -euo pipefail
 echo "==> backend typecheck"
 (cd backend && bunx tsc --noEmit)
 
+echo "==> live voice proxy test (faked upstream, no secrets needed)"
+(cd backend && bun tests/live-proxy.ts)
+
 if [ -n "${SMOKE_BASE_URL:-}" ]; then
   echo "==> backend smoke test against $SMOKE_BASE_URL"
   (cd backend && bun tests/smoke.ts)

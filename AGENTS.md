@@ -96,6 +96,15 @@ cd app && uvicorn main:app --reload --port 8000
   injection, 401 clears session and redirects to `/signup`.
 - **TTS**: `useSpeak` hook — browser SpeechSynthesis by default, Groq Orpheus
   via `/api/tts` when `useGroqTts` is passed, automatic fallback.
+- **Spoken interview provider**: decided as `gemini-3.8-live` over the Google AI
+  Studio Live API (WebSocket) — one socket transcribes the candidate and speaks
+  the reply. Decided but not yet implemented; read [VOICE.md](./VOICE.md) before
+  writing any voice code — it carries the working setup frame, the measured
+  latency, the 4–6 concurrent-session ceiling, the traps, and the phased
+  migration plan (backend proxy → frontend PCM primitives → wire both flows →
+  cutover). Two constraints drive that plan: the browser cannot hold the API key
+  (ephemeral tokens do not authenticate the socket on their own), and the
+  backend is the only service this repo deploys — ai-service is not.
 
 ## Conventions
 

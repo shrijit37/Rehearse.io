@@ -126,8 +126,10 @@ export function relayLiveSession({ client, claims, apiKey, deps = liveDeps }: Re
         if (claims.mode === "practice") {
             // Practice has always persisted once, at the end of a session; a
             // socket that closes before any answer leaves no row, as before.
+            // Only the error's *name* is logged: a failed insert reports its SQL
+            // and bound parameters, and those parameters are the transcript.
             void deps.finishPracticeSession(claims, turns).catch((error: unknown) => {
-                console.warn("[live] practice session save failed:", error instanceof Error ? error.message : "unknown");
+                console.warn(`[live] practice session save failed (${error instanceof Error ? error.name : typeof error})`);
             });
         } else {
             // Counters and outcomes only: an invite id maps back to a candidate,
@@ -165,7 +167,9 @@ export function relayLiveSession({ client, claims, apiKey, deps = liveDeps }: Re
                 sendToClient({ proxy: { type: "turn", ...turn } });
             })
             .catch((error: unknown) => {
-                console.warn("[live] turn scoring failed:", error instanceof Error ? error.message : "unknown");
+                // Same reason as the save path: a driver error carries the SQL
+                // and its parameters, and the parameters are the transcript.
+                console.warn(`[live] turn scoring failed (${error instanceof Error ? error.name : typeof error})`);
             });
     };
 

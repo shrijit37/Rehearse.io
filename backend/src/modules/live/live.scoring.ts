@@ -1,5 +1,27 @@
+import z from "zod";
 import { env } from "../../config/env";
 import { LIVE_SCORING_MODEL, LIVE_SCORING_TIMEOUT_MS } from "./live.config";
+
+/**
+ * The two shapes the scoring call has to survive: the provider's envelope, and
+ * the verdict the model was asked for inside it. Both cross the network boundary,
+ * so both are parsed rather than asserted — a shape change should degrade to
+ * "unscored", never to a crash or an invented grade.
+ */
+const scoringEnvelopeSchema = z.object({
+    candidates: z
+        .array(
+            z.object({
+                content: z.object({ parts: z.array(z.object({ text: z.string().optional() })).optional() }).optional(),
+            }),
+        )
+        .optional(),
+});
+
+const scoringVerdictSchema = z.object({
+    score: z.union([z.number(), z.string()]),
+    feedback: z.string(),
+});
 
 export interface AnswerScore {
     score: number;
@@ -34,10 +56,18 @@ export async function scoreAnswer(question: string, transcription: string): Prom
 
     try {
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${LIVE_SCORING_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/${LIVE_SCORING_MODEL}:generateContent`,
             {
                 method: "POST",
-                headers: { "content-type": "application/json" },
+                headers: {
+                    "content-type": "application/json",
+                    // A header, not `?key=`: this REST endpoint accepts the key
+                    // either way, and a header keeps it out of the URL, which is
+                    // the thing that ends up in logs and error text. (The Live
+                    // *socket* has no such option — measured — which is why that
+                    // one is documented as the reason the socket is proxied.)
+                    "x-goog-api-key": apiKey,
+                },
                 body: JSON.stringify({
                     contents: [{ parts: [{ text: prompt }] }],
                     generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
@@ -50,23 +80,30 @@ export async function scoreAnswer(question: string, transcription: string): Prom
             return null;
         }
 
-        const body = (await response.json()) as {
-            candidates?: { content?: { parts?: { text?: string }[] } }[];
-        };
-        const text = body.candidates?.[0]?.content?.parts?.[0]?.text;
+        // Validated, not asserted: this body crosses the network boundary.
+        const envelope = scoringEnvelopeSchema.safeParse(await response.json());
+        if (!envelope.success) return null;
+        const text = envelope.data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!text) return null;
 
-        const parsed = JSON.parse(text) as { score?: unknown; feedback?: unknown };
-        const score = typeof parsed.score === "number" ? Math.round(parsed.score) : Number(parsed.score);
+        const verdict = scoringVerdictSchema.safeParse(JSON.parse(text));
+        if (!verdict.success) {
+            console.warn("[live] scoring answered with an unusable verdict");
+            return null;
+        }
+
+        const score = Math.round(Number(verdict.data.score));
         if (!Number.isFinite(score) || score < 1 || score > 10) {
             console.warn("[live] scoring returned a score outside 1-10");
             return null;
         }
-        if (typeof parsed.feedback !== "string" || parsed.feedback.trim().length === 0) return null;
+        if (verdict.data.feedback.trim().length === 0) return null;
 
-        return { score, feedback: parsed.feedback.trim() };
+        return { score, feedback: verdict.data.feedback.trim() };
     } catch (error: unknown) {
-        console.warn("[live] scoring failed:", error instanceof Error ? error.message : "unknown error");
+        // The error *name* only: a fetch failure's message can carry the request
+        // URL and driver detail, and none of that belongs in a log line.
+        console.warn(`[live] scoring failed (${error instanceof Error ? error.name : typeof error})`);
         return null;
     }
 }

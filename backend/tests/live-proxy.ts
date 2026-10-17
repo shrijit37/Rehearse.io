@@ -212,6 +212,7 @@ const scored: { question: string; transcription: string }[] = [];
 const recorded: LiveTurn[] = [];
 const saved: LiveTurn[][] = [];
 let scoringFails = false;
+let saveFails = false;
 attachLiveUpgrade(server, {
     async score(question, transcription) {
         scored.push({ question, transcription });
@@ -223,6 +224,14 @@ attachLiveUpgrade(server, {
     },
     async finishPracticeSession(_claims, turns) {
         saved.push([...turns]);
+        if (saveFails) {
+            // What a real failed insert looks like: the driver's message carries
+            // the SQL and its bound parameters, and the parameters are the
+            // candidate's transcript.
+            throw new Error(
+                `Failed query: insert into "rehearsal_sessions" ... params: ${JSON.stringify(turns[0]?.transcription)}`,
+            );
+        }
     },
 });
 await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -445,6 +454,22 @@ check(
     abnormal?.code === 1011,
     `code=${abnormal?.code}, reason=${abnormal?.reason}`,
 );
+
+saveFails = true;
+const leaky = await openClient(ticketFor("save fails."));
+await waitUntil(() => leaky.socket.readyState === WsClient.OPEN, 3000);
+leaky.socket.send(JSON.stringify({ realtimeInput: { audio: { data: "AAAA", mimeType: "audio/pcm;rate=16000" } } }));
+await waitUntil(() => leaky.frames.some((f) => f.proxy?.type === "turn"), 5000);
+leaky.socket.close();
+await waitUntil(() => liveSessionCount() === 0, 3000);
+await sleep(400);
+const afterFailure = [...captured.log, ...captured.warn, ...captured.error].join("\n");
+check(
+    "a failed database write does not log its parameters",
+    !afterFailure.includes("Failed query") && !afterFailure.includes("answer 1"),
+    "the driver's message (SQL + bound transcript) reached a log line",
+);
+saveFails = false;
 
 const { startLiveSessionSchema } = await import("../src/modules/live/live.validation");
 check(

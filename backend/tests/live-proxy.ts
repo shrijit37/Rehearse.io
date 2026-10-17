@@ -300,6 +300,11 @@ check(
     JSON.stringify(upstreamConnections[firstConnection + 1]?.setups[0]?.sessionResumption ?? {}),
 );
 check("the browser socket stays open across the resume", capped.socket.readyState === WsClient.OPEN, `state=${capped.socket.readyState}`);
+check(
+    "the resumed session is not greeted twice",
+    upstreamConnections[firstConnection + 1]?.textTurns.length === 0,
+    `kickoffs=${JSON.stringify(upstreamConnections[firstConnection + 1]?.textTurns ?? [])}`,
+);
 
 console.log("\n== teardown ==");
 

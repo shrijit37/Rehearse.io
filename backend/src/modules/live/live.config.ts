@@ -27,6 +27,13 @@ export const LIVE_MAX_KICKOFF_CHARS = 400;
 /** Upstream reconnects allowed after a goAway before the session is given up on. */
 export const LIVE_MAX_RESUMPTIONS = 3;
 
+/**
+ * How long the upstream gets to accept a session before the slot is handed back.
+ * Without it a silent upstream would hold one of only four slots forever.
+ * Measured acceptance is 0.4–1.1 s, so this is a long stop, not a tight one.
+ */
+export const LIVE_SETUP_TIMEOUT_MS = Number.parseInt(process.env.GEMINI_LIVE_SETUP_TIMEOUT_MS || "15000", 10);
+
 const DEFAULT_UPSTREAM =
     "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
 
@@ -35,8 +42,12 @@ const DEFAULT_UPSTREAM =
  * Live endpoint accepts: measured, `Authorization: Bearer` and Google's own
  * ephemeral `auth_tokens` both fail to authenticate this socket on their own.
  * That is exactly why the socket terminates here and not in the browser.
+ *
+ * `GEMINI_LIVE_WS_URL` points the relay at a local fake upstream and is honoured
+ * outside production only: an env var able to aim this socket anywhere would
+ * hand the key, in a query string, to whatever host it named.
  */
 export function liveUpstreamUrl(apiKey: string): string {
-    const base = process.env.GEMINI_LIVE_WS_URL || DEFAULT_UPSTREAM;
-    return `${base}?key=${encodeURIComponent(apiKey)}`;
+    const override = process.env.APP_ENV === "production" ? undefined : process.env.GEMINI_LIVE_WS_URL;
+    return `${override || DEFAULT_UPSTREAM}?key=${encodeURIComponent(apiKey)}`;
 }

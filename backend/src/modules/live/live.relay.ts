@@ -1,6 +1,12 @@
 import { WebSocket as WsServer, type WebSocket as ClientSocket } from "ws";
 import { logAudit } from "../../middleware/auditLog";
-import { LIVE_MAX_RESUMPTIONS, LIVE_MODEL, LIVE_VOICE, liveUpstreamUrl } from "./live.config";
+import {
+    LIVE_MAX_RESUMPTIONS,
+    LIVE_MODEL,
+    LIVE_SETUP_TIMEOUT_MS,
+    LIVE_VOICE,
+    liveUpstreamUrl,
+} from "./live.config";
 import { releaseLiveSlot, reserveLiveSlot, type LiveTicketClaims } from "./live.service";
 
 interface RelayOptions {
@@ -13,6 +19,19 @@ interface UpstreamFrame {
     setupComplete?: unknown;
     goAway?: { timeLeft?: string };
     sessionResumptionUpdate?: { newHandle?: string; resumable?: boolean };
+}
+
+/**
+ * `ws` refuses to send a close code the WebSocket spec reserves — 1004, 1005 and
+ * 1006 raise "First argument must be a valid error code number" — and an upstream
+ * that drops abnormally closes with 1006, which is exactly the case resumption
+ * exists for. Map anything the client cannot legally receive onto 1011 so the
+ * browser socket always actually closes.
+ */
+function closableCode(code: number): number {
+    const reserved = code === 1004 || code === 1005 || code === 1006;
+    if (!reserved && ((code >= 1000 && code <= 1015) || (code >= 3000 && code <= 4999))) return code;
+    return 1011;
 }
 
 function buildSetup(claims: LiveTicketClaims, handle: string | null) {
@@ -52,6 +71,7 @@ export function relayLiveSession({ client, claims, apiKey }: RelayOptions): void
     const upstreamUrl = liveUpstreamUrl(apiKey);
     let upstream: WebSocket | null = null;
     let finished = false;
+    let accepted = false;
     let resumptions = 0;
     let resumptionHandle: string | null = null;
     let goAwaySeen = false;
@@ -72,24 +92,18 @@ export function relayLiveSession({ client, claims, apiKey }: RelayOptions): void
             /* upstream already gone */
         }
         try {
-            if (client.readyState === WsServer.OPEN) client.close(code, reason.slice(0, 120));
+            if (client.readyState === WsServer.OPEN) client.close(closableCode(code), reason.slice(0, 120));
         } catch {
             /* client already gone */
         }
         if (claims.mode === "interview") {
+            // Counters and outcomes only: an invite id maps back to a candidate,
+            // and no transcript or audio ever reaches this table.
             void logAudit({
                 userId: claims._id,
                 action: "interview_start",
                 details: `live session ended (${reason})`,
-                metadata: {
-                    mode: claims.mode,
-                    inviteId: claims.inviteId ?? null,
-                    resumptions,
-                    framesUp,
-                    framesDown,
-                    bytesUp,
-                    bytesDown,
-                },
+                metadata: { mode: claims.mode, resumptions, framesUp, framesDown, bytesUp, bytesDown },
             });
         }
     };
@@ -102,6 +116,7 @@ export function relayLiveSession({ client, claims, apiKey }: RelayOptions): void
             return;
         }
         if (frame.setupComplete) {
+            accepted = true;
             // The model answers a turn, it does not open one: without this the
             // candidate hears silence after connecting. Only the first
             // connection gets it — a resumed socket also reports setupComplete,
@@ -124,6 +139,14 @@ export function relayLiveSession({ client, claims, apiKey }: RelayOptions): void
         const socket = new WebSocket(upstreamUrl);
         socket.binaryType = "arraybuffer";
         upstream = socket;
+        accepted = false;
+
+        // Armed per connection and self-cancelling: it only fires if this socket
+        // is still the live one and the upstream never accepted the session, so
+        // no handle has to be stored or cleared.
+        setTimeout(() => {
+            if (!accepted && upstream === socket) finish(1011, "The voice service did not accept the session.");
+        }, LIVE_SETUP_TIMEOUT_MS);
 
         socket.onopen = () => socket.send(JSON.stringify(buildSetup(claims, resumptionHandle)));
 

@@ -20,6 +20,8 @@ process.env.JWT_SECRET ||= "test-secret";
 process.env.GEMINI_API_KEY ||= "test-key";
 // Two slots makes the ceiling observable without opening five sockets.
 process.env.GEMINI_LIVE_MAX_SESSIONS = "2";
+// Kept short so the watchdog case finishes inside the test budget.
+process.env.GEMINI_LIVE_SETUP_TIMEOUT_MS = "700";
 
 import { createServer } from "node:http";
 import type { Server } from "node:http";
@@ -111,6 +113,18 @@ const upstreamPort = listeningPort(upstream);
 // listening is enough to keep the whole run offline.
 process.env.GEMINI_LIVE_WS_URL = `ws://127.0.0.1:${upstreamPort}`;
 
+// Everything the relay logs, so the redaction guarantee can be asserted instead
+// of assumed: the API key rides in the upstream URL, and transcripts are the
+// candidate's own words.
+const captured = { log: [] as string[], warn: [] as string[], error: [] as string[] };
+for (const level of ["log", "warn", "error"] as const) {
+    const original = console[level].bind(console);
+    console[level] = (...args: unknown[]) => {
+        captured[level].push(args.map((a) => (typeof a === "string" ? a : String(a))).join(" "));
+        original(...args);
+    };
+}
+
 const PCM_24K_SILENCE = Buffer.alloc(320).toString("base64");
 
 upstream.on("connection", (socket) => {
@@ -122,11 +136,23 @@ upstream.on("connection", (socket) => {
 
         if (frame.setup) {
             record.setups.push(frame.setup);
+            const instruction = frame.setup.systemInstruction?.parts?.[0]?.text ?? "";
+
+            // An upstream that accepts the connection and then says nothing is
+            // indistinguishable from a hung one, and it holds a slot.
+            if (instruction.includes("SILENT")) return;
+
+            // An abrupt drop: terminate() sends no close frame, so the relay
+            // sees the reserved code 1006 that it must not forward verbatim.
+            if (instruction.includes("DROP")) {
+                socket.terminate();
+                return;
+            }
+
             socket.send(Buffer.from(JSON.stringify({ setupComplete: {} })));
 
             // A session whose instruction asks for it behaves like one hitting
             // the upstream's documented cap: handle, then goAway, then close.
-            const instruction = frame.setup.systemInstruction?.parts?.[0]?.text ?? "";
             if (instruction.includes("GOAWAY")) {
                 setTimeout(() => {
                     socket.send(JSON.stringify({ sessionResumptionUpdate: { newHandle: "handle-1", resumable: true } }));
@@ -310,6 +336,45 @@ console.log("\n== teardown ==");
 
 capped.socket.close();
 check("the last client releases its slot", await waitUntil(() => liveSessionCount() === 0, 5000), `count=${liveSessionCount()}`);
+
+console.log("\n== redaction and failure paths ==");
+
+const allLogs = [...captured.log, ...captured.warn, ...captured.error].join("\n");
+check("the API key never reaches a log line", !allLogs.includes("test-key"), "a log line carried the key");
+check(
+    "spoken content never reaches a log line",
+    !allLogs.includes("Hello.") && !allLogs.includes(PCM_24K_SILENCE.slice(0, 24)),
+    "a log line carried transcript or audio content",
+);
+
+const silent = await openClient(ticketFor("SILENT upstream."));
+const timedOut = await waitFor(() => silent.close ?? undefined, 5000);
+check("an upstream that never accepts is given up on", timedOut?.code === 1011, `code=${timedOut?.code}, error=${silent.error ?? "none"}`);
+check("the abandon explains itself", (timedOut?.reason ?? "").includes("did not accept"), String(timedOut?.reason));
+check("an abandoned session frees its slot", await waitUntil(() => liveSessionCount() === 0, 3000), `count=${liveSessionCount()}`);
+
+const dropped = await openClient(ticketFor("DROP mid-session."));
+const abnormal = await waitFor(() => dropped.close ?? undefined, 5000);
+check("an abrupt upstream drop still closes the client", abnormal !== null, `error=${dropped.error ?? "none"}`);
+check(
+    "the reserved code 1006 is never forwarded to the client",
+    abnormal?.code === 1011,
+    `code=${abnormal?.code}, reason=${abnormal?.reason}`,
+);
+
+const { startLiveSessionSchema } = await import("../src/modules/live/live.validation");
+check(
+    "an out-of-range question index is rejected before any work",
+    !startLiveSessionSchema.safeParse({ mode: "practice", questions: ["a", "b"], questionIndex: 5 }).success,
+);
+check(
+    "an in-range question index is accepted",
+    startLiveSessionSchema.safeParse({ mode: "practice", questions: ["a", "b"], questionIndex: 1 }).success,
+);
+check(
+    "an interview is not required to carry questions",
+    startLiveSessionSchema.safeParse({ mode: "interview", inviteId: "invite-1", questionIndex: 4 }).success,
+);
 
 server.close();
 upstream.close();

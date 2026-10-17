@@ -1,7 +1,10 @@
 # Rehearse.io AI Service
 
-FastAPI service that powers Rehearse.io's AI features. All LLM/STT/TTS calls
-use **Groq**. No database; stateless per request.
+FastAPI service that powers Rehearse.io's text inference (scenario generation,
+DSA problem generation, DSA code review) on any OpenAI-compatible endpoint
+configured by env (`LLM_BASE_URL`/`LLM_MODEL`). The spoken interview does not
+run here — it is a Gemini Live session relayed by the backend (`/ws/live`).
+No database; stateless per request.
 
 > Honest repo state: [STATE.md](../STATE.md).
 
@@ -9,14 +12,10 @@ use **Groq**. No database; stateless per request.
 
 - `POST /api/generate-scenario` — tailored interview questions from resume
   text (`resume_text`, `target_role`)
-- `POST /api/evaluate-audio` — Whisper STT + LLM scoring (`audio` file +
-  `question` form fields, 25 MB max)
-- `POST /api/tts` — Groq Orpheus speech synthesis (`text`, `voice` form
-  fields)
 - `POST /api/generate-dsa-problems` — role/difficulty-tailored DSA problems
 - `POST /api/evaluate-dsa` — static LLM code review (correctness / quality /
   complexity; **no code execution sandbox**)
-- `GET /health` — `{ status, stt_available, tts_available, ... }`
+- `GET /health` — `{ status, llm_available, stt_available, tts_available, ... }`
 - `GET /` — welcome message
 
 All `/api/*` routes require `Authorization: Bearer <API_KEY>` unless no key
@@ -27,7 +26,7 @@ without `API_KEY`.
 ## Setup
 
 ```bash
-cp .env.example .env   # then fill in GROQ_API_KEY and API_KEY
+cp .env.example .env   # then fill in LLM_* (text inference) and API_KEY
 pip install -r requirements.txt
 cd app && uvicorn main:app --reload --port 8000
 ```
@@ -39,17 +38,15 @@ Requires Python 3.11+.
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `APP_ENV` | No | `development` | Runtime environment, same var the backend reads. `production` makes the service refuse to start when `API_KEY` is unset, instead of serving `/api/*` unauthenticated; `NODE_ENV=production` counts as a production signal too. |
-| `GROQ_API_KEY` | Yes | — | Powers STT, TTS, and LLM (via litellm). Without it, STT/TTS report unavailable and audio evaluation returns 503. |
+| `LLM_BASE_URL` | Yes | — | Base URL of an OpenAI-compatible endpoint (a hosted API such as `https://api.groq.com/openai/v1`, or a self-hosted gateway). While it or `LLM_MODEL` is unset, text inference reports unavailable on `/health` and the inference endpoints answer 503. |
+| `LLM_MODEL` | Yes | — | Model name the endpoint serves. |
+| `LLM_API_KEY` | No | empty | Bearer token for the endpoint. Leave empty only when the endpoint requires none. |
 | `API_KEY` | Prod | empty | Shared secret for backend→AI auth. Must match the backend's `AI_SERVICE_API_KEY`. Also accepts `AI_SERVICE_API_KEY`. Empty disables auth (dev only). |
-| `LITELLM_MODEL` | No | `groq/llama-3.3-70b-versatile` | LLM used for generation/evaluation. |
-| `STT_MODEL` | No | `whisper-large-v3` | Groq Whisper model. |
-| `TTS_MODEL` | No | `canopylabs/orpheus-v1-english` | Groq Orpheus TTS model. Requires accepting model terms in the Groq console; until then TTS fails and the frontend falls back to browser speech. |
-| `TTS_VOICE` | No | `tara` | Default TTS voice (`tara`, `leah`, `jess`, `leo`, `dan`, `mia`, `zac`, `zoe`). |
 | `ALLOWED_ORIGINS` | No | `http://localhost:5173,http://localhost:3000` | CORS allowlist (comma-separated). |
-| `MAX_AUDIO_SIZE_MB` | No | `25` | Max audio upload size. Keep in sync with backend. |
 
 ## Notes
 
 - CORS allows only `GET`/`POST`.
-- Audio types restricted to webm/wav/mp3/m4a/ogg/flac/mp4.
 - Rate limiting via `utils/rate_limiter` middleware.
+- All requests are JSON; the spoken-audio endpoints were retired with the batch
+  interview path (see `VOICE.md`).

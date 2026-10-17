@@ -13,15 +13,13 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     environment:
-      - GROQ_API_KEY
-      - LITELLM_MODEL
-      - STT_MODEL
-      - STT_BACKEND=${STT_BACKEND:-local}
+      # Text inference — any OpenAI-compatible endpoint (see ai-service/.env.example).
+      - LLM_BASE_URL
+      - LLM_MODEL
+      - LLM_API_KEY
       - APP_ENV=${APP_ENV:-development}
       - API_KEY=${AI_SERVICE_API_KEY:-}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173}
-    volumes:
-      - whisper_cache:/root/.cache/huggingface/
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
       interval: 30s
@@ -65,6 +63,3 @@ services:
 networks:
   rehearse-network:
     driver: bridge
-
-volumes:
-  whisper_cache:

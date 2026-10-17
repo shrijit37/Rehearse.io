@@ -75,7 +75,7 @@ Deploy procedure (branches, workflows, secrets, gate failures) is in
 - **backend** → GHCR (`:<sha>`) → Dokploy **compose app** (`rehearse-api`), port 9000, health `/health`
 - **frontend** → static `dist/` → Cloudflare Pages
 - **ai-service** → Dokploy, port 8000
-- **secrets** → Infisical `platform` project, `REHEARSE_*` prefix, never in git
+- **secrets** → Doppler `platform` / `prd` (one flat namespace, `REHEARSE_` prefix), never in git
 - **database** → shared Postgres, `rehearse_io_prod` / `rehearse_io_dev`
 
 See `platform.yaml`, `frontend/platform.yaml`, and

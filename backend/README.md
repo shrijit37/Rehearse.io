@@ -43,7 +43,8 @@ verified), `ALLOWED_ORIGINS` (comma-separated CORS allow-list), `DATABASE_URL_EX
 `openssl rand -hex 32`), `CLIENT_URL` / `ALLOWED_ORIGINS` (CORS),
 `AUTH_RATE_MAX` / `RATE_MAX` + window tunables, `MAX_AUDIO_SIZE_MB`.
 
-Secrets live in Infisical, never in the repo. See `../.env.example`.
+Secrets live in Doppler (`platform`/`prd`), never in the repo. See
+`../.env.example`.
 
 ## Health
 

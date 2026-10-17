@@ -20,8 +20,9 @@ token change, since neither pipeline reads the other one's config.
 `./scripts/migrate`, live server, `./scripts/test`) → `lint` (`npm ci` in
 `frontend/`, `./scripts/lint`) → `build` (multi-arch image pushed to GHCR
 tagged with the full commit SHA, `APP_VERSION` build-arg baked in) → `scan`
-(Trivy, fails on HIGH/CRITICAL) → `deploy-prod` (main only: Infisical OIDC →
-`./scripts/migrate` against the external DB → `compose.update` with
+(Trivy, fails on HIGH/CRITICAL) → `deploy-prod` (main only: Doppler fetch with
+`secrets.DOPPLER_TOKEN` → `./scripts/migrate` against the external DB →
+`compose.update` with
 `deploy/compose.prod.yml` and the SHA tag → `compose.deploy` → `scripts/health`).
 `deploy-prod` is gated on `github.ref == 'refs/heads/main'`.
 
@@ -36,9 +37,11 @@ Dokploy or Pages, and `scripts/` exposes no deploy script.
 One deviation from the fleet standard, forced by this repo:
 
 - It never calls `compose.saveEnvironment` during deploys; the compose app's env
-  comes from the Dokploy `infisical-prod` secrets provider, which resolves
-  `${{vault.<provider>.<SECRET>}}` refs at deploy time. The stored env holds only
-  refs — no secret values — plus the non-secret settings listed below.
+  comes from the Dokploy `doppler-prod` secrets provider (providerType
+  `doppler`, service token — the provider that replaced `infisical-prod`), which
+  resolves `${{vault.doppler-prod.<SECRET>}}` refs at deploy time. The stored
+  env holds only refs — no secret values — plus the non-secret settings listed
+  below.
 
 Why a compose app and not a Dokploy *application*: on Dokploy v0.30.8 an
 application cannot be made image-sourced. `application.redeploy` runs a nixpacks
@@ -57,11 +60,11 @@ APP_URL=https://api.rehearseio.triptribe.info           AI_SERVICE_URL=http://ai
 CLIENT_URL=https://rehearseio.triptribe.info            DATABASE_POOL_MAX=10
 ALLOWED_ORIGINS=https://rehearse.io.shrijit.tech,https://rehearseio.triptribe.info
 RATE_MAX=1000  RATE_WINDOW_MS=900000   AUTH_RATE_MAX=10   AUTH_RATE_WINDOW_MS=900000
-DATABASE_URL=${{vault.infisical-prod.REHEARSE_DATABASE_URL}}
-DATABASE_URL_EXTERNAL=${{vault.infisical-prod.REHEARSE_DATABASE_URL_EXTERNAL}}
-JWT_SECRET=${{vault.infisical-prod.REHEARSE_JWT_SECRET}}
-ENCRYPTION_KEY=${{vault.infisical-prod.REHEARSE_ENCRYPTION_KEY}}
-AI_SERVICE_API_KEY=${{vault.infisical-prod.REHEARSE_AI_SERVICE_API_KEY}}
+DATABASE_URL=${{vault.doppler-prod.REHEARSE_DATABASE_URL}}
+DATABASE_URL_EXTERNAL=${{vault.doppler-prod.REHEARSE_DATABASE_URL_EXTERNAL}}
+JWT_SECRET=${{vault.doppler-prod.REHEARSE_JWT_SECRET}}
+ENCRYPTION_KEY=${{vault.doppler-prod.REHEARSE_ENCRYPTION_KEY}}
+AI_SERVICE_API_KEY=${{vault.doppler-prod.REHEARSE_AI_SERVICE_API_KEY}}
 ```
 
 `ALLOWED_ORIGINS` is the whole CORS allow-list (`backend/src/server.ts:27`): the
@@ -113,9 +116,11 @@ contract above, and a request returns `404`.
 
 ## Secrets
 
-App secrets live in **Infisical** (project slug from
-`vars.INFISICAL_PROJECT_SLUG`), environment `prod`, prefixed `REHEARSE_`
-(`vars.INFISICAL_SECRET_PREFIX`). STATE.md lists five prod secrets:
+App secrets live in **Doppler** — project `platform`, config `prd` (one flat
+namespace; this repo's keys carry the `REHEARSE_` prefix). No project slug or
+prefix repo variable exists any more: the read-only, config-scoped service
+token in `secrets.DOPPLER_TOKEN` is already scoped to that project/config.
+STATE.md lists five prod secrets:
 `REHEARSE_DATABASE_URL`, `REHEARSE_DATABASE_URL_EXTERNAL`,
 `REHEARSE_JWT_SECRET`, `REHEARSE_ENCRYPTION_KEY`,
 `REHEARSE_AI_SERVICE_API_KEY`. Names for anything else are not recorded in
@@ -123,30 +128,33 @@ this repo.
 
 They reach the container two ways:
 
-- **The app** — Dokploy's `infisical-prod` secrets provider expands
-  `${{vault.<provider>.<SECRET>}}` env refs at deploy time. No value is stored
+- **The app** — Dokploy's `doppler-prod` secrets provider expands
+  `${{vault.doppler-prod.<SECRET>}}` env refs at deploy time. No value is stored
   in this repo.
-- **CI** — `infisical/secrets-action@v1.0.18` with `method: oidc`. The deploy
-  job fetches only `REHEARSE_DATABASE_URL_EXTERNAL` (to run migrations). The
-  test job fetches `REHEARSE_SMOKE_EMAIL` and `REHEARSE_SMOKE_PASSWORD`
-  individually because the action has no `secret-prefix`/`export-secrets`
-  input, and maps them onto `SMOKE_EMAIL` / `SMOKE_PASSWORD` in the Test step.
+- **CI** — `dopplerhq/cli-action@v4`, authenticated with
+  `secrets.DOPPLER_TOKEN`. The deploy job fetches only
+  `REHEARSE_DATABASE_URL_EXTERNAL` (to run migrations) via
+  `doppler secrets get … --plain --silent`, masking the value with
+  `::add-mask::` before it reaches `GITHUB_ENV`. The test job fetches
+  `REHEARSE_SMOKE_EMAIL` and `REHEARSE_SMOKE_PASSWORD` the same way and maps
+  them onto `SMOKE_EMAIL` / `SMOKE_PASSWORD` in the Test step.
 
-To rotate a prod secret: update it in Infisical, then dispatch
+To rotate a prod secret: update it in Doppler `platform`/`prd`, then dispatch
 `deploy-backend` — the `deploy-prod` job redeploys and Dokploy re-resolves the
 refs. Vault-only changes never touch git, so `workflow_dispatch` exists.
 
 `REHEARSE_GROQ_API_KEY` is deliberately absent (never created; the only key
 available was compromised). Voice and DSA features error until it exists.
 
-Repo secrets the *pipeline* needs — not app secrets:
+Repo secrets the *pipeline* needs — not app secrets: `DOPPLER_TOKEN`,
 `DOKPLOY_API_KEY`, `GHCR_PULL_TOKEN`, `CLOUDFLARE_API_TOKEN`,
 `CLOUDFLARE_ACCOUNT_ID`. (`GHCR_PULL_TOKEN` is a long-lived pull token; the
 workflow comment notes ephemeral `GITHUB_TOKEN` expires and poisons later
-pulls — outage 2026-10-09.) CI authenticates to Infisical by OIDC only; no
-client credentials are stored for the deploy job. The OIDC subject is the
-glob `repo:shrijit37/Rehearse.io:*` because the job's `environment: prod`
-appends `:environment:prod` to the claim.
+pulls — outage 2026-10-09.) CI authenticates to Doppler with that single
+read-only, config-scoped service token: no client credentials and no OIDC
+identity are involved any more. *Historical, pre-cutover:* the OIDC identity
+needed the subject glob `repo:shrijit37/Rehearse.io:*` because the job's
+`environment: prod` appends `:environment:prod` to the claim.
 
 ## Repo configuration
 
@@ -154,10 +162,7 @@ Backend workflow (`deploy-backend.yml`):
 
 | Name | Kind | Value / meaning |
 |---|---|---|
-| `vars.INFISICAL_IDENTITY_ID` | variable | OIDC identity id (per-repo; OIDC subjects are repo-scoped) |
-| `vars.INFISICAL_DOMAIN` | variable | Infisical domain (org) |
-| `vars.INFISICAL_PROJECT_SLUG` | variable | Infisical project slug (org) |
-| `vars.INFISICAL_SECRET_PREFIX` | variable | `REHEARSE` |
+| `secrets.DOPPLER_TOKEN` | secret | read-only, config-scoped Doppler service token (project `platform`, config `prd`) |
 | `vars.DOKPLOY_URL` | variable | Dokploy base URL (org) |
 | `vars.DOKPLOY_COMPOSE_ID` | variable | backend compose app id (`6P05YIEVfP-ETKhCNUY8Q`) |
 | `vars.APP_URL` | variable | `https://api.rehearseio.triptribe.info` |
@@ -174,8 +179,9 @@ Frontend workflow (`deploy-frontend.yml`):
 | `secrets.CLOUDFLARE_ACCOUNT_ID` | secret | CF account id |
 
 Also present in the repo but not part of either deploy: the legacy `DEPLOY_*`
-and `INFISICAL_CLIENT_*` secrets used by `server-debug.yml`, and the
-`GITHUB_TOKEN` with `packages: write` for the GHCR push.
+secrets used by `server-debug.yml`, and the `GITHUB_TOKEN` with
+`packages: write` for the GHCR push. CI reads no `INFISICAL_*` value at all —
+`secrets.DOPPLER_TOKEN` is its only vault credential.
 
 ## When the gate fails
 
@@ -183,7 +189,7 @@ and `INFISICAL_CLIENT_*` secrets used by `server-debug.yml`, and the
 |---|---|
 | `no matching manifest for linux/arm64/v8`, Traefik serves 502 | The deploy server is linux/arm64. An amd64-only image is rejected by Swarm. Build both platforms; `docker/setup-qemu-action@v3` with `platforms: arm64` is required. |
 | Docker refuses the tag: `repository name must be lowercase` | `github.repository` preserves `Rehearse.io` capitalization. The workflow hardcodes `IMAGE: ghcr.io/shrijit37/rehearse.io`. |
-| Infisical OIDC 403 in CI | The OIDC subject bound to the identity does not include the job's claim. With `environment: prod` the claim is `repo:…:environment:prod`, so bind the subject as the glob `repo:shrijit37/Rehearse.io:*`. |
+| OIDC 403 in CI *(historical — resolved by the Doppler cutover: CI authenticates with `secrets.DOPPLER_TOKEN`, so there is no OIDC subject left to bind)* | The OIDC subject bound to the Infisical identity did not include the job's claim. With `environment: prod` the claim was `repo:…:environment:prod`, so the subject had to be bound as the glob `repo:shrijit37/Rehearse.io:*`. |
 | Deploy "succeeds" but nothing changes | Wrong Dokploy router notation. This version serves `/api/<router>.<procedure>`; the slashed form 404s and silently never redeploys. |
 | Later image pulls fail after an otherwise good deploy | `GITHUB_TOKEN` stored as registry credentials — it expires and poisons later pulls (outage 2026-10-09). Use the long-lived `GHCR_PULL_TOKEN`, or clear credentials entirely and pull anonymously from the public package. |
 | `NOT HEALTHY: …/health (gave up after 600s)` | Probed seconds after a redeploy, while Swarm is still pulling the image. The gate retries; if it is genuinely down, check the app's container state rather than re-running the gate. |
@@ -210,7 +216,7 @@ Never in git:
 
 - `.env`, `backend/.env`, `frontend/.env`, `ai-service/.env` — git-ignored.
   `.env.example` documents names and safe defaults only.
-- Any `REHEARSE_*` secret value. They live in Infisical prod.
+- Any `REHEARSE_*` secret value. They live in Doppler `platform`/`prd`.
 - `DOKPLOY_API_KEY`, `GHCR_PULL_TOKEN`, `CLOUDFLARE_API_TOKEN`,
   `CLOUDFLARE_ACCOUNT_ID` — GitHub secrets.
 - Build artifacts: `frontend/dist`, `nohup.out`, `__pycache__/`,

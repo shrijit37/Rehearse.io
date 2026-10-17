@@ -122,5 +122,5 @@ cd app && uvicorn main:app --reload --port 8000
   is still the candidate's only credential before they sign in.
 - `docker-compose.yml` is **local dev only** (ai-service + backend). It does
   not define Postgres.
-- Secrets live in Infisical (`REHEARSE_*`). `.env.example` documents names
-  only.
+- Secrets live in Doppler (`platform`/`prd`, `REHEARSE_*`). `.env.example`
+  documents names only.

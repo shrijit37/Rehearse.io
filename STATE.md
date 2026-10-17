@@ -36,12 +36,12 @@ frontend and the legacy compose stack, and recover server SSH access.
 | Domain (API) | `api.rehearse.io.shrijit.tech` + `api.rehearseio.triptribe.info` → compose service `app`, port 9000, Let's Encrypt | router live + `/health` 200 on both |
 | Container image | `ghcr.io/shrijit37/rehearse.io:<full-sha>` — **lowercase**, **multi-arch** `linux/amd64` + `linux/arm64` | GHCR manifest list + running container |
 | Registry credentials | **none stored** — GHCR package is public, the compose app pulls anonymously | anonymous `tags/list` 200; no `username`/`password` in the compose app |
-| Secrets provider | `infisical-prod` on Dokploy → resolves `${{vault.<provider>.<SECRET>}}` env refs (compose env holds only refs, no values) | `/health` shows `checks.database: up` |
-| OIDC identity | `github-actions` (`0a112be8-f02a-4fbc-b6f6-8792b40165e6`), subject `repo:shrijit37/Rehearse.io:*` (glob — job has `environment: prod`, which appends `:environment:prod` to the claim) | Infisical OIDC auth in CI run, plus `gh api repos/.../actions/oidc/customization/sub` |
+| Secrets provider | `doppler-prod` on Dokploy (providerType `doppler`, service token — replaced `infisical-prod` on the same environment) → resolves `${{vault.<provider>.<SECRET>}}` env refs (compose env holds only refs, no values) | `/health` shows `checks.database: up` |
+| CI vault auth | read-only, config-scoped Doppler service token in repo secret `DOPPLER_TOKEN` (project `platform`, config `prd`) | green `deploy-prod` run + fetch step log |
 | Prod database | `rehearse_io_prod`, owner/user `rehearse_io` on the shared Postgres, `REVOKE ALL … FROM PUBLIC` | `psql` connect + `datacl` |
-| Infisical (prod) | `REHEARSE_DATABASE_URL`, `REHEARSE_DATABASE_URL_EXTERNAL`, `REHEARSE_JWT_SECRET`, `REHEARSE_ENCRYPTION_KEY`, `REHEARSE_AI_SERVICE_API_KEY` | `infisical export` + `/ready` 200 |
-| GitHub repo vars | `APP_URL`, `DOKPLOY_APPLICATION_ID`, `DOKPLOY_URL`, `INFISICAL_DOMAIN`, `INFISICAL_IDENTITY_ID`, `INFISICAL_PROJECT_SLUG`, `INFISICAL_SECRET_PREFIX=REHEARSE`, `PAGES_PROJECT`, `VITE_API_URL` | `gh variable list` |
-| GitHub repo secrets | `DOKPLOY_API_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` (+ legacy `DEPLOY_*`, `INFISICAL_CLIENT_*`) | `gh secret list` |
+| Doppler (prod) | `REHEARSE_DATABASE_URL`, `REHEARSE_DATABASE_URL_EXTERNAL`, `REHEARSE_JWT_SECRET`, `REHEARSE_ENCRYPTION_KEY`, `REHEARSE_AI_SERVICE_API_KEY` | `doppler secrets download` + `/ready` 200 |
+| GitHub repo vars | `APP_URL`, `DOKPLOY_APPLICATION_ID`, `DOKPLOY_URL`, `PAGES_PROJECT`, `VITE_API_URL` | `gh variable list` |
+| GitHub repo secrets | `DOPPLER_TOKEN`, `DOKPLOY_API_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` (+ legacy `DEPLOY_*`) | `gh secret list` |
 | Cloudflare token | `github-actions-rehearse-io-pages` (`e9a37a4d…`), **Pages Write only**, expires 2027-10-09, stored piped (never printed) | `cf tokens` + a real Pages API call with it |
 | Pages project | `rehearse-io` → `rehearse-io.pages.dev` | deploy run `37856389973` |
 | DNS (Cloudflare zone `shrijit.tech`) | wildcard `*.shrijit.tech` → A `130.210.29.215` DNS-only; `CNAME rehearse.io.shrijit.tech → rehearse-io.pages.dev` DNS-only | `cf dns records list` + `dig` |
@@ -68,7 +68,9 @@ needs server SSH or the Dokploy UI — see blockers).
   2. Lint job needed `npm ci`; `pull_request` trigger added; `packages: read`
      granted; migration failure made non-fatal (warn → redeploy anyway).
   3. GHCR rejects uppercase: image hardcoded to `ghcr.io/shrijit37/rehearse.io`.
-  4. Infisical OIDC 403: the job's `environment: prod` claim made the sub
+  4. Infisical OIDC 403 *(historical — the OIDC identity and the
+     secrets-action are gone; CI now authenticates with `DOPPLER_TOKEN`)*:
+     the job's `environment: prod` claim made the sub
      `repo:…:environment:prod`, not the bound `ref:` → subject widened to the
      glob `repo:shrijit37/Rehearse.io:*`.
   5. Persistent 502, two stacked causes: stale `GITHUB_TOKEN` stored as
@@ -92,12 +94,15 @@ needs server SSH or the Dokploy UI — see blockers).
 
 ## Secrets truth
 
-- Prod values live in **Infisical prod** under prefix `REHEARSE_` (5 secrets
-  — see the infrastructure table). Dokploy resolves them at deploy time via
-  the `infisical-prod` secrets provider; proven by `/ready` returning
-  `database: up`.
-- CI authenticates to Infisical by OIDC (no stored client credentials in the
-  deploy job): `INFISICAL_IDENTITY_ID` = `0a112be8-…` per-repo variable.
+- Prod values live in **Doppler**, project `platform`, config `prd`, under
+  prefix `REHEARSE_` (5 secrets — see the infrastructure table). Dokploy
+  resolves them at deploy time via the `doppler-prod` secrets provider; proven
+  by `/ready` returning `database: up`.
+- CI authenticates to Doppler with a read-only, config-scoped service token —
+  repo secret `DOPPLER_TOKEN`, scoped to `platform`/`prd`, so no client
+  credentials and no per-repo identity variable exist. *(Historical: CI used an
+  Infisical OIDC identity, `INFISICAL_IDENTITY_ID` = `0a112be8-…`, until the
+  Doppler cutover.)*
 - `CLOUDFLARE_API_TOKEN` (GitHub secret) is scoped Pages-Write-only for the
   `shrijit.tech` account; value was piped directly into `gh secret set` and
   never printed. Verify with
@@ -105,7 +110,7 @@ needs server SSH or the Dokploy UI — see blockers).
   token — `/user/tokens/verify` does not apply).
 - `REHEARSE_GROQ_API_KEY` deliberately **not created**: the only key
   available was pasted into chat (compromised-once). Rotate in the Groq
-  console, then store the replacement in Infisical prod.
+  console, then store the replacement in Doppler `platform`/`prd`.
 - `.env` files are git-ignored; templates only in the repo. No live secrets
   in git.
 
@@ -211,7 +216,7 @@ Done and **verified running** (2026-10-09):
 | `backend/Dockerfile` | Rewritten: multi-stage, non-root, typechecks in build. Built in CI as a **multi-arch** (amd64+arm64) image — the arm64 manifest is what the ARM server actually runs. |
 | `backend/.dockerignore` | Added |
 | `.env.example` | Rewritten to the canonical platform shape |
-| `deploy-backend.yml` | Runs green on `main`: GHCR SHA → Trivy → Infisical OIDC → migrations → Dokploy **compose** app (`compose.update` + `compose.deploy`) → 600s version-pinned health gate |
+| `deploy-backend.yml` | Runs green on `main`: GHCR SHA → Trivy → Doppler fetch (`DOPPLER_TOKEN`) → migrations → Dokploy **compose** app (`compose.update` + `compose.deploy`) → 600s version-pinned health gate |
 | `deploy/compose.prod.yml` | The compose file CI sends to Dokploy (`__IMAGE__` → the SHA tag); Dokploy's stored copy is owned by the pipeline |
 | `deploy-frontend.yml` | Runs green: Pages `dist/` deploy with localhost guard |
 | `ci.yml` | Runs on PRs: migrations against a real Postgres |
@@ -233,7 +238,8 @@ remains:
    Dokploy UI credentials. `.github/workflows/server-debug.yml` is ready to
    re-dispatch once a working key is in `DEPLOY_SSH_KEY`.
 2. **Rotate `GROQ_API_KEY`** in the Groq console, then create
-   `REHEARSE_GROQ_API_KEY` in Infisical prod and add it to the Dokploy env
+   `REHEARSE_GROQ_API_KEY` in Doppler `platform`/`prd` and add
+   `${{vault.doppler-prod.REHEARSE_GROQ_API_KEY}}` to the compose app env
    (voice/DSA features return errors until this exists).
 3. **Tear down the legacy stack**: compose `rehease.io` (`nzPkuLqdeC91WWtPNyuH8`,
    name typo is real) with its exited `rehearse-backend` container — the last
@@ -270,7 +276,7 @@ No code changes are blocked. Items 1–4 are owner-side access/cleanup.
 4. Prod data: **start empty, ignore old volume** (never inspected).
 5. `GROQ_API_KEY`: owner supplied a key, but it is **compromised-once** (it is
    in this chat transcript). Rotate it; store the replacement only in
-   Infisical. **Still open — owner action.**
+   Doppler `platform`/`prd`. **Still open — owner action.**
 6. PM2/Netlify remnants: remove after cutover. PM2 config and dead deploy
    stub already **deleted**; Netlify site retirement **still open**.
 7. IDs: Mongo ObjectIds → **UUIDs**. The frontend consumes only the `_id`

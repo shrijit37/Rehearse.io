@@ -5,6 +5,7 @@ import { WebSocketServer } from "ws";
 import { env } from "../../config/env";
 import { LIVE_WS_PATH } from "./live.config";
 import { relayLiveSession } from "./live.relay";
+import { liveDeps, type LiveDeps } from "./live.persistence";
 import { verifyLiveTicket } from "./live.service";
 
 /**
@@ -33,7 +34,7 @@ function refuse(socket: Duplex, status: number, message: string): void {
  * upgrades, so every other upgrade request is destroyed rather than left
  * hanging.
  */
-export function attachLiveUpgrade(server: Server): void {
+export function attachLiveUpgrade(server: Server, deps: LiveDeps = liveDeps): void {
     const wss = new WebSocketServer({
         noServer: true,
         // The browser fails the connection unless the server echoes one of the
@@ -56,7 +57,7 @@ export function attachLiveUpgrade(server: Server): void {
         }
 
         wss.handleUpgrade(req, socket, head, (client) => {
-            relayLiveSession({ client, claims, apiKey });
+            relayLiveSession({ client, claims, apiKey, deps });
         });
     });
 }

@@ -34,6 +34,16 @@ export const LIVE_MAX_RESUMPTIONS = 3;
  */
 export const LIVE_SETUP_TIMEOUT_MS = Number.parseInt(process.env.GEMINI_LIVE_SETUP_TIMEOUT_MS || "15000", 10);
 
+/**
+ * The rubric model. `gemini-3.8-flash` is reachable on the REST text endpoint
+ * even though the same id does not exist on the Live socket; measured 6.8 s for
+ * one scored answer, which is why scoring runs after the turn rather than in it.
+ */
+export const LIVE_SCORING_MODEL = process.env.GEMINI_SCORING_MODEL || "gemini-3.8-flash";
+
+/** A rubric that has not answered by then is not worth waiting for. */
+export const LIVE_SCORING_TIMEOUT_MS = Number.parseInt(process.env.GEMINI_SCORING_TIMEOUT_MS || "20000", 10);
+
 const DEFAULT_UPSTREAM =
     "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
 

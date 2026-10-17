@@ -27,6 +27,7 @@ import { createServer } from "node:http";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { WebSocketServer, WebSocket as WsClient } from "ws";
+import type { LiveTurn } from "../src/modules/live/live.persistence";
 
 const { attachLiveUpgrade } = await import("../src/modules/live/live.upgrade");
 const { mintLiveTicket, liveSessionCount } = await import("../src/modules/live/live.service");
@@ -185,7 +186,16 @@ upstream.on("connection", (socket) => {
             return;
         }
 
-        if (frame.realtimeInput?.audio) record.audioFrames.push(frame.realtimeInput.audio);
+        if (frame.realtimeInput?.audio) {
+            record.audioFrames.push(frame.realtimeInput.audio);
+            // "AAAA" stands in for a spoken answer: the real upstream emits a
+            // final input transcript and then closes the turn.
+            if (frame.realtimeInput.audio.data === "AAAA") {
+                const answer = `answer ${record.audioFrames.length}`;
+                socket.send(JSON.stringify({ serverContent: { inputTranscription: { text: answer } } }));
+                setTimeout(() => socket.send(Buffer.from(JSON.stringify({ serverContent: { turnComplete: true } }))), 20);
+            }
+        }
     });
 });
 
@@ -196,12 +206,31 @@ console.log(`fake upstream on ws://127.0.0.1:${upstreamPort}`);
 // ---------------------------------------------------------------------------
 
 const server: Server = createServer();
-attachLiveUpgrade(server);
+// Fakes for the relay's only outside dependencies: the scoring call and the two
+// persistence paths. The relay's own behaviour is what is under test here.
+const scored: { question: string; transcription: string }[] = [];
+const recorded: LiveTurn[] = [];
+const saved: LiveTurn[][] = [];
+let scoringFails = false;
+attachLiveUpgrade(server, {
+    async score(question, transcription) {
+        scored.push({ question, transcription });
+        if (scoringFails) return null;
+        return { score: 7, feedback: "Clear structure, add a metric." };
+    },
+    async recordTurn(_claims, turn) {
+        recorded.push(turn);
+    },
+    async finishPracticeSession(_claims, turns) {
+        saved.push([...turns]);
+    },
+});
 await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
 const wsUrl = `ws://127.0.0.1:${listeningPort(server)}${LIVE_WS_PATH}`;
 
 interface ClientFrame {
     setupComplete?: unknown;
+    proxy?: { type?: string; question?: string; transcription?: string; score?: number | null; feedback?: string };
     serverContent?: {
         turnComplete?: unknown;
         outputTranscription?: { text?: string };
@@ -239,7 +268,15 @@ function openClient(ticket: string): Promise<TestClient> {
 
 const PRACTICE_USER = "00000000-0000-0000-0000-000000000001";
 const ticketFor = (instruction: string): string =>
-    mintLiveTicket({ _id: PRACTICE_USER, mode: "practice", instruction, kickoff: "Greet and ask." });
+    mintLiveTicket({
+        _id: PRACTICE_USER,
+        mode: "practice",
+        question: "Tell me about a time you had to make a decision with incomplete data.",
+        questionIndex: 0,
+        targetRole: "Software Engineer",
+        instruction,
+        kickoff: "Greet and ask.",
+    });
 
 console.log("\n== auth ==");
 
@@ -291,6 +328,43 @@ check("browser audio reaches the upstream verbatim", audioUp?.data === "AAAA", J
 check("the declared input rate is preserved", audioUp?.mimeType === "audio/pcm;rate=16000", String(audioUp?.mimeType));
 check("one live session is counted", liveSessionCount() === 1, `count=${liveSessionCount()}`);
 
+console.log("\n== scored turns ==");
+
+const proxyFrame = await waitFor(
+    () => good.frames.find((f) => f.proxy?.type === "turn"),
+    5000,
+);
+check("a completed answer is scored", proxyFrame?.proxy?.score === 7, JSON.stringify(proxyFrame?.proxy ?? {}));
+check(
+    "the score is sent to the page over the socket",
+    typeof proxyFrame?.proxy?.feedback === "string" && proxyFrame.proxy.feedback.includes("structure"),
+    String(proxyFrame?.proxy?.feedback),
+);
+check(
+    "the scored question is the one that was asked",
+    proxyFrame?.proxy?.question?.includes("incomplete data") === true,
+    String(proxyFrame?.proxy?.question),
+);
+check("scoring received the transcript, not the audio", scored[0]?.transcription === "answer 1", JSON.stringify(scored[0] ?? {}));
+check("practice does not write per turn", recorded.length === 0, `recorded=${recorded.length}`);
+
+good.socket.send(JSON.stringify({ realtimeInput: { audio: { data: "AAAA", mimeType: "audio/pcm;rate=16000" } } }));
+const secondTurn = await waitFor(() => (good.frames.filter((f) => f.proxy?.type === "turn").length >= 2 ? true : undefined), 5000);
+check("a second answer is scored too", secondTurn === true, `proxy frames=${good.frames.filter((f) => f.proxy?.type === "turn").length}`);
+
+scoringFails = true;
+good.socket.send(JSON.stringify({ realtimeInput: { audio: { data: "AAAA", mimeType: "audio/pcm;rate=16000" } } }));
+const unscored = await waitFor(() => {
+    const frames = good.frames.filter((f) => f.proxy?.type === "turn");
+    return frames.length >= 3 ? frames[2] : undefined;
+}, 5000);
+check(
+    "a failed rubric stores the answer as unscored rather than inventing a grade",
+    unscored?.proxy?.score === null && (unscored?.proxy?.feedback ?? "").includes("could not be scored"),
+    JSON.stringify(unscored?.proxy ?? {}),
+);
+scoringFails = false;
+
 console.log("\n== concurrency ceiling ==");
 
 const second = await openClient(ticketFor("second"));
@@ -313,19 +387,20 @@ check("slots drain when a client closes", await waitUntil(() => liveSessionCount
 
 const capped = await openClient(ticketFor("GOAWAY please."));
 // The capped client opens one upstream connection, then the goAway forces a
-// second one — which is the connection that must carry the handle.
+// second one — which is the connection that must carry the handle. Wait for that
+// connection's setup frame, not merely for the connection to exist.
 const firstConnection = upstreamConnections.length;
-const resumed = await waitFor(
-    () => (upstreamConnections.length > firstConnection + 1 ? upstreamConnections.length : undefined),
-    5000,
-);
-check("relay reconnects after goAway", resumed !== undefined, `connections=${upstreamConnections.length}`);
+const resumedSetup = await waitFor(() => upstreamConnections[firstConnection + 1]?.setups[0], 5000);
+check("relay reconnects after goAway", resumedSetup !== undefined, `connections=${upstreamConnections.length}`);
 check(
     "the reconnect carries the resumption handle",
-    upstreamConnections[firstConnection + 1]?.setups[0]?.sessionResumption?.handle === "handle-1",
-    JSON.stringify(upstreamConnections[firstConnection + 1]?.setups[0]?.sessionResumption ?? {}),
+    resumedSetup?.sessionResumption?.handle === "handle-1",
+    JSON.stringify(resumedSetup?.sessionResumption ?? {}),
 );
 check("the browser socket stays open across the resume", capped.socket.readyState === WsClient.OPEN, `state=${capped.socket.readyState}`);
+// The resumed socket answers setupComplete too; give a broken guard time to
+// reveal itself before asserting the kickoff was not repeated.
+await sleep(250);
 check(
     "the resumed session is not greeted twice",
     upstreamConnections[firstConnection + 1]?.textTurns.length === 0,
@@ -336,6 +411,15 @@ console.log("\n== teardown ==");
 
 capped.socket.close();
 check("the last client releases its slot", await waitUntil(() => liveSessionCount() === 0, 5000), `count=${liveSessionCount()}`);
+const practiceSaved = await waitFor(() => (saved.length > 0 ? saved[0] : undefined), 5000);
+check("practice persists once, when the session ends", practiceSaved?.length === 3, `turns=${practiceSaved?.length ?? 0}`);
+check(
+    "the saved rows carry question, transcript, score and feedback",
+    practiceSaved?.[0]?.question?.includes("incomplete data") === true &&
+        practiceSaved?.[0]?.transcription === "answer 1" &&
+        practiceSaved?.[0]?.score === 7,
+    JSON.stringify(practiceSaved?.[0] ?? {}),
+);
 
 console.log("\n== redaction and failure paths ==");
 

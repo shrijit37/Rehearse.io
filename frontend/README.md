@@ -38,10 +38,16 @@ clears the session and redirects to `/signup`.
 
 - `src/main.tsx` → `App.tsx`, React Router v7, flat route list.
 - Shared client `src/lib/api.ts`: `api.get/post/put/patch/delete`, `raw`
-  mode for blob downloads (TTS audio).
-- `useSpeak` hook: browser SpeechSynthesis by default, Groq Orpheus via
-  `POST /api/tts` when `useGroqTts` is set, automatic fallback on failure.
-- Audio capture via `MediaRecorder` (`audio/webm` blobs).
+  mode for blob downloads (voice samples).
+- `useSpeak` hook: browser SpeechSynthesis, for non-conversational speech
+  (reading a question aloud).
+- Spoken answers run over a live socket, not a batch upload: `POST /api/live/session`
+  mints a 60 s ticket, `src/lib/live/` (mic capture, 24 kHz playback, the socket)
+  opens `wss://<api-host>/ws/live`, and the backend owns the setup frame, the
+  coaching turn, the score and the persistence. `src/hooks/useLiveAnswer.ts`
+  drives one session per question for `RehearsalRoom`/`CandidateInterview`.
+  `MediaRecorder` survives only for profile voice samples
+  (`Onboarding`, `AccountSettings`).
 - Styling: TailwindCSS 4 via the Vite plugin (no config file), shadcn/ui
   "new-york" components in `src/components/ui/`, `@/` → `src/` alias.
 

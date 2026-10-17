@@ -256,17 +256,40 @@ ephemeral tokens cannot authenticate the socket on their own (measured — see
 Each phase ends with something runnable and verifiable. Do not start the next until
 the "done when" is actually observed.
 
-**Progress (2026-10-17, `feat/live-voice-proxy`):** Phase 1 and Phase 2 are
-implemented, and Phase 1 is verified against the real upstream.
-`backend/src/modules/live/` (proxy, ticket, relay with resumption, slot cap) has a
-27-assertion behavioural test that runs offline in CI (`bun tests/live-proxy.ts`,
-wired into `./scripts/test`), and the same relay was driven end to end against
-Google's Live API with a real key: `setupComplete` in 1.1 s, the candidate's audio
-transcribed exactly, the coach speaking its reply, 10.2 s of audio relayed back,
-slot released on close. The browser half — subprotocol handshake, `setupComplete`,
-24 kHz frames — was confirmed in real Chromium. Phases 3 and 4 are untouched.
-Phase 0's secret is **not** provisioned yet: `GEMINI_API_KEY` is unset in prod, so
-`POST /api/live/session` answers 503 there until it is.
+**Progress (2026-10-17, `feat/live-voice-proxy`):** Phases 1–3 are implemented.
+`backend/src/modules/live/` (proxy, ticket, relay with resumption, slot cap,
+turn scoring, persistence) carries a 47-assertion behavioural test that runs
+offline in CI (`bun tests/live-proxy.ts`, wired into `./scripts/test`).
+
+Verified against the **real** services, not just the fakes: the relay drove
+Google's Live API with a real key (`setupComplete` ~1.1 s, the candidate's audio
+transcribed, the coach speaking its reply, ~9 s of audio relayed back), and the
+**real rubric ran inside the relay** — a question-only recording scored 1 with
+correct reasoning ("you repeated the interview prompt instead of sharing an
+actual personal experience"), which is what that input deserves. The browser
+handshake (subprotocol, `setupComplete`, 24 kHz frames) was confirmed in real
+Chromium. The product flows are wired: both the practice room and the invited
+interview run the conversation over the socket, render the candidate's live
+transcript, and take their score from the relay.
+
+Answer scoring is one provider: `gemini-3.8-flash` on the REST text endpoint
+(6.8 s measured, so it runs *after* the turn, never inside it) replaces the batch
+path's Groq re-transcription. The relay writes each interview answer onto the
+invite exactly as `evaluateCandidateAnswer` does, and writes a practice session
+once when the socket closes; a client can no longer post its own results.
+
+**Not verified**: a real microphone (headless has no mic — capture is exercised
+with synthetic audio through the same framing and socket code); the new
+relay→database **write** against a live database (the insert is emitted with the
+correct columns and JSON, but the local run pointed at a dummy URL, so CI and
+production are its first real test); long-lived upgrades through Traefik (nothing
+has ever held a WebSocket through this proxy); and concurrency under real
+multi-user load. Phase 0's secret is **not** provisioned: while `GEMINI_API_KEY`
+is missing, `POST /api/live/session` answers 503 and nothing else changes.
+
+Phase 4 (deleting the batch endpoints, `aiClient.evaluateAudio` and the multer
+audio config) is deliberately **not** done: it is the irreversible step and waits
+until a live session has been verified in production.
 
 #### Phase 0 — unblock the dependency (S)
 

@@ -7,18 +7,32 @@ import {
     LIVE_VOICE,
     liveUpstreamUrl,
 } from "./live.config";
+import {
+    UNSCORED_FEEDBACK,
+    liveDeps,
+
+    type LiveDeps,
+    type LiveTurn,
+} from "./live.persistence";
 import { releaseLiveSlot, reserveLiveSlot, type LiveTicketClaims } from "./live.service";
 
 interface RelayOptions {
     client: ClientSocket;
     claims: LiveTicketClaims;
     apiKey: string;
+    /** Injected at the composition root so the transport can be tested without a database or a key. */
+    deps?: LiveDeps;
 }
 
 interface UpstreamFrame {
     setupComplete?: unknown;
     goAway?: { timeLeft?: string };
     sessionResumptionUpdate?: { newHandle?: string; resumable?: boolean };
+    serverContent?: {
+        turnComplete?: unknown;
+        inputTranscription?: { text?: string };
+        outputTranscription?: { text?: string };
+    };
 }
 
 /**
@@ -57,11 +71,12 @@ function buildSetup(claims: LiveTicketClaims, handle: string | null) {
  *
  * Frames are relayed verbatim in both directions — the browser speaks the Live
  * protocol directly, so nothing here re-encodes audio. What this layer adds is
- * the slot reservation, the setup frame the browser is not trusted to build,
- * and a resumption that keeps a live session alive across the upstream's own
- * session cap (measured: goAway about 50 s before the close).
+ * the slot reservation, the setup frame the browser is not trusted to build, a
+ * resumption that keeps a live session alive across the upstream's own session
+ * cap (measured: goAway about 50 s before the close), and the turn bookkeeping
+ * that turns a conversation into persisted, scored answers.
  */
-export function relayLiveSession({ client, claims, apiKey }: RelayOptions): void {
+export function relayLiveSession({ client, claims, apiKey, deps = liveDeps }: RelayOptions): void {
     const slot = reserveLiveSlot();
     if (!slot) {
         client.close(1011, "All coaches are busy right now. Try again in a moment.");
@@ -80,6 +95,17 @@ export function relayLiveSession({ client, claims, apiKey }: RelayOptions): void
     let bytesUp = 0;
     let bytesDown = 0;
 
+    // Turn bookkeeping. Transcripts are the candidate's own words, so they stay
+    // in memory, go to the database, and are only ever sent to the client that
+    // spoke them — never to a log.
+    const turns: LiveTurn[] = [];
+    let answerInProgress = "";
+    let scoring = Promise.resolve();
+
+    const sendToClient = (frame: unknown): void => {
+        if (client.readyState === WsServer.OPEN) client.send(JSON.stringify(frame));
+    };
+
     const finish = (code: number, reason: string): void => {
         if (finished) return;
         finished = true;
@@ -96,16 +122,51 @@ export function relayLiveSession({ client, claims, apiKey }: RelayOptions): void
         } catch {
             /* client already gone */
         }
-        if (claims.mode === "interview") {
+
+        if (claims.mode === "practice") {
+            // Practice has always persisted once, at the end of a session; a
+            // socket that closes before any answer leaves no row, as before.
+            void deps.finishPracticeSession(claims, turns).catch((error: unknown) => {
+                console.warn("[live] practice session save failed:", error instanceof Error ? error.message : "unknown");
+            });
+        } else {
             // Counters and outcomes only: an invite id maps back to a candidate,
             // and no transcript or audio ever reaches this table.
             void logAudit({
                 userId: claims._id,
                 action: "interview_start",
                 details: `live session ended (${reason})`,
-                metadata: { mode: claims.mode, resumptions, framesUp, framesDown, bytesUp, bytesDown },
+                metadata: { mode: claims.mode, turns: turns.length, resumptions, framesUp, framesDown, bytesUp, bytesDown },
             });
         }
+    };
+
+    /**
+     * Scores an answer and records it. Queued rather than parallel so the stored
+     * order matches the order the answers were given.
+     */
+    const closeTurn = (transcription: string): void => {
+        const question = claims.question;
+        turns.push({ question, transcription, score: null, feedback: UNSCORED_FEEDBACK });
+        const turn = turns[turns.length - 1]!;
+
+        scoring = scoring
+            .then(async () => {
+                const scored = await deps.score(question, transcription);
+                if (scored) {
+                    turn.score = scored.score;
+                    turn.feedback = scored.feedback;
+                }
+                // An interview writes each answer onto the invite as it lands;
+                // practice accumulates and writes once at the end, as it always has.
+                if (claims.mode === "interview") await deps.recordTurn(claims, turn);
+                // The client cannot see the score otherwise: it is decided here,
+                // and this frame is the only channel back to the page.
+                sendToClient({ proxy: { type: "turn", ...turn } });
+            })
+            .catch((error: unknown) => {
+                console.warn("[live] turn scoring failed:", error instanceof Error ? error.message : "unknown");
+            });
     };
 
     const inspect = (text: string): void => {
@@ -132,6 +193,13 @@ export function relayLiveSession({ client, claims, apiKey }: RelayOptions): void
         if (frame.goAway) {
             goAwaySeen = true;
             console.log(`[live] goAway received (timeLeft=${frame.goAway.timeLeft ?? "?"})`);
+        }
+
+        const finalInput = frame.serverContent?.inputTranscription?.text;
+        if (finalInput) answerInProgress += (answerInProgress ? " " : "") + finalInput;
+        if (frame.serverContent?.turnComplete && answerInProgress.trim()) {
+            closeTurn(answerInProgress.trim());
+            answerInProgress = "";
         }
     };
 

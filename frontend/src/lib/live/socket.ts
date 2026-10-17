@@ -7,6 +7,14 @@ import { api, BASE_URL } from "../api";
 import { createPcmPlayer, startMicCapture, type MicCapture } from "./audio";
 import type { LiveSpeaker, LiveTurnState } from "./types";
 
+/** One completed answer, scored server-side. */
+export interface LiveTurnResult {
+  question: string;
+  transcription: string;
+  score: number | null;
+  feedback: string;
+}
+
 export interface LiveSessionOptions {
   /** POST body for the ticket: practice carries questions, interview carries inviteId. */
   request: {
@@ -23,6 +31,8 @@ export interface LiveSessionOptions {
   onState(state: LiveTurnState): void;
   onTranscript(speaker: LiveSpeaker, text: string, final: boolean): void;
   onError(message: string): void;
+  /** Fires when the backend reports a scored answer for a completed turn. */
+  onTurn?(turn: LiveTurnResult): void;
   onClose?(code: number, reason: string): void;
 }
 
@@ -55,9 +65,23 @@ interface ServerContent {
   turnComplete?: boolean;
 }
 
+/**
+ * A frame the backend writes itself, as opposed to a relayed Live frame. Only
+ * `type: "turn"` is understood today; anything else is a newer backend talking
+ * to an older page, so the unknown fields are ignored rather than guessed at.
+ */
+interface ProxyFrame {
+  type?: string;
+  question?: string;
+  transcription?: string;
+  score?: number | null;
+  feedback?: string;
+}
+
 interface ServerFrame {
   setupComplete?: boolean;
   serverContent?: ServerContent;
+  proxy?: ProxyFrame;
   goAway?: { timeLeft?: string };
   sessionResumptionUpdate?: { newHandle?: string; resumable?: boolean };
 }
@@ -122,6 +146,22 @@ export async function startLiveSession(options: LiveSessionOptions): Promise<Liv
     if (frame.setupComplete) {
       ready = true;
       syncState();
+      return;
+    }
+
+    // The backend's own frames ride the same socket. They are never relayed
+    // Live frames, so `serverContent` handling must not see them, and a `type`
+    // this build does not know is for a newer client than this one.
+    const proxy = frame.proxy;
+    if (proxy) {
+      if (proxy.type === "turn") {
+        options.onTurn?.({
+          question: proxy.question ?? "",
+          transcription: proxy.transcription ?? "",
+          score: proxy.score ?? null,
+          feedback: proxy.feedback ?? "",
+        });
+      }
       return;
     }
 

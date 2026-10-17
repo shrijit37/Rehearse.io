@@ -26,6 +26,10 @@ export interface LiveTicketClaims {
     purpose: "live";
     mode: "practice" | "interview";
     inviteId?: string;
+    /** The turn's question, so the relay can persist what was actually asked. */
+    question: string;
+    questionIndex: number;
+    targetRole: string;
     instruction: string;
     kickoff: string;
 }
@@ -178,6 +182,9 @@ export async function startLiveSession(
         _id: userId,
         mode: input.mode,
         inviteId: input.inviteId,
+        question,
+        questionIndex: input.questionIndex,
+        targetRole,
         instruction: buildInstruction(targetRole, question),
         kickoff: KICKOFF,
     });

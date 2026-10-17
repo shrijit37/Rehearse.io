@@ -8,6 +8,7 @@
     "@types/cors": "^2.8.19",
     "@types/multer": "^2.2.0",
     "@types/pg": "^8.23.1",
+    "@types/ws": "^8.18.2",
     "drizzle-kit": "^0.31.11"
   },
   "scripts": {
@@ -16,7 +17,8 @@
     "migrate": "drizzle-kit migrate",
     "migrate:generate": "drizzle-kit generate",
     "typecheck": "tsc --noEmit",
-    "test:smoke": "bun tests/smoke.ts"
+    "test:smoke": "bun tests/smoke.ts",
+    "test:live-proxy": "bun tests/live-proxy.ts"
   },
   "peerDependencies": {
     "typescript": "^5.9.3"
@@ -34,6 +36,7 @@
     "multer": "^2.2.0",
     "pdf-parse": "^2.4.5",
     "pg": "^8.23.1",
+    "ws": "^8.22.0",
     "zod": "^4.4.3"
   }
 }

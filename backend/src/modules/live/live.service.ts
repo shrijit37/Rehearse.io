@@ -140,6 +140,13 @@ export async function startLiveSession(
         if (!invite || invite.candidateId !== userId) {
             return { status: 403, message: "This interview invite does not belong to you." };
         }
+        // Every existing candidate path requires `started` (evaluateAnswer,
+        // submitAnswer, evaluateDsa); accepting the invite is what moves it
+        // there. Letting `pending` through would open a session for an
+        // interview the candidate never began.
+        if (invite.status === "pending") {
+            return { status: 409, message: "Accept this interview invite before starting a session." };
+        }
         if (invite.status === "completed") {
             return { status: 409, message: "This interview is already complete." };
         }
@@ -151,7 +158,13 @@ export async function startLiveSession(
         if (questions.length === 0) {
             return { status: 400, message: "This interview has no questions." };
         }
-        question = questions[input.questionIndex] ?? questions[0]!;
+        // The index is bounded by the schema but only against the maximum list
+        // size; falling back to question 0 here would ask — and later score —
+        // the wrong question.
+        if (input.questionIndex >= questions.length) {
+            return { status: 400, message: "This interview has no question at that position." };
+        }
+        question = questions[input.questionIndex]!;
         targetRole = interview.targetRole;
     }
 

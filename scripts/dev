@@ -62,6 +62,9 @@ AI_PORT="${AI_PORT:-8000}"
 DEV_AUTH_PORT="${DEV_AUTH_PORT:-4000}"
 DATABASE_URL="${DATABASE_URL:-}"
 DEV_PG_DIR="${DEV_PG_DIR:-$HOME/.local/share/rehearse-pg}"
+# The password for the seeded local accounts. It exists nowhere else in source:
+# this is the value the stand-in enforces and the one the summary prints, and a
+# real environment (or CI) can override it. The accounts are local-only.
 DEV_AUTH_PASSWORD="${DEV_AUTH_PASSWORD:-admin123}"
 
 STATE_DIR="$ROOT/.dev"
@@ -110,8 +113,6 @@ is_repo_process() {
     return 1
 }
 
-pid_recorded() { [[ -f "$PID_FILE" ]] && grep -qE "^[^ ]+ $1$" "$PID_FILE"; }
-
 # TERM the whole process group first (services are started with setsid, so the
 # group covers watchers and reloader children), then KILL whatever survived.
 stop_pid() {
@@ -127,15 +128,20 @@ stop_pid() {
 }
 
 # Stops every process this checkout owns on the given ports, plus anything the
-# pid file remembers. Foreign processes are reported, never killed.
+# pid file remembers. Foreign processes are reported, never killed — and the pid
+# file outlives a crash or a reboot, so a recorded pid may since have been
+# handed to an unrelated program.
 stop_stack() {
     local port pid name stopped=0
     if [[ -f "$PID_FILE" ]]; then
         while read -r name pid; do
-            if pid_alive "$pid"; then
+            pid_alive "$pid" || continue
+            if is_repo_process "$pid"; then
                 say "stopping $name (pid $pid)"
                 stop_pid "$pid"
                 stopped=1
+            else
+                warn "$name (pid $pid) no longer belongs to this checkout; skipping"
             fi
         done <"$PID_FILE"
         rm -f "$PID_FILE"
@@ -176,7 +182,7 @@ claim_ports() {
         port="${pair##*:}"
         for pid in $(port_pids "$port"); do
             pid_alive "$pid" || continue
-            if is_repo_process "$pid" || pid_recorded "$pid"; then
+            if is_repo_process "$pid"; then
                 say "port $port still held by a stale dev process (pid $pid); stopping it"
                 stop_pid "$pid"
             else
@@ -226,13 +232,16 @@ start_service() {
     say "$name started (pid $pid, log $log)"
 }
 
+# Waits for a service's health endpoint. Returns non-zero when the budget runs
+# out — it does not decide whether that is fatal: the caller does, because the
+# ai-service is optional and the rest are not.
 wait_for_http() {
     local name="$1" url="$2" budget="${3:-60}" waited=0
     while ! curl -fsS --max-time 5 "$url" >/dev/null 2>&1; do
         if ((waited >= budget)); then
             warn "$name is not answering $url after ${budget}s"
             tail -n 25 "$LOG_DIR/$name.log" >&2 || true
-            die "$name failed to start"
+            return 1
         fi
         sleep 1
         waited=$((waited + 1))
@@ -447,6 +456,10 @@ local_env() {
     # is allowed, so a hard CORS error (rather than a silent cookie failure)
     # shows up if the browser is pointed at a different one.
     export ALLOWED_ORIGINS="http://127.0.0.1:$WEB_PORT,http://localhost:$WEB_PORT,http://127.0.0.1:5173,http://localhost:5173,http://localhost:3000"
+    # The dev-auth stand-in refuses to start without it, and the summary below
+    # prints it: exporting this script's resolved value is what keeps the printed
+    # credentials and the password it enforces the same value.
+    export DEV_AUTH_PASSWORD
 }
 
 summary_local() {
@@ -534,9 +547,14 @@ run_local() {
     start_service api "$GREEN" "$ROOT/backend" bun run start
     start_service web "$CYAN" "$ROOT/frontend" "${web_env[@]}" npm run dev -- --port "$WEB_PORT" --strictPort --host 127.0.0.1
 
-    wait_for_http auth "http://127.0.0.1:$DEV_AUTH_PORT/__dev/health" 30
-    wait_for_http api "http://127.0.0.1:$API_PORT/health" 90
-    wait_for_http web "http://127.0.0.1:$WEB_PORT/" 60
+    # The three the stack is useless without: a timeout here stops the run, which
+    # takes the whole stack down through the EXIT trap.
+    wait_for_http auth "http://127.0.0.1:$DEV_AUTH_PORT/__dev/health" 30 || die "auth failed to start"
+    wait_for_http api "http://127.0.0.1:$API_PORT/health" 90 || die "api failed to start"
+    wait_for_http web "http://127.0.0.1:$WEB_PORT/" 60 || die "web failed to start"
+    # The ai-service is optional: DSA and resume reads answer 503 without it, so a
+    # slow start is a warning and the stack stays up. (It is started above, so a
+    # timeout here is a slow/down service, not a missing one.)
     if [[ ${#ai_runner[@]} -gt 0 ]]; then
         wait_for_http ai "http://127.0.0.1:$AI_PORT/health" 60 || warn "ai-service is slow; continuing without it"
     fi

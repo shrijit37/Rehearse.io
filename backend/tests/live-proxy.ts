@@ -380,6 +380,11 @@ check(
     instructionText.includes("Software Engineer") && instructionText.includes(BASE_QUESTION),
     instructionText.slice(0, 120),
 );
+check(
+    "the setup instruction ends with the question whole, not a cut of it",
+    instructionText.endsWith(`The question for this turn is: "${BASE_QUESTION}"`),
+    instructionText.slice(-90),
+);
 
 const kickoff = await waitFor(() => upstreamConnections[0]?.textTurns[0]);
 check(
@@ -576,7 +581,8 @@ console.log("\n== aiming the upstream socket ==");
 
 // Dynamic for the same reason as the imports at the top: `live.config` reads
 // `process.env` at module scope, and the assertions below change those values.
-const { liveUpstreamUrl } = await import("../src/modules/live/live.config");
+const { liveUpstreamUrl, buildLiveInstruction, LIVE_MAX_INSTRUCTION_CHARS, LIVE_MAX_QUESTION_CHARS } =
+    await import("../src/modules/live/live.config");
 const overrideUrl = liveUpstreamUrl("k");
 check("an opted-in non-production run reaches the override", overrideUrl.startsWith("ws://127.0.0.1:"), overrideUrl);
 const savedAllow = process.env.ALLOW_LIVE_WS_OVERRIDE;
@@ -608,6 +614,45 @@ if (savedAppEnv === undefined) delete process.env.APP_ENV;
 else process.env.APP_ENV = savedAppEnv;
 if (savedNodeEnv === undefined) delete process.env.NODE_ENV;
 else process.env.NODE_ENV = savedNodeEnv;
+
+console.log("\n== the instruction the coach hears ==");
+
+// The relay sends this text to the model and persists the same question on the
+// turn, so the model has to hear the question whole: the preamble is what gives
+// way when the two do not both fit.
+const longestQuestion = "q".repeat(LIVE_MAX_QUESTION_CHARS);
+const longestRole = "r".repeat(200);
+const atBounds = buildLiveInstruction(longestRole, longestQuestion);
+check(
+    "the instruction stays within its bound at the longest question and role the API accepts",
+    atBounds.length <= LIVE_MAX_INSTRUCTION_CHARS,
+    `len=${atBounds.length} cap=${LIVE_MAX_INSTRUCTION_CHARS}`,
+);
+check("the question survives that instruction whole", atBounds.endsWith(`"${longestQuestion}"`), atBounds.slice(-24));
+const hugeQuestion = "Q".repeat(LIVE_MAX_INSTRUCTION_CHARS + 50);
+const overBound = buildLiveInstruction("Software Engineer", hugeQuestion);
+check(
+    "a question longer than the bound is still spoken whole, not cut",
+    overBound.endsWith(`"${hugeQuestion}"`),
+    `len=${overBound.length} cap=${LIVE_MAX_INSTRUCTION_CHARS}`,
+);
+
+// And an interview cannot hand the session a question or a role those bounds
+// were measured against, so the two halves cannot disagree.
+const { createInterviewSchema } = await import("../src/modules/interview/interview.validation");
+const interview = { title: "Round 1", organizationId: "org", expiresAt: "2030-01-01", targetRole: "Software Engineer" };
+check(
+    "an interview accepts a question at the bound",
+    createInterviewSchema.safeParse({ ...interview, questions: [longestQuestion], targetRole: longestRole }).success,
+);
+check(
+    "an interview refuses a question past what one spoken turn can carry",
+    !createInterviewSchema.safeParse({ ...interview, questions: ["q".repeat(LIVE_MAX_QUESTION_CHARS + 1)] }).success,
+);
+check(
+    "an interview refuses a role a live session would refuse",
+    !createInterviewSchema.safeParse({ ...interview, targetRole: "r".repeat(201) }).success,
+);
 
 console.log("\n== teardown ==");
 

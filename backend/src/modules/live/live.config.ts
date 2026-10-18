@@ -20,7 +20,11 @@ export const LIVE_WS_PATH = "/ws/live";
 /** Long enough for the browser to open the socket, useless if it leaks. */
 export const LIVE_TICKET_TTL_SECONDS = 60;
 
-/** Bound on the system instruction the relay builds from the session's own turn. */
+/**
+ * Bound on the system instruction the relay builds from the session's own turn.
+ * It is spent on the preamble, never on the question — see
+ * `buildLiveInstruction` — so it holds for any question the API accepts.
+ */
 export const LIVE_MAX_INSTRUCTION_CHARS = 2000;
 
 /**
@@ -31,15 +35,24 @@ export const LIVE_MAX_INSTRUCTION_CHARS = 2000;
  */
 export const LIVE_KICKOFF = "Greet the candidate in one short sentence, then ask the question.";
 
-/** The spoken-question turn that makes the model open the conversation. */
+/**
+ * The spoken-question turn that makes the model open the conversation.
+ *
+ * The preamble gives way, never the question: this question is what the relay
+ * persists on the turn and what the rubric scores the answer against, so the
+ * model has to hear exactly that text. The instruction therefore stays within
+ * `LIVE_MAX_INSTRUCTION_CHARS` for any question that
+ * `startLiveSessionSchema` or `createInterviewSchema` will accept, and for a
+ * longer one the question is still spoken whole.
+ */
 export function buildLiveInstruction(targetRole: string, question: string): string {
-    return (
+    const asked = `The question for this turn is: "${question}"`;
+    const preamble =
         `You are a warm, concise spoken interview coach running a ${targetRole} mock interview. ` +
         `Speak in natural sentences only: no markdown, no lists, no emoji. ` +
         `Ask one question at a time and stay quiet while the candidate answers. ` +
-        `After each answer give at most two sentences of specific feedback, then ask the next question. ` +
-        `The question for this turn is: "${question}"`
-    ).slice(0, LIVE_MAX_INSTRUCTION_CHARS);
+        `After each answer give at most two sentences of specific feedback, then ask the next question. `;
+    return preamble.slice(0, Math.max(0, LIVE_MAX_INSTRUCTION_CHARS - asked.length)) + asked;
 }
 
 /**

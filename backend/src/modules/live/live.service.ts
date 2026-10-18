@@ -4,8 +4,6 @@ import { env } from "../../config/env";
 import { isOnboarded } from "../../db/repositories/users";
 import { findInviteById, findInterviewRowById } from "../../db/repositories/interviews";
 import {
-    LIVE_MAX_INSTRUCTION_CHARS,
-    LIVE_MAX_KICKOFF_CHARS,
     LIVE_MAX_SESSIONS,
     LIVE_MODEL,
     LIVE_TICKET_TTL_SECONDS,
@@ -20,7 +18,15 @@ export interface ServiceResult<T = undefined> {
     data?: T;
 }
 
-/** What a browser presents at the socket handshake. Deliberately small. */
+/**
+ * What a browser presents at the socket handshake. Deliberately small — and
+ * deliberately plaintext-free: a JWT payload is base64, not encryption, so the
+ * candidate can read every field. It carries the turn's question (they are about
+ * to be asked it, and the relay persists what was actually asked) and nothing
+ * else about the conversation: the coach's instruction and opener are rebuilt in
+ * the relay from `targetRole` + `question` (see `live.config`), never handed to
+ * the browser.
+ */
 export interface LiveTicketClaims {
     _id: string;
     purpose: "live";
@@ -32,8 +38,6 @@ export interface LiveTicketClaims {
     question: string;
     questionIndex: number;
     targetRole: string;
-    instruction: string;
-    kickoff: string;
 }
 
 export interface LiveSessionHandle {
@@ -128,23 +132,6 @@ export function verifyLiveTicket(token: string): LiveTicketClaims | null {
 // Session context
 // ---------------------------------------------------------------------------
 
-/** The spoken-question turn that makes the model open the conversation. */
-function buildInstruction(targetRole: string, question: string): string {
-    return (
-        `You are a warm, concise spoken interview coach running a ${targetRole} mock interview. ` +
-        `Speak in natural sentences only: no markdown, no lists, no emoji. ` +
-        `Ask one question at a time and stay quiet while the candidate answers. ` +
-        `After each answer give at most two sentences of specific feedback, then ask the next question. ` +
-        `The question for this turn is: "${question}"`
-    ).slice(0, LIVE_MAX_INSTRUCTION_CHARS);
-}
-
-/** The spoken opener — what the candidate hears first, so it stays short. */
-const KICKOFF = "Greet the candidate in one short sentence, then ask the question.".slice(
-    0,
-    LIVE_MAX_KICKOFF_CHARS,
-);
-
 /**
  * Resolves who is asking, whether they may, and what the model should be told.
  *
@@ -220,8 +207,6 @@ export async function startLiveSession(
         question,
         questionIndex: input.questionIndex,
         targetRole,
-        instruction: buildInstruction(targetRole, question),
-        kickoff: KICKOFF,
     });
 
     return {

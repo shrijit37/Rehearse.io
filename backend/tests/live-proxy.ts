@@ -113,8 +113,11 @@ const upstream = new WebSocketServer({ port: 0 });
 await new Promise<void>((resolve) => upstream.once("listening", resolve));
 const upstreamPort = listeningPort(upstream);
 // Read at call time by liveUpstreamUrl, so setting it once the fake is
-// listening is enough to keep the whole run offline.
+// listening is enough to keep the whole run offline. Aiming the relay at an
+// override also takes an explicit opt-in (never in production), which is
+// asserted below.
 process.env.GEMINI_LIVE_WS_URL = `ws://127.0.0.1:${upstreamPort}`;
+process.env.ALLOW_LIVE_WS_OVERRIDE = "true";
 
 // Everything the relay logs, so the redaction guarantee can be asserted instead
 // of assumed: the API key rides in the upstream URL, and transcripts are the
@@ -301,15 +304,20 @@ function openClient(ticket: string): Promise<TestClient> {
 const PRACTICE_USER = "00000000-0000-0000-0000-000000000001";
 /** The client that spans several questions — the one whose saves prove the shape. */
 const MULTI_QUESTION_USER = "00000000-0000-0000-0000-000000000002";
-const ticketFor = (instruction: string, userId = PRACTICE_USER): string =>
+const BASE_QUESTION = "Tell me about a time you had to make a decision with incomplete data.";
+/**
+ * A practice ticket. `trigger` rides in the *question*: the coach's instruction
+ * is built from the question in the relay (the browser never carries it), and
+ * the fake upstream keys its SILENT/DROP/GOAWAY behaviours off the instruction
+ * it is handed.
+ */
+const ticketFor = (trigger?: string, userId = PRACTICE_USER): string =>
     mintLiveTicket({
         _id: userId,
         mode: "practice",
-        question: "Tell me about a time you had to make a decision with incomplete data.",
+        question: trigger ? `${BASE_QUESTION} ${trigger}` : BASE_QUESTION,
         questionIndex: 0,
         targetRole: "Software Engineer",
-        instruction,
-        kickoff: "Greet and ask.",
     });
 
 console.log("\n== auth ==");
@@ -343,7 +351,7 @@ mintServer.close();
 
 console.log("\n== relay ==");
 
-const good = await openClient(ticketFor("You are a test coach.", MULTI_QUESTION_USER));
+const good = await openClient(ticketFor(undefined, MULTI_QUESTION_USER));
 const connected = await waitFor(() => (good.socket.readyState === WsClient.OPEN ? true : undefined));
 check("valid ticket upgrades", connected === true, `state=${good.socket.readyState}, error=${good.error ?? "none"}`);
 
@@ -357,10 +365,19 @@ check(
     JSON.stringify(setup?.generationConfig?.speechConfig ?? {}),
 );
 check("transcripts are requested both ways", Boolean(setup?.inputAudioTranscription && setup?.outputAudioTranscription));
-check("instruction reaches the upstream", String(setup?.systemInstruction?.parts?.[0]?.text).includes("test coach"));
+const instructionText = String(setup?.systemInstruction?.parts?.[0]?.text);
+check(
+    "the setup instruction is built from the ticket's role and question",
+    instructionText.includes("Software Engineer") && instructionText.includes(BASE_QUESTION),
+    instructionText.slice(0, 120),
+);
 
 const kickoff = await waitFor(() => upstreamConnections[0]?.textTurns[0]);
-check("relay opens the conversation with the kickoff turn", kickoff === "Greet and ask.", String(kickoff));
+check(
+    "relay opens the conversation with the shipped opener",
+    kickoff === "Greet the candidate in one short sentence, then ask the question.",
+    String(kickoff),
+);
 
 check(
     "setupComplete is relayed to the browser",
@@ -513,6 +530,76 @@ check(
     `kickoffs=${JSON.stringify(upstreamConnections[firstConnection + 1]?.textTurns ?? [])}`,
 );
 
+console.log("\n== what the browser's ticket carries ==");
+
+// A ticket is a bearer value the candidate holds, and a JWT payload is base64
+// rather than encryption, so what it carries is what the candidate can read.
+// This is an allow-list: any claim added later has to be justified here.
+const TICKET_CLAIMS = [
+    "_id",
+    "purpose",
+    "mode",
+    "inviteId",
+    "jti",
+    "question",
+    "questionIndex",
+    "targetRole",
+    "iat",
+    "exp",
+];
+const decodedTicket = JSON.parse(
+    Buffer.from(ticketFor("trigger.").split(".")[1]!, "base64url").toString("utf8"),
+) as Record<string, unknown>;
+check(
+    "a ticket carries nothing beyond the turn the candidate is on",
+    Object.keys(decodedTicket).every((key) => TICKET_CLAIMS.includes(key)),
+    Object.keys(decodedTicket).join(","),
+);
+check(
+    "a ticket carries no coach instruction or opener",
+    !("instruction" in decodedTicket) &&
+        !("kickoff" in decodedTicket) &&
+        !JSON.stringify(decodedTicket).includes("spoken interview coach"),
+    JSON.stringify(decodedTicket).slice(0, 160),
+);
+
+console.log("\n== aiming the upstream socket ==");
+
+// Dynamic for the same reason as the imports at the top: `live.config` reads
+// `process.env` at module scope, and the assertions below change those values.
+const { liveUpstreamUrl } = await import("../src/modules/live/live.config");
+const overrideUrl = liveUpstreamUrl("k");
+check("an opted-in non-production run reaches the override", overrideUrl.startsWith("ws://127.0.0.1:"), overrideUrl);
+const savedAllow = process.env.ALLOW_LIVE_WS_OVERRIDE;
+const savedAppEnv = process.env.APP_ENV;
+const savedNodeEnv = process.env.NODE_ENV;
+delete process.env.ALLOW_LIVE_WS_OVERRIDE;
+check(
+    "without the opt-in the override is ignored",
+    liveUpstreamUrl("k").startsWith("wss://generativelanguage.googleapis.com/"),
+    liveUpstreamUrl("k"),
+);
+process.env.ALLOW_LIVE_WS_OVERRIDE = "true";
+process.env.APP_ENV = "production";
+check(
+    "production ignores the override even when it is opted in",
+    liveUpstreamUrl("k").startsWith("wss://generativelanguage.googleapis.com/"),
+    liveUpstreamUrl("k"),
+);
+delete process.env.APP_ENV;
+process.env.NODE_ENV = "production";
+check(
+    "a production NODE_ENV alone closes the override",
+    liveUpstreamUrl("k").startsWith("wss://generativelanguage.googleapis.com/"),
+    liveUpstreamUrl("k"),
+);
+if (savedAllow === undefined) delete process.env.ALLOW_LIVE_WS_OVERRIDE;
+else process.env.ALLOW_LIVE_WS_OVERRIDE = savedAllow;
+if (savedAppEnv === undefined) delete process.env.APP_ENV;
+else process.env.APP_ENV = savedAppEnv;
+if (savedNodeEnv === undefined) delete process.env.NODE_ENV;
+else process.env.NODE_ENV = savedNodeEnv;
+
 console.log("\n== teardown ==");
 
 capped.socket.close();
@@ -547,8 +634,6 @@ const interviewTicket = mintLiveTicket({
     question: "First interview question?",
     questionIndex: 0,
     targetRole: "Software Engineer",
-    instruction: "You are a test coach.",
-    kickoff: "Greet and ask.",
 });
 const connectionsBeforeInterview = upstreamConnections.length;
 const interviewClient = await openClient(interviewTicket);
@@ -586,6 +671,11 @@ console.log("\n== redaction and failure paths ==");
 
 const allLogs = captured.join("\n");
 check("the API key never reaches a log line", !allLogs.includes("test-key"), "a log line carried the key");
+check(
+    "the upstream URL never reaches a log line",
+    !allLogs.includes("?key=") && !allLogs.includes("127.0.0.1:"),
+    "a log line carried the upstream URL, which has the key in its query string",
+);
 check(
     "spoken content never reaches a log line",
     !allLogs.includes("Hello.") && !allLogs.includes(PCM_24K_SILENCE.slice(0, 24)),

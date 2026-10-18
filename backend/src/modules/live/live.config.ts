@@ -20,9 +20,27 @@ export const LIVE_WS_PATH = "/ws/live";
 /** Long enough for the browser to open the socket, useless if it leaks. */
 export const LIVE_TICKET_TTL_SECONDS = 60;
 
-/** Bounds on what a ticket may carry, so a signed header cannot grow without limit. */
+/** Bound on the system instruction the relay builds from the session's own turn. */
 export const LIVE_MAX_INSTRUCTION_CHARS = 2000;
-export const LIVE_MAX_KICKOFF_CHARS = 400;
+
+/**
+ * The spoken opener — what the candidate hears first, so it stays short. Built
+ * here rather than carried in the ticket: a ticket is a bearer value the browser
+ * holds, base64 rather than encrypted, and nothing the candidate should not read
+ * belongs in it.
+ */
+export const LIVE_KICKOFF = "Greet the candidate in one short sentence, then ask the question.";
+
+/** The spoken-question turn that makes the model open the conversation. */
+export function buildLiveInstruction(targetRole: string, question: string): string {
+    return (
+        `You are a warm, concise spoken interview coach running a ${targetRole} mock interview. ` +
+        `Speak in natural sentences only: no markdown, no lists, no emoji. ` +
+        `Ask one question at a time and stay quiet while the candidate answers. ` +
+        `After each answer give at most two sentences of specific feedback, then ask the next question. ` +
+        `The question for this turn is: "${question}"`
+    ).slice(0, LIVE_MAX_INSTRUCTION_CHARS);
+}
 
 /**
  * The most questions a session can address. Not just a schema bound: an
@@ -69,11 +87,20 @@ const DEFAULT_UPSTREAM =
  * ephemeral `auth_tokens` both fail to authenticate this socket on their own.
  * That is exactly why the socket terminates here and not in the browser.
  *
- * `GEMINI_LIVE_WS_URL` points the relay at a local fake upstream and is honoured
- * outside production only: an env var able to aim this socket anywhere would
- * hand the key, in a query string, to whatever host it named.
+ * `GEMINI_LIVE_WS_URL` points the relay at a local fake upstream, and it aims a
+ * socket that carries this key in a query string, so it takes two independent
+ * signals to enable and both default to closed: an explicit
+ * `ALLOW_LIVE_WS_OVERRIDE=true`, and an environment that is not production.
+ * `APP_ENV` alone cannot be the check — it defaults to `"development"`, so a
+ * production deploy that set only `NODE_ENV` (the image does) would leave the
+ * override open, and the override is the one thing that must never fail open.
+ *
+ * Both are read at call time, not at import: the test suite points this at a
+ * fake that has an ephemeral port, and sets the opt-in after importing.
  */
 export function liveUpstreamUrl(apiKey: string): string {
-    const override = process.env.APP_ENV === "production" ? undefined : process.env.GEMINI_LIVE_WS_URL;
+    const optedIn = process.env.ALLOW_LIVE_WS_OVERRIDE === "true";
+    const production = process.env.APP_ENV === "production" || process.env.NODE_ENV === "production";
+    const override = optedIn && !production ? process.env.GEMINI_LIVE_WS_URL : undefined;
     return `${override || DEFAULT_UPSTREAM}?key=${encodeURIComponent(apiKey)}`;
 }

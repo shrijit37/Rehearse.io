@@ -14,6 +14,7 @@ import CandidateResults from "./pages/CandidateResults";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import AccountSettings from "./pages/AccountSettings";
+import CandidateProfile from "./pages/CandidateProfile";
 import NotFound from "./pages/NotFound";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
@@ -54,6 +55,16 @@ function App() {
 						element={
 							<ProtectedRoute role="candidate" requireOnboarded>
 								<Dashboard />
+							</ProtectedRoute>
+						}
+					/>
+					{/* Deliberately not gated on onboarding: a candidate with no
+					    resume on record is exactly who needs this page. */}
+					<Route
+						path="/profile"
+						element={
+							<ProtectedRoute role="candidate">
+								<CandidateProfile />
 							</ProtectedRoute>
 						}
 					/>

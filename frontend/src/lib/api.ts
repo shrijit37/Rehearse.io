@@ -8,6 +8,11 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
   raw?: boolean;
 }
 
+/** An API error carrying the HTTP status, so callers can branch on it. */
+export interface ApiError extends Error {
+  status?: number;
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { tokenOverride, body, headers: customHeaders, raw, ...rest } = options;
   // Session auth rides on the shared auth cookie (.shrijit.tech) — there is no
@@ -39,7 +44,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
         window.location.href = "/signup";
       }
     }
-    throw new Error(data.message || `Request failed (${res.status})`);
+    // The status travels with the error so a caller can tell a request the API
+    // refused from one its dependencies could not answer.
+    const error = new Error(data.message || `Request failed (${res.status})`) as ApiError;
+    error.status = res.status;
+    throw error;
   }
   return res.json();
 }

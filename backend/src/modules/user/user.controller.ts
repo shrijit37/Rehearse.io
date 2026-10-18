@@ -1,9 +1,17 @@
 import type { Request, Response } from "express";
-import { getUserValidation, type GetUserDetails } from "./user.validation";
-import { getUserDetails } from "./user.service";
-import z from "zod";
-import { onboardValidation, updateProfileValidation } from "./user.validation";
-import { onboardUser, updateUserProfile, getUserConsent, updateUserConsent, exportUserData, deleteUserAccount } from "./user.service";
+import { onboardValidation, parseResumeRequest, updateProfileValidation } from "./user.validation";
+import {
+    getUserProfile,
+    onboardUser,
+    updateUserProfile,
+    getProfileMedia,
+    parseResumeIntoProfile,
+    getUserConsent,
+    updateUserConsent,
+    exportUserData,
+    deleteUserAccount,
+    type ProfileMediaKind,
+} from "./user.service";
 import { logAudit } from "../../middleware/auditLog";
 
 interface AuthenticatedRequest extends Request {
@@ -13,33 +21,102 @@ interface AuthenticatedRequest extends Request {
     };
 }
 
-export const getUser = async (req: Request, res: Response): Promise<void> => {
-    // @ts-ignore
-    const result = z.safeParse(getUserValidation, req.user);
+/** The signed-in account's row id, or null after a 401 has been sent. */
+function sessionUserId(req: Request, res: Response): string | null {
+    const userId = (req as AuthenticatedRequest).user?._id;
+    if (!userId) {
+        res.status(401).json({ success: false, message: "Unauthorized" });
+        return null;
+    }
+    return userId;
+}
+
+/**
+ * The candidate's own record: what is held, and what a practice round reads.
+ * The sealed blobs are deliberately absent — each has its own endpoint below.
+ */
+export const getProfile = async (req: Request, res: Response): Promise<void> => {
+    const userId = sessionUserId(req, res);
+    if (!userId) return;
+
+    const response = await getUserProfile(userId);
+    if (response.status === 200 && response.data) {
+        res.status(200).json({ success: true, data: response.data, message: response.message });
+        return;
+    }
+    res.status(response.status).json({ success: false, message: response.message });
+};
+
+/**
+ * One stored artifact of the signed-in account. Sent as its own file rather than
+ * inline in the profile payload, so a 4 MB headshot does not ride on every read
+ * of the profile.
+ */
+export const getMedia = async (req: Request, res: Response): Promise<void> => {
+    const userId = sessionUserId(req, res);
+    if (!userId) return;
+
+    const kind = req.params.kind;
+    if (kind !== "resume" && kind !== "photo" && kind !== "voice") {
+        res.status(400).json({ success: false, message: "Unknown file kind" });
+        return;
+    }
+
+    const response = await getProfileMedia(userId, kind);
+    if (response.status === 200 && response.file) {
+        res.setHeader("Content-Type", response.file.contentType);
+        res.setHeader(
+            "Content-Disposition",
+            `inline; filename="${response.file.filename.replace(/["\\]/g, "")}"`,
+        );
+        // PII, owner-only, never cached by a shared proxy.
+        res.setHeader("Cache-Control", "private, no-store");
+        res.send(response.file.body);
+        return;
+    }
+    res.status(response.status).json({ success: false, message: response.message });
+};
+
+/** Reads the resume into the structured profile. Writes nothing until the
+ * candidate applies the sections the preview offered. */
+export const parseResume = async (req: Request, res: Response): Promise<void> => {
+    const userId = sessionUserId(req, res);
+    if (!userId) return;
+
+    const result = parseResumeRequest.safeParse(req.body ?? {});
     if (!result.success) {
         res.status(400).json({
             success: false,
-            message: "Invalid request",
-        })
+            message: result.error.issues[0]?.message || "Invalid input",
+        });
         return;
     }
-    const response: GetUserDetails = await getUserDetails(result.data);
-    res.status(response.status).json({
-        success: Boolean(response.status === 200),
-        data: response.data,
-        message: response.message,
-    });
-    return;
+
+    const response = await parseResumeIntoProfile(userId, result.data);
+    if (response.status === 200) {
+        if (response.changed?.length) {
+            await logAudit({
+                userId,
+                action: "profile_update",
+                details: `Applied the resume read: ${response.changed.join(", ")}`,
+                req,
+            });
+        }
+        res.status(200).json({
+            success: true,
+            message: response.message,
+            changed: response.changed ?? [],
+            preview: response.preview ?? [],
+            data: response.data,
+        });
+        return;
+    }
+    res.status(response.status).json({ success: false, message: response.message });
 };
 
-
 export const onboard = async (req: Request, res: Response): Promise<void> => {
-    const userReq = req as AuthenticatedRequest;
-    const userId = userReq.user?._id;
-    if (!userId) {
-        res.status(401).json({ success: false, message: "Unauthorized" });
-        return;
-    }
+    const userId = sessionUserId(req, res);
+    if (!userId) return;
 
     const result = onboardValidation.safeParse(req.body);
     if (!result.success) {
@@ -73,12 +150,8 @@ export const onboard = async (req: Request, res: Response): Promise<void> => {
 };
 
 export const updateProfile = async (req: Request, res: Response): Promise<void> => {
-    const userReq = req as AuthenticatedRequest;
-    const userId = userReq.user?._id;
-    if (!userId) {
-        res.status(401).json({ success: false, message: "Unauthorized" });
-        return;
-    }
+    const userId = sessionUserId(req, res);
+    if (!userId) return;
 
     const result = updateProfileValidation.safeParse(req.body);
     if (!result.success) {
@@ -91,7 +164,8 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
 
     const response = await updateUserProfile(userId, result.data);
 
-    if (response.status === 200 && response.user) {
+    if (response.status === 200 && response.data) {
+        // Field names only: never the values, which are the candidate's own data.
         const fieldsUpdated = Object.keys(result.data).join(", ");
         await logAudit({
             userId: userId,
@@ -102,7 +176,7 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
         res.status(200).json({
             success: true,
             message: response.message,
-            user: response.user,
+            data: response.data,
         });
     } else {
         res.status(response.status).json({
@@ -113,12 +187,8 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
 };
 
 export const getConsent = async (req: Request, res: Response): Promise<void> => {
-    const userReq = req as AuthenticatedRequest;
-    const userId = userReq.user?._id;
-    if (!userId) {
-        res.status(401).json({ success: false, message: "Unauthorized" });
-        return;
-    }
+    const userId = sessionUserId(req, res);
+    if (!userId) return;
 
     const response = await getUserConsent(userId);
     if (response.status === 200) {
@@ -129,12 +199,8 @@ export const getConsent = async (req: Request, res: Response): Promise<void> => 
 };
 
 export const updateConsent = async (req: Request, res: Response): Promise<void> => {
-    const userReq = req as AuthenticatedRequest;
-    const userId = userReq.user?._id;
-    if (!userId) {
-        res.status(401).json({ success: false, message: "Unauthorized" });
-        return;
-    }
+    const userId = sessionUserId(req, res);
+    if (!userId) return;
 
     const { consentGiven, consentVersion } = req.body;
     const response = await updateUserConsent(userId, consentGiven, consentVersion);
@@ -155,12 +221,8 @@ export const updateConsent = async (req: Request, res: Response): Promise<void> 
 };
 
 export const exportData = async (req: Request, res: Response): Promise<void> => {
-    const userReq = req as AuthenticatedRequest;
-    const userId = userReq.user?._id;
-    if (!userId) {
-        res.status(401).json({ success: false, message: "Unauthorized" });
-        return;
-    }
+    const userId = sessionUserId(req, res);
+    if (!userId) return;
 
     const response = await exportUserData(userId);
     if (response.status === 200 && response.data) {
@@ -179,12 +241,8 @@ export const exportData = async (req: Request, res: Response): Promise<void> => 
 };
 
 export const deleteAccount = async (req: Request, res: Response): Promise<void> => {
-    const userReq = req as AuthenticatedRequest;
-    const userId = userReq.user?._id;
-    if (!userId) {
-        res.status(401).json({ success: false, message: "Unauthorized" });
-        return;
-    }
+    const userId = sessionUserId(req, res);
+    if (!userId) return;
 
     const response = await deleteUserAccount(userId);
     if (response.status === 200) {
@@ -199,4 +257,3 @@ export const deleteAccount = async (req: Request, res: Response): Promise<void> 
         res.status(response.status).json({ message: response.message });
     }
 };
-

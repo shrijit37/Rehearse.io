@@ -1,7 +1,8 @@
 import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "../index";
 import { users } from "../schema";
-import { withId, type PopulatedUser } from "../shape";
+import type { ProfileEducation, ProfileExperience } from "../schema";
+import { withId, type PopulatedUser, type WithId } from "../shape";
 
 /** Columns safe to return to any caller (never includes the password hash). */
 export const USER_PUBLIC_COLUMNS = {
@@ -15,6 +16,13 @@ export const USER_PUBLIC_COLUMNS = {
     resume: users.resume,
     photo: users.photo,
     audio: users.audio,
+    headline: users.headline,
+    location: users.location,
+    skills: users.skills,
+    experience: users.experience,
+    education: users.education,
+    resumeParsedAt: users.resumeParsedAt,
+    resumeUpdatedAt: users.resumeUpdatedAt,
     consentGiven: users.consentGiven,
     consentDate: users.consentDate,
     consentVersion: users.consentVersion,
@@ -28,18 +36,26 @@ export const USER_PUBLIC_COLUMNS = {
 
 export type PublicUser = typeof users.$inferSelect;
 
-export async function findUserById(id: string) {
+/**
+ * A user row as the read paths below return it: the public columns plus `_id`.
+ * Named here rather than derived from the function, so consumers (a published
+ * payload type, the auth session mapping) depend on the contract, not on the
+ * query's inferred shape.
+ */
+export type UserRecord = WithId<Omit<PublicUser, "password">>;
+
+export async function findUserById(id: string): Promise<UserRecord | null> {
     const rows = await db.select(USER_PUBLIC_COLUMNS).from(users).where(eq(users.id, id)).limit(1);
     return rows[0] ? withId(rows[0]) : null;
 }
 
-export async function findUserByEmail(email: string) {
+export async function findUserByEmail(email: string): Promise<UserRecord | null> {
     const rows = await db.select(USER_PUBLIC_COLUMNS).from(users).where(eq(users.email, email)).limit(1);
     return rows[0] ? withId(rows[0]) : null;
 }
 
 /** Looks a visitor up by the account id minted by the shared auth service. */
-export async function findUserByAuthId(authId: string) {
+export async function findUserByAuthId(authId: string): Promise<UserRecord | null> {
     const rows = await db.select(USER_PUBLIC_COLUMNS).from(users).where(eq(users.authId, authId)).limit(1);
     return rows[0] ? withId(rows[0]) : null;
 }
@@ -110,8 +126,15 @@ export type UserPatch = Partial<{
     consentVersion: string | null;
     resumeName: string | null;
     resume: string | null;
+    resumeUpdatedAt: Date | null;
     photo: string | null;
     audio: string | null;
+    headline: string | null;
+    location: string | null;
+    skills: string[] | null;
+    experience: ProfileExperience[] | null;
+    education: ProfileEducation[] | null;
+    resumeParsedAt: Date | null;
     onboardingCompleted: boolean;
     isDeleted: boolean;
     deletedAt: Date | null;

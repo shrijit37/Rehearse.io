@@ -24,8 +24,11 @@ export function validatePdfFormat(resume: string): boolean {
 export function validatePhotoFormat(photo: string): boolean {
     const rawPhoto = photo.includes(",") ? (photo.split(",")[1] || "") : photo;
     const photoBuffer = Buffer.from(rawPhoto, "base64");
-    const photoHeader = photoBuffer.toString("utf8", 0, 3);
-    return photoHeader === "\xff\xd8\xff" || photoHeader === "\x89PN";
+    // Magic bytes are binary: compare hex, not a utf8 decode. JPEG starts FF D8 FF
+    // and PNG 89 50 4E 47 — decoded as text these become U+FFFD and never matched,
+    // so every real photo was rejected.
+    const photoHeader = photoBuffer.toString("hex", 0, 3).toLowerCase();
+    return photoHeader === "ffd8ff" || photoHeader === "89504e";
 }
 
 export function validateAudioFormat(audio: string): boolean {

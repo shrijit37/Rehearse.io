@@ -105,6 +105,95 @@ async function main(): Promise<void> {
     const users = await api("/api/users/");
     check("authenticated /api/users/ is 200", users.status === 200, `got ${users.status}`);
 
+    // The profile contract: the record is served without its sealed blobs, and
+    // each blob is reachable only through its own owner-only endpoint.
+    const profile = users.body?.data;
+    check(
+        "profile carries the record",
+        typeof profile?.name === "string" && typeof profile?.email === "string",
+        JSON.stringify(users.body),
+    );
+    check(
+        "profile omits the sealed blobs",
+        // resume/photo/voice carry metadata (present, name, sizeBytes). What must
+        // never appear is a sealed field: the encrypted envelope, or the raw
+        // audio column, which no client has any use for.
+        profile?.audio === undefined &&
+            !JSON.stringify(profile).includes("enc:v1:") &&
+            typeof profile?.resume.present === "boolean" &&
+            typeof profile?.photo.present === "boolean" &&
+            typeof profile?.voice.present === "boolean",
+        JSON.stringify(profile),
+    );
+    check(
+        "profile reports what is on record",
+        profile?.resume !== undefined && typeof profile.resume.present === "boolean",
+        JSON.stringify(profile?.resume),
+    );
+    check(
+        "profile states what a round reads",
+        ["profile", "resume", "none"].includes(profile?.roundSource?.kind),
+        JSON.stringify(profile?.roundSource),
+    );
+
+    const anonMedia = await api("/api/users/profile/media/resume", {}, { cookie: "" });
+    check("anonymous media fetch is 401", anonMedia.status === 401, `got ${anonMedia.status}`);
+
+    const badMedia = await api("/api/users/profile/media/not-a-kind");
+    check("unknown media kind is 400", badMedia.status === 400, `got ${badMedia.status}`);
+
+    // A read proposes: asking for a preview must leave the record byte-identical,
+    // whether or not the text provider can be reached. Asserting the record rather
+    // than the status keeps this meaningful on a machine whose ai-service has no
+    // LLM key, where the read legitimately cannot run and answers 5xx.
+    const readShape = (body: any): string => {
+        const d = body?.data ?? {};
+        return JSON.stringify({
+            headline: d.headline,
+            location: d.location,
+            skills: d.skills,
+            experience: d.experience,
+            education: d.education,
+            resumeParsedAt: d.resumeParsedAt,
+            parsedFrom: d.resume?.parsedAt,
+        });
+    };
+    const beforeRead = readShape((await api("/api/users/profile")).body);
+    const preview = await api("/api/users/profile/parse-resume", {
+        method: "POST",
+        body: JSON.stringify({ apply: false }),
+    });
+    check(
+        // The read may legitimately be unavailable (5xx from the text provider),
+        // but it must never be refused as the caller's fault.
+        "a preview is never refused as malformed",
+        ![400, 401, 403].includes(preview.status),
+        `got ${preview.status}`,
+    );
+    const afterRead = readShape((await api("/api/users/profile")).body);
+    check(
+        "a preview changes nothing",
+        beforeRead === afterRead,
+        `${beforeRead}\n         vs ${afterRead}`,
+    );
+    if (preview.status === 200) {
+        check(
+            "a preview reports no changes applied",
+            Array.isArray(preview.body?.changed) && preview.body.changed.length === 0,
+            JSON.stringify(preview.body?.changed),
+        );
+    } else {
+        console.log(
+            `  --   read unavailable here (${preview.status}); the preview invariant still held`,
+        );
+    }
+
+    const emptyPatch = await api("/api/users/profile", {
+        method: "PATCH",
+        body: JSON.stringify({}),
+    });
+    check("an empty profile patch is refused", emptyPatch.status === 400, `got ${emptyPatch.status}`);
+
     const org = await api("/api/org/");
     check("authenticated /api/org/ is 200", org.status === 200, `got ${org.status}`);
 

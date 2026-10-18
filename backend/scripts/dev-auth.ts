@@ -93,8 +93,9 @@ const normalize = (email: string): string => email.trim().toLowerCase();
 const findAccount = (email: string): Account | undefined =>
     accounts.find((account) => account.email === normalize(email));
 
-// Re-hash on every boot: the password stays whatever the dev script prints,
-// and `.dev/auth-accounts.json` never holds a stale seed hash.
+// Re-hash on every boot: the password stays whatever `DEV_AUTH_PASSWORD` holds
+// — the value `./scripts/dev` exports and prints — and `.dev/auth-accounts.json`
+// never holds a stale seed hash.
 for (const seed of SEED_ACCOUNTS) {
     const existing = findAccount(seed.email);
     const passwordHash = await Bun.password.hash(PASSWORD);
@@ -375,5 +376,8 @@ const server = Bun.serve({
 
 console.log(`[dev-auth] listening on http://127.0.0.1:${server.port}`);
 console.log(
-    `[dev-auth] accounts: ${accounts.map((account) => account.email).join(", ")} — seed password: ${PASSWORD} (seeded accounts only)`,
+    // The password itself is never printed: it is the value the caller set in
+    // DEV_AUTH_PASSWORD (and `./scripts/dev`, which sets it, prints it with the
+    // rest of the local stack summary).
+    `[dev-auth] accounts: ${accounts.map((account) => account.email).join(", ")} — password: DEV_AUTH_PASSWORD (seeded accounts only)`,
 );

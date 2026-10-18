@@ -427,6 +427,14 @@ backend_env_has() { [[ -f "$ROOT/backend/.env" ]] && grep -qE "^$1=.+" "$ROOT/ba
 backend_ai_service_key() {
     local value
     value="$(grep -E '^AI_SERVICE_API_KEY=' "$ROOT/backend/.env" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+    # For an unquoted value, drop an inline comment and trailing whitespace, as
+    # dotenv would. Without this the comment text becomes the secret this script
+    # hands the ai-service, so the pair stops matching and every authenticated
+    # ai-service route 403s. A quoted value is left alone: a '#' inside it is
+    # literal.
+    if [[ "$value" != *\"* && "$value" != *\'* ]]; then
+        value="$(printf '%s' "$value" | sed -e 's/#.*$//' -e 's/[[:space:]]*$//')"
+    fi
     # Strip one layer of surrounding quotes, as dotenv would.
     value="${value%\"}"
     value="${value#\"}"

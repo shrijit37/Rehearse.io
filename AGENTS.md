@@ -158,3 +158,10 @@ auth — dev only).
   not define Postgres.
 - Secrets live in Doppler (`platform`/`prd`, `REHEARSE_*`). `.env.example`
   documents names only.
+- The ai-service shared secret is one value in two places: the backend sends
+  `AI_SERVICE_API_KEY` as a Bearer token and `scripts/dev` passes that same value
+  to the ai-service as `API_KEY`, so the pair always matches — **unless the line
+  carries a trailing `#` comment**, which the dev script would forward as part of
+  the secret. `backend_ai_service_key` now strips comments and whitespace for
+  unquoted values; keep the value alone on its line anyway. When the pair does
+  mismatch, every backend→ai-service call 401s and the API reports it as a 500.

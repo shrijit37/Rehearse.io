@@ -38,19 +38,19 @@ health flags.
 ## Getting started (local dev)
 
 Prerequisites: Bun, Node 22+, Python 3.11+, and a reachable PostgreSQL.
-`make dev` uses `postgresql://postgres@localhost:5432/rehearse_io_dev`
+`make dev` (mode 1) uses `postgresql://postgres@localhost:5432/rehearse_io_dev`
 (the shared laptop instance by convention; the dev script starts the repo's own
 cluster at `~/.local/share/rehearse-pg` when it is down, and creates the
 database if it is missing).
 
 ```bash
 make setup                 # install all three services + create .env files
-make dev                   # the whole stack on this machine
+make dev                   # mode 1: the whole stack on this machine
 ```
 
-`./scripts/dev local` applies migrations, seeds the test accounts, then runs dev
-auth :4000, ai-service :8000, API :9000 and web :5173. It prints both test
-credentials when ready:
+Mode 1 (`./scripts/dev local`) applies migrations, seeds the test accounts,
+then runs dev auth :4000, ai-service :8000, API :9000 and web :5173. It prints
+both test credentials when ready:
 
 ```text
 candidate@shrijit.tech / admin123   candidate, onboarding already done
@@ -61,15 +61,25 @@ Sign in at <http://127.0.0.1:5173/signup> → "Sign in". These two accounts exis
 only in the local database and the local dev auth service — the shared auth
 service has no such users, and they must never be created there.
 
-Why a dev auth service exists at all: sign-in is delegated to
+Mode 2 (`make dev MODE=prod`) runs only the web dev server, pointed at the
+**deployed** API through a local relay that holds your real prod session:
+
+```bash
+make dev MODE=prod         # writes go to production data; sign in with your
+                           # shared-auth email + password (no Google/GitHub)
+make stop                  # stop whichever mode is running
+```
+
+Why a dev auth service and a relay exist at all: sign-in is delegated to
 `auth.shrijit.tech`, whose session cookie is scoped to `.shrijit.tech` and is
-never sent to `localhost`. The local stack replaces that service on localhost.
-Details: `backend/scripts/dev-auth.ts`.
+never sent to `localhost`. Mode 1 replaces that service on localhost; mode 2
+keeps the deployed session server-side in the relay. Details:
+`backend/scripts/dev-auth.ts`, `backend/scripts/dev-relay.ts`.
 
 Other flags: `--fresh` (drop and re-seed the dev database), `--no-ai`, `--stop`,
 `--help`. Ports are overridable (`WEB_PORT`, `API_PORT`, `AI_PORT`,
-`DEV_AUTH_PORT`). Logs land in `.dev/logs/<service>.log`, and the terminal shows
-them prefixed per service.
+`DEV_AUTH_PORT`, `DEV_RELAY_PORT`). Logs land in `.dev/logs/<service>.log`, and
+the terminal shows them prefixed per service.
 
 Health: backend `GET /health` (the fleet contract; Postgres is the critical
 check, `503` when down — there is no `/ready` route);
@@ -79,7 +89,7 @@ AI `GET /health` (reports `llm_available`).
 
 `make setup | dev | stop | test | lint | build | migrate | health` — each maps
 1:1 to a script in `scripts/`. CI calls these too, never framework commands
-directly. `make dev` takes `MODE=local` (the default).
+directly. `make dev` takes `MODE=local` (default) or `MODE=prod`.
 
 ## Tests
 

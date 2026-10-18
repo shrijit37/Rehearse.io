@@ -23,8 +23,9 @@ Two build/dev-time vars, both baked per run (`import.meta.env`):
 - `VITE_AUTH_URL` — shared auth service. Unset means `https://auth.shrijit.tech`.
 
 Vite resolves `VITE_*` from the process environment last, so an inline value
-wins over `frontend/.env*`. `make dev` (root) uses that to point both at the
-local stack. Prefer it over hand-setting these.
+wins over `frontend/.env*`. `make dev` (root) uses that: mode `local` points
+both at the local stack, `MODE=prod` points both at the relay that fronts the
+deployed API. Prefer it over hand-setting these.
 
 ## Routes
 

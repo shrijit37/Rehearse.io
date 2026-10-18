@@ -228,7 +228,11 @@ In git:
 - `.github/workflows/{ci,deploy-backend,deploy-frontend,server-debug}.yml`
 - `platform.yaml`, `frontend/platform.yaml`, `.env.example`, `.gitignore`
 - `scripts/{setup,dev,test,lint,build,migrate,health}` — CI calls these, never
-  framework commands directly
+  framework commands directly. `scripts/dev` also drives two developer modes
+  (`local`, `prod`); the dev-only helpers it starts — `backend/scripts/dev-auth.ts`,
+  `backend/scripts/dev-relay.ts`, `backend/scripts/seed-dev.ts` — are never
+  copied into the image (the Dockerfile copies only `src/`, `drizzle/` and the
+  configs) and are not part of any deploy path.
 
 Never in git:
 

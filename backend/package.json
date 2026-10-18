@@ -19,7 +19,8 @@
     "test:smoke": "bun tests/smoke.ts",
     "test:live-proxy": "bun tests/live-proxy.ts",
     "seed:dev": "bun scripts/seed-dev.ts",
-    "dev-auth": "bun scripts/dev-auth.ts"
+    "dev-auth": "bun scripts/dev-auth.ts",
+    "dev-relay": "bun scripts/dev-relay.ts"
   },
   "peerDependencies": {
     "typescript": "^5.9.3"

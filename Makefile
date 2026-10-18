@@ -1,5 +1,6 @@
 # Canonical Makefile. scripts/ holds the real logic.
-# `make dev` runs the full local stack; `make stop` stops it.
+# `make dev` runs the full local stack; `make dev MODE=prod` runs the web dev
+# server against the deployed API. `make stop` stops whichever is running.
 .PHONY: setup dev stop test lint build migrate health
 
 MODE ?= local

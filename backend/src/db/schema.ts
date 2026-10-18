@@ -69,6 +69,30 @@ export interface DsaResultItem {
     timeSpentSeconds: number;
 }
 
+/** One role in the candidate-maintained profile (users.experience). */
+export interface ProfileExperience {
+    title: string;
+    company: string;
+    period?: string;
+    summary?: string;
+}
+
+/** One qualification in the candidate-maintained profile (users.education). */
+export interface ProfileEducation {
+    school: string;
+    qualification?: string;
+    period?: string;
+}
+
+/** What the resume read produces; every field optional so a partial read still lands. */
+export interface ParsedProfile {
+    headline?: string;
+    location?: string;
+    skills?: string[];
+    experience?: ProfileExperience[];
+    education?: ProfileEducation[];
+}
+
 /** Shape stored in interview_sessions.dsa_problems. */
 export interface DsaProblem {
     /** Client-supplied or generated identifier. Optional on input. */
@@ -103,8 +127,22 @@ export const users = pgTable(
         resumeName: text("resume_name"),
         /** base64 PII, encrypted at rest when ENCRYPTION_KEY is set. */
         resume: text("resume"),
+        /** When the resume file on record was last replaced or first uploaded. */
+        resumeUpdatedAt: timestamp("resume_updated_at", { withTimezone: true }),
         photo: text("photo"),
         audio: text("audio"),
+        /**
+         * The structured profile the candidate maintains: filled by the resume
+         * read, then edited by hand, so the candidate's corrected record — not a
+         * raw PDF extraction — is what a practice round is generated from.
+         */
+        headline: text("headline"),
+        location: text("location"),
+        skills: jsonb("skills").$type<string[]>(),
+        experience: jsonb("experience").$type<ProfileExperience[]>(),
+        education: jsonb("education").$type<ProfileEducation[]>(),
+        /** When the resume last fed the structured fields. */
+        resumeParsedAt: timestamp("resume_parsed_at", { withTimezone: true }),
         consentGiven: boolean("consent_given").notNull().default(false),
         consentDate: timestamp("consent_date", { withTimezone: true }),
         consentVersion: varchar("consent_version", { length: 32 }),

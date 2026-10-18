@@ -78,9 +78,12 @@ There is no local password login and the app never stores passwords.
 AI scoring); recruiter interviews (behavioral / DSA-only / mixed); shareable
 invite links with multi-round progress; AI evaluation (spoken answers
 transcribed and scored over a Gemini Live session; static LLM review for
-code); per-candidate results
-dashboards; multi-recruiter organizations; consent + GDPR export + soft delete;
-a write-only audit log of security events with no viewer yet.
+code); per-candidate results dashboards; multi-recruiter organizations; consent +
+GDPR export + soft delete; a write-only audit log of security events with no
+viewer yet; **a candidate-maintained profile** — the record of what the
+platform holds (resume, headshot, voice sample) and the structured profile a
+practice round is generated from (headline, location, skills, roles,
+qualifications), readable and editable at `/profile`.
 
 **Constraints that future work must preserve.**
 
@@ -95,6 +98,14 @@ a write-only audit log of security events with no viewer yet.
 - **A resume must be a valid PDF or rehearsal start fails.** Resumes, photos,
   and audio are stored base64 in Postgres, encrypted when `ENCRYPTION_KEY` is
   set; S3 is not wired up.
+- **The candidate's display name is owned by the shared auth service.** Every
+  session rebuilds the local row from it, so a name edit must be written there
+  first or it is reverted at the next sign-in.
+- **The structured profile is the candidate's record, not the model's.** The
+  resume read only ever *proposes*: it writes nothing until the candidate
+  accepts specific sections, and a re-read must never silently replace a
+  correction. What a practice round reads is the corrected profile when there is
+  one, and the raw PDF text only as the fallback.
 - **The interview invite token is a 2-day JWT** and the candidate's only
   credential before sign-in. Raw invite tokens are shown once and stored
   sha256-hashed.

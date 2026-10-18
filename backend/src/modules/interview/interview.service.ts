@@ -314,23 +314,32 @@ export const submitInterviewAnswer = async (userId: string, input: SubmitAnswerI
     try {
         if (!isValidId(input.inviteId)) return { status: 400, message: "Invalid inviteId format" };
 
+        // Validated on an unlocked read; the write below re-checks authority
+        // against the locked row. The interview is read here, not inside the
+        // transaction, so a locked writer never needs a second pooled
+        // connection (`DATABASE_POOL_MAX` is 10).
+        const invite = await findInviteById(input.inviteId);
+        if (!invite) return { status: 404, message: "Invite not found" };
+        if (invite.candidateId !== userId) return { status: 403, message: "Not authorized" };
+        if (invite.status !== "started") return { status: 400, message: "Invite is not in started status" };
+
+        const interview = await findInterviewRowById(invite.interviewId);
+        if (!interview || !interview.questions[input.questionIndex]) {
+            return { status: 400, message: "Invalid question index" };
+        }
+
         // Written under the same row lock the live relay uses: both paths
         // rebuild the whole `results` array from the row they read, so without
         // the lock the slower writer erases the other's fresh answer.
-        const outcome = await mutateInvite<{ nextRound: string | null; completed: boolean }>(input.inviteId, async (invite) => {
-            if (invite.candidateId !== userId) {
+        const outcome = await mutateInvite<{ nextRound: string | null; completed: boolean }>(input.inviteId, (locked) => {
+            if (locked.candidateId !== userId) {
                 return { kind: "refuse" as const, status: 403, message: "Not authorized" };
             }
-            if (invite.status !== "started") {
+            if (locked.status !== "started") {
                 return { kind: "refuse" as const, status: 400, message: "Invite is not in started status" };
             }
 
-            const interview = await findInterviewRowById(invite.interviewId);
-            if (!interview || !interview.questions[input.questionIndex]) {
-                return { kind: "refuse" as const, status: 400, message: "Invalid question index" };
-            }
-
-            const results: ResultItem[] = [...invite.results];
+            const results: ResultItem[] = [...locked.results];
             const existingIndex = results.findIndex(
                 (r) => interview.questions.indexOf(r.question) === input.questionIndex,
             );

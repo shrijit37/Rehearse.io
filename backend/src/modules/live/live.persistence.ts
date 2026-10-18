@@ -51,17 +51,27 @@ export const UNSCORED_FEEDBACK = "This answer could not be scored. Your transcri
  */
 async function recordInterviewTurn(claims: LiveTicketClaims, turn: LiveTurn): Promise<void> {
     if (!claims.inviteId) return;
-    const outcome = await mutateInvite(claims.inviteId, async (invite) => {
-        if (invite.candidateId !== claims._id || invite.status !== "started") {
+    // What the locked transaction needs is read first, because it must stay on
+    // one pooled connection (`DATABASE_POOL_MAX` is 10, and a transaction that
+    // grabs a second connection under the row lock can starve the pool). An
+    // interview's questions are authored content, not what the racing writers
+    // mutate, so they are safe to read unlocked.
+    const current = await findInviteById(claims.inviteId);
+    if (!current) {
+        console.warn("[live] refusing to persist a turn: the session is no longer open");
+        return;
+    }
+    const interview = await findInterviewRowById(current.interviewId);
+    const questions = interview?.questions ?? [];
+
+    const outcome = await mutateInvite(claims.inviteId, (locked) => {
+        // Re-checked against the locked row: the unlockable part of the decision
+        // is only what was read above.
+        if (locked.candidateId !== claims._id || locked.status !== "started") {
             return { kind: "refuse" as const, status: 409, message: "This session is no longer open" };
         }
-        const interview = await findInterviewRowById(invite.interviewId);
-        if (!interview) {
-            return { kind: "refuse" as const, status: 404, message: "Interview not found" };
-        }
 
-        const questions = interview.questions ?? [];
-        const results: ResultItem[] = [...invite.results];
+        const results: ResultItem[] = [...locked.results];
         const record: ResultItem = {
             question: questions[turn.questionIndex] ?? turn.question,
             transcription: turn.transcription,

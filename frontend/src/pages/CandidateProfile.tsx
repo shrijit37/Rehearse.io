@@ -20,6 +20,7 @@ import {
 import { api, type ApiError } from "@/lib/api";
 import { updateAccountName } from "@/lib/auth-client";
 import { label } from "@/lib/labels";
+import { readStoredUser, writeStoredUser } from "@/lib/session";
 import type {
 	ProfileEducation,
 	ProfileExperience,
@@ -545,15 +546,15 @@ const CandidateProfile = () => {
 		}
 		if (!(await savePlate("identity", "Name", { name: next }, "identity"))) return;
 		try {
-			const cached = localStorage.getItem("user");
+			const cached = readStoredUser();
 			if (cached) {
-				localStorage.setItem("user", JSON.stringify({ ...JSON.parse(cached), name: next }));
+				writeStoredUser({ ...cached, name: next });
 				window.dispatchEvent(new Event("storage"));
 			}
 		} catch {
-			// Storage disabled, over quota, or an unreadable cached user — which
-			// the route guard drops on the next load anyway. The name is saved
-			// either way: the record is the truth, this is only the local cache.
+			// Storage disabled or over quota: the cache keeps the old name until
+			// the next sign-in rebuilds it. The name is saved either way — the
+			// record is the truth, this is only the local cache.
 		}
 	};
 

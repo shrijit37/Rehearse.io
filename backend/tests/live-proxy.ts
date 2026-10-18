@@ -228,6 +228,10 @@ const saves: { userId: string; turns: LiveTurn[] }[] = [];
 let scoringFails = false;
 let saveStatus = 201;
 let saveThrows = false;
+// Lets a test hold `recordTurn` open and observe what has *not* happened yet —
+// the ordering between persisting an answer and telling the client its score.
+let recordTurnHold = false;
+let releaseRecordTurn: () => void = () => {};
 attachLiveUpgrade(server, {
     async score(question, transcription) {
         scored.push({ question, transcription });
@@ -236,6 +240,11 @@ attachLiveUpgrade(server, {
     },
     async recordTurn(_claims, turn) {
         recorded.push(turn);
+        if (recordTurnHold) {
+            await new Promise<void>((resolve) => {
+                releaseRecordTurn = resolve;
+            });
+        }
     },
     async resolveQuestion(_claims, index) {
         return `database question ${index}`;
@@ -654,6 +663,31 @@ check(
     (askedFromDatabase ?? "").includes("database question 1"),
     String(askedFromDatabase),
 );
+
+// Why a submit cannot race the write. The page's Next/Finish button lives inside
+// the branch that renders a score (BehavioralRound), and the relay sends that
+// score only after `recordTurn` resolves — so an answer cannot be submitted while
+// its own turn is still on the way to the invite. Held open here to assert the
+// half of it that is observable from the client.
+recordTurnHold = true;
+const turnFrames = (): unknown[] => interviewClient.frames.filter((frame) => frame.proxy?.type === "turn");
+const turnsBeforeAnswer = turnFrames().length;
+interviewClient.socket.send(JSON.stringify({ realtimeInput: { audio: { data: "AAAA", mimeType: "audio/pcm;rate=16000" } } }));
+await sleep(400);
+check(
+    "no score reaches the client while its turn is still being written",
+    turnFrames().length === turnsBeforeAnswer,
+    `turn frames=${JSON.stringify(turnFrames())}`,
+);
+releaseRecordTurn();
+recordTurnHold = false;
+check("the score reaches the client once the turn is written", await waitUntil(() => turnFrames().length > 0, 4000));
+check(
+    "the interview answer was written against the question it answered",
+    recorded.some((turn) => turn.question === "database question 1" && turn.transcription === "answer 1"),
+    JSON.stringify(recorded.map((turn) => `${turn.question} <- ${turn.transcription}`)),
+);
+
 interviewClient.socket.close();
 await waitUntil(() => liveSessionCount() === 0, 3000);
 

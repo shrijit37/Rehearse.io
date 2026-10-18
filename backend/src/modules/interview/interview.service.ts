@@ -13,8 +13,10 @@ import {
     listInterviewSessions,
     listInvitesForCandidate,
     listInvitesForInterview,
+    mutateInvite,
     updateInterviewSession,
     updateInvite,
+    type InvitePatch,
 } from "../../db/repositories/interviews";
 import { withId } from "../../db/shape";
 import type { DsaResultItem, ResultItem } from "../../db/schema";
@@ -311,55 +313,67 @@ export const acceptInvite = async (rawToken: string): Promise<InterviewResult> =
 export const submitInterviewAnswer = async (userId: string, input: SubmitAnswerInput): Promise<InterviewResult> => {
     try {
         if (!isValidId(input.inviteId)) return { status: 400, message: "Invalid inviteId format" };
-        const invite = await findInviteById(input.inviteId);
-        if (!invite) return { status: 404, message: "Invite not found" };
-        if (invite.candidateId !== userId) return { status: 403, message: "Not authorized" };
-        if (invite.status !== "started") return { status: 400, message: "Invite is not in started status" };
 
-        const interview = await findInterviewRowById(invite.interviewId);
-        if (!interview || !interview.questions[input.questionIndex]) {
-            return { status: 400, message: "Invalid question index" };
-        }
-
-        const results: ResultItem[] = [...invite.results];
-        const existingIndex = results.findIndex(
-            (r) => interview.questions.indexOf(r.question) === input.questionIndex,
-        );
-        if (existingIndex === -1) {
-            results.push({
-                question: interview.questions[input.questionIndex]!,
-                transcription: "",
-                score: null,
-                feedback: "",
-            });
-        }
-
-        const hasDsa = (interview.dsaProblems?.length || 0) > 0;
-        const behavioralDone = results.length >= (interview.questions.length || 0);
-
-        const patch: Parameters<typeof updateInvite>[1] = { results };
-        let nextRound: string | null = null;
-        let completed = false;
-        if (behavioralDone) {
-            if ((interview.interviewType === "mixed" || interview.interviewType === "dsa") && hasDsa) {
-                patch.currentRound = "dsa";
-                nextRound = "dsa";
-            } else {
-                patch.status = "completed";
-                patch.currentRound = "done";
-                patch.completedAt = new Date();
-                completed = true;
+        // Written under the same row lock the live relay uses: both paths
+        // rebuild the whole `results` array from the row they read, so without
+        // the lock the slower writer erases the other's fresh answer.
+        const outcome = await mutateInvite<{ nextRound: string | null; completed: boolean }>(input.inviteId, async (invite) => {
+            if (invite.candidateId !== userId) {
+                return { kind: "refuse" as const, status: 403, message: "Not authorized" };
             }
+            if (invite.status !== "started") {
+                return { kind: "refuse" as const, status: 400, message: "Invite is not in started status" };
+            }
+
+            const interview = await findInterviewRowById(invite.interviewId);
+            if (!interview || !interview.questions[input.questionIndex]) {
+                return { kind: "refuse" as const, status: 400, message: "Invalid question index" };
+            }
+
+            const results: ResultItem[] = [...invite.results];
+            const existingIndex = results.findIndex(
+                (r) => interview.questions.indexOf(r.question) === input.questionIndex,
+            );
+            if (existingIndex === -1) {
+                results.push({
+                    question: interview.questions[input.questionIndex]!,
+                    transcription: "",
+                    score: null,
+                    feedback: "",
+                });
+            }
+
+            const hasDsa = (interview.dsaProblems?.length || 0) > 0;
+            const behavioralDone = results.length >= (interview.questions.length || 0);
+
+            const patch: InvitePatch = { results };
+            let nextRound: string | null = null;
+            let completed = false;
+            if (behavioralDone) {
+                if ((interview.interviewType === "mixed" || interview.interviewType === "dsa") && hasDsa) {
+                    patch.currentRound = "dsa";
+                    nextRound = "dsa";
+                } else {
+                    patch.status = "completed";
+                    patch.currentRound = "done";
+                    patch.completedAt = new Date();
+                    completed = true;
+                }
+            }
+            return { kind: "write" as const, patch, data: { nextRound, completed } };
+        });
+
+        if (outcome.refused) {
+            return { status: outcome.refused.status, message: outcome.refused.message };
         }
-        const saved = await updateInvite(invite.id, patch);
 
         return {
             status: 200,
             message: "Answer submitted",
             data: {
-                invite: saved ?? invite,
-                ...(nextRound ? { nextRound } : {}),
-                ...(completed ? { completed: true } : {}),
+                invite: outcome.invite,
+                ...(outcome.data?.nextRound ? { nextRound: outcome.data.nextRound } : {}),
+                ...(outcome.data?.completed ? { completed: true } : {}),
             },
         };
     } catch (error: unknown) {
@@ -437,7 +451,7 @@ export const evaluateInterviewDsa = async (userId: string, input: EvaluateInterv
         const problem = (interview.dsaProblems || [])[input.problemIndex];
         if (!problem) return { status: 400, message: "Invalid problem index" };
 
-        const patch: Parameters<typeof updateInvite>[1] = {};
+        const patch: InvitePatch = {};
         if (invite.status === "pending") {
             patch.status = "started";
             patch.startedAt = invite.startedAt || new Date();

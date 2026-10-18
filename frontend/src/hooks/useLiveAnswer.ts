@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import {
 	startLiveSession,
 	type LiveSession,
@@ -49,19 +49,30 @@ export function useLiveAnswer(options: UseLiveAnswerOptions): LiveAnswer {
 	const [transcript, setTranscript] = useState("");
 	const [generation, setGeneration] = useState(0);
 
-	const latestRef = useRef(options);
 	const sessionRef = useRef<LiveSession | null>(null);
 	/** Tears down the session the running effect owns, in flight or open. */
 	const leaveRef = useRef<() => void>(() => {});
+	/**
+	 * An `ask` that arrived while the ticket was still being minted. Dropping it
+	 * would leave the coach on the previous question while the UI has moved on,
+	 * and the answer would later be scored against the wrong one.
+	 */
+	const pendingAskRef = useRef<{ index: number; question?: string } | null>(null);
 
-	useEffect(() => {
-		latestRef.current = options;
-	});
+	// Effect Events read the latest props/callbacks without making the long-lived
+	// session depend on a re-render: the request it starts on and the callbacks
+	// it reports through are always the current ones.
+	const startOptions = useEffectEvent(() => ({
+		request: options.request,
+		tokenOverride: options.tokenOverride,
+	}));
+	const reportTurn = useEffectEvent((turn: LiveTurnResult) => options.onTurn?.(turn));
+	const reportError = useEffectEvent((message: string) => options.onError?.(message));
 
 	useEffect(() => {
 		if (!active) return;
 
-		const { request, tokenOverride } = latestRef.current;
+		const { request, tokenOverride } = startOptions();
 		let cancelled = false;
 
 		setState("connecting");
@@ -75,6 +86,7 @@ export function useLiveAnswer(options: UseLiveAnswerOptions): LiveAnswer {
 			cancelled = true;
 			sessionRef.current?.stop();
 			sessionRef.current = null;
+			pendingAskRef.current = null;
 		};
 		leaveRef.current = leave;
 
@@ -87,37 +99,45 @@ export function useLiveAnswer(options: UseLiveAnswerOptions): LiveAnswer {
 			onTranscript: (speaker, text) => {
 				if (!cancelled && speaker === "you") setTranscript(text);
 			},
-			// Read at call time: a session lives across many renders, and a handler
-			// captured when it started would keep whatever state it closed over —
-			// the pages index results by question, so a stale one misfiles them.
+			// Reported through an effect event: a session lives across many
+			// renders, and a handler captured when it started would keep whatever
+			// state it closed over — the pages index results by question, so a
+			// stale one misfiles them.
 			onTurn: (turn) => {
 				if (cancelled) return;
 				if (turn.transcription) setTranscript(turn.transcription);
-				latestRef.current.onTurn?.(turn);
+				reportTurn(turn);
 			},
 			onError: (message) => {
-				if (!cancelled) latestRef.current.onError?.(message);
+				if (!cancelled) reportError(message);
 			},
 		})
 			.then((session) => {
-				if (cancelled) session.stop();
-				else sessionRef.current = session;
+				if (cancelled) {
+					session.stop();
+					return;
+				}
+				sessionRef.current = session;
+				const pending = pendingAskRef.current;
+				if (pending) {
+					pendingAskRef.current = null;
+					session.ask(pending.index, pending.question);
+				}
 			})
 			.catch((error: unknown) => {
 				if (cancelled) return;
 				// `startLiveSession` has already reported the "error" state; this is
 				// the message that explains it (no ticket, or every coach busy).
-				latestRef.current.onError?.(
-					error instanceof Error
-						? error.message
-						: "Could not start the live session.",
-				);
+				reportError(error instanceof Error ? error.message : "Could not start the live session.");
 			});
 
 		return () => {
 			leave();
 			setState("idle");
 		};
+		// Effect Events are stable by contract and must not appear in the deps
+		// array; eslint-plugin-react-hooks 5.x predates `useEffectEvent`.
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- see above
 	}, [active, generation]);
 
 	const stop = useCallback(() => {
@@ -128,7 +148,15 @@ export function useLiveAnswer(options: UseLiveAnswerOptions): LiveAnswer {
 	const restart = useCallback(() => setGeneration((value) => value + 1), []);
 
 	const ask = useCallback((questionIndex: number, question?: string) => {
-		sessionRef.current?.ask(questionIndex, question);
+		const session = sessionRef.current;
+		if (!session) {
+			// Still connecting (or between sessions): remember it, replayed when
+			// the session lands. The latest call wins — a question advance is
+			// state, not a queue.
+			pendingAskRef.current = { index: questionIndex, question };
+			return;
+		}
+		session.ask(questionIndex, question);
 	}, []);
 
 	return { state, transcript, stop, restart, ask };

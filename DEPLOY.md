@@ -149,13 +149,15 @@ gone — nothing sends data to Groq. Text inference runs on any OpenAI-compatibl
 endpoint named by `LLM_BASE_URL`/`LLM_MODEL`/`LLM_API_KEY` (not provisioned
 either), and nothing in this repo deploys ai-service at all.
 
-**Voice (Live API).** The spoken-session transport expects
-`GEMINI_API_KEY` in the app env, added as
-`${{vault.doppler-prod.REHEARSE_GEMINI_API_KEY}}` alongside the refs above
-(see `VOICE.md` for the provider decision). It is **not provisioned yet**: while
-it is unset, `POST /api/live/session` answers `503 Voice sessions are not
-configured on this server` and every other route is unaffected, so the backend
-boots and deploys without it. The socket itself is `wss://<api-host>/ws/live`,
+**Voice (Live API).** The spoken-session transport expects two secrets in the
+app env: `GEMINI_API_KEY` as
+`${{vault.doppler-prod.REHEARSE_GEMINI_API_KEY}}` and `LIVE_TICKET_SECRET` (a
+dedicated random signer for the 60-second tickets; never `JWT_SECRET`) as
+`${{vault.doppler-prod.REHEARSE_LIVE_TICKET_SECRET}}`, alongside the refs above
+(see `VOICE.md` for the provider decision). Neither is **provisioned yet**:
+while either is unset, `POST /api/live/session` answers `503 Voice sessions are
+not configured on this server` and every other route is unaffected, so the backend
+boots and deploys without them. The socket itself is `wss://<api-host>/ws/live`,
 upgraded from the same HTTP server and port as the REST API — there is no second
 service and no separate Traefik router. **Long-lived upgrades through this
 Traefik have not been proven**: nothing has ever held a WebSocket open through

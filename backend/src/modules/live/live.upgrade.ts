@@ -6,7 +6,7 @@ import { env } from "../../config/env";
 import { LIVE_WS_PATH } from "./live.config";
 import { relayLiveSession } from "./live.relay";
 import { liveDeps, type LiveDeps } from "./live.persistence";
-import { consumeLiveTicket, verifyLiveTicket } from "./live.service";
+import { consumeLiveTicket, liveConfigured, verifyLiveTicket } from "./live.service";
 
 /**
  * The ticket arrives as a WebSocket subprotocol rather than a query parameter:
@@ -37,6 +37,10 @@ function refuse(socket: Duplex, status: number, message: string): void {
 export function attachLiveUpgrade(server: Server, deps: LiveDeps = liveDeps): void {
     const wss = new WebSocketServer({
         noServer: true,
+        // Client frames are small JSON control messages and 100 ms audio
+        // chunks; anything past this is a broken or hostile client, and `ws`
+        // closes it instead of buffering it into relay memory.
+        maxPayload: 256 * 1024,
         // The browser fails the connection unless the server echoes one of the
         // protocols it offered, so "bearer" must be selected explicitly.
         handleProtocols: (protocols) => (protocols.has("bearer") ? "bearer" : false),
@@ -49,9 +53,14 @@ export function attachLiveUpgrade(server: Server, deps: LiveDeps = liveDeps): vo
             return;
         }
 
-        const apiKey = env.GEMINI_API_KEY ?? "";
+        // A missing secret is a misconfiguration, not a bad ticket: it gets its
+        // own refusal so the two never look alike in a report.
+        if (!liveConfigured()) {
+            refuse(socket, 500, "Live sessions are not configured");
+            return;
+        }
         const claims = verifyLiveTicket(ticketFromRequest(req.headers));
-        if (!apiKey || !claims) {
+        if (!claims) {
             refuse(socket, 401, "Invalid or expired live ticket");
             return;
         }
@@ -61,7 +70,7 @@ export function attachLiveUpgrade(server: Server, deps: LiveDeps = liveDeps): vo
         }
 
         wss.handleUpgrade(req, socket, head, (client) => {
-            relayLiveSession({ client, claims, apiKey, deps });
+            relayLiveSession({ client, claims, apiKey: env.GEMINI_API_KEY!, deps });
         });
     });
 }

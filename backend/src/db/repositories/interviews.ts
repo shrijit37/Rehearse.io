@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../index";
 import { candidateInvites, interviewSessions } from "../schema";
-import { withId, type DsaResultItem, type InviteRow, type InterviewRow, type ResultItem } from "../shape";
+import { withId, type DsaResultItem, type InviteRow, type InterviewRow, type ResultItem, type WithId } from "../shape";
 import { findUsersByIds } from "./users";
 
 /** Hashes an invite token for storage/lookup. Raw tokens are never persisted. */
@@ -139,6 +139,62 @@ export async function updateInvite(id: string, patch: InvitePatch) {
         .where(eq(candidateInvites.id, id))
         .returning();
     return rows[0] ? withId(rows[0]) : null;
+}
+
+export type InviteDecision<T = undefined> =
+    | { kind: "write"; patch: InvitePatch; data?: T }
+    | { kind: "refuse"; status: number; message: string };
+
+export interface InviteMutationOutcome<T> {
+    /** The persisted row, when the write applied. */
+    invite: WithId<InviteRow> | null;
+    /** What the decision computed alongside the patch, when the write applied. */
+    data?: T;
+    /** The refusal to answer with, when it did not. */
+    refused?: { status: number; message: string };
+}
+
+/**
+ * One locked read-modify-write of an invite.
+ *
+ * Two writers rebuild `results` from the row they read, seconds apart: the live
+ * relay records a scored answer while the candidate's "Next" posts to
+ * `/api/interviews/candidate/submit`. Without a lock the later write overwrites
+ * the other's fresh array with its own stale snapshot, silently dropping an
+ * answer or a round transition. The row is selected `FOR UPDATE` inside a
+ * transaction and the decision is made from that locked row, so the writers
+ * serialize instead of racing.
+ *
+ * `decide` sees the row as it is inside the lock and returns the patch to write,
+ * or a refusal carrying the HTTP status the caller should answer with.
+ */
+export async function mutateInvite<T = undefined>(
+    id: string,
+    decide: (invite: InviteRow) => InviteDecision<T> | Promise<InviteDecision<T>>,
+): Promise<InviteMutationOutcome<T>> {
+    return db.transaction(async (tx) => {
+        const rows = await tx
+            .select()
+            .from(candidateInvites)
+            .where(eq(candidateInvites.id, id))
+            .for("update");
+        const invite = rows[0];
+        if (!invite) {
+            return { invite: null, refused: { status: 404, message: "Invite not found" } };
+        }
+
+        const decision = await decide(invite);
+        if (decision.kind === "refuse") {
+            return { invite: null, refused: { status: decision.status, message: decision.message } };
+        }
+
+        const updated = await tx
+            .update(candidateInvites)
+            .set({ ...decision.patch, updatedAt: new Date() })
+            .where(eq(candidateInvites.id, id))
+            .returning();
+        return { invite: withId(updated[0]), data: decision.data };
+    });
 }
 
 export async function listInvitesForInterview(interviewId: string) {

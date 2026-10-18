@@ -91,9 +91,10 @@ Three things ride this socket that are ours, not Google's:
 | `{"proxy":{"type":"ask","index":n,"question":"…"}}` | browser → API | advances the question **inside** the session. Reconnecting per question stored a separate practice session per question, greeted the candidate again each time and spent one of the four slots per question |
 | `{"proxy":{"type":"turn",…}}` | API → browser | the only way the page learns a score: the score is decided server-side and the page has no audio to upload |
 
-Tickets are 60 s, signed with a key **derived** from `JWT_SECRET` (so a ticket
-cannot open the REST API) and **single-use** — a bearer value that lived for a
-minute would otherwise buy a second upstream session and a second slot.
+Tickets are 60 s, signed with a dedicated `LIVE_TICKET_SECRET` (never
+`JWT_SECRET`, so a ticket cannot open the REST API) and **single-use** — a
+bearer value that lived for a minute would otherwise buy a second upstream
+session and a second slot.
 
 ## Client requirements
 

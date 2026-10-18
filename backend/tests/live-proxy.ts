@@ -18,6 +18,7 @@
 process.env.DATABASE_URL ||= "postgresql://x:x@127.0.0.1:1/none";
 process.env.JWT_SECRET ||= "test-secret";
 process.env.GEMINI_API_KEY ||= "test-key";
+process.env.LIVE_TICKET_SECRET ||= "test-ticket-secret";
 // Two slots makes the ceiling observable without opening five sockets.
 process.env.GEMINI_LIVE_MAX_SESSIONS = "2";
 // Kept short so the watchdog case finishes inside the test budget.
@@ -26,6 +27,7 @@ process.env.GEMINI_LIVE_SETUP_TIMEOUT_MS = "700";
 import { createServer } from "node:http";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import express from "express";
 import { WebSocketServer, WebSocket as WsClient } from "ws";
 import type { LiveTurn } from "../src/modules/live/live.persistence";
 
@@ -318,6 +320,26 @@ check("no ticket is not counted as a session", liveSessionCount() === 0, `count=
 
 const forged = await openClient("not-a-real-ticket");
 check("forged ticket is refused", forged.socket.readyState !== WsClient.OPEN, `state=${forged.socket.readyState}`);
+
+// The minting route's own auth gate: the socket handshake is covered above, but
+// an anonymous or forged caller must not reach the handler either. (A valid
+// bearer is not asserted here: it would need a database lookup.) Imported
+// dynamically for the same reason as the modules above — the router reaches
+// `env`, which reads `process.env` at module scope.
+const mintApp = express();
+mintApp.use(express.json());
+mintApp.use("/api/live", (await import("../src/modules/live/live.routes")).default);
+const mintServer = mintApp.listen(0);
+const mintUrl = `http://127.0.0.1:${listeningPort(mintServer)}/api/live/session`;
+const mintInit = { method: "POST", headers: { "content-type": "application/json" }, body: "{}" } as const;
+const anonymousMint = await fetch(mintUrl, mintInit);
+check("ticket minting refuses an anonymous caller", anonymousMint.status === 401, `status=${anonymousMint.status}`);
+const forgedMint = await fetch(mintUrl, {
+    ...mintInit,
+    headers: { ...mintInit.headers, authorization: "Bearer not-a-jwt" },
+});
+check("ticket minting refuses a forged bearer", forgedMint.status === 401, `status=${forgedMint.status}`);
+mintServer.close();
 
 console.log("\n== relay ==");
 

@@ -24,8 +24,13 @@ export const LIVE_TICKET_TTL_SECONDS = 60;
 export const LIVE_MAX_INSTRUCTION_CHARS = 2000;
 export const LIVE_MAX_KICKOFF_CHARS = 400;
 
-/** Shared with the request schema and the in-session question-advance frames. */
-export const LIVE_MAX_QUESTIONS = 8;
+/**
+ * The most questions a session can address. Not just a schema bound: an
+ * interview may hold at most this many (`interview.validation.ts` caps creation
+ * there), because a longer list would contain questions no spoken session could
+ * ever reach, and an advance past this index is refused by the relay.
+ */
+export const LIVE_MAX_QUESTIONS = 20;
 export const LIVE_MAX_QUESTION_CHARS = 600;
 
 /** Upstream reconnects allowed after a goAway before the session is given up on. */

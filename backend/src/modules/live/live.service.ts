@@ -44,12 +44,15 @@ export interface LiveSessionHandle {
 }
 
 /**
- * Tickets are signed with a key derived from JWT_SECRET, not JWT_SECRET itself:
- * `authenticateToken` accepts anything signed with the shared secret and trusts
- * its `_id`, so a ticket signed directly would also open the REST API for its
- * lifetime. Deriving a separate key keeps the two capabilities disjoint.
+ * Live tickets are signed with their own secret — not `JWT_SECRET`, and not a
+ * key derived from it: `authenticateToken` accepts anything signed with the
+ * shared secret and trusts its `_id`, so a ticket signed with a derivation of
+ * it would be one refactor away from also opening the REST API. A dedicated
+ * secret makes the two capabilities disjoint by configuration.
  */
-const ticketSecret = crypto.createHmac("sha256", env.JWT_SECRET).update("live-ticket").digest("hex");
+export function liveConfigured(): boolean {
+    return Boolean(env.GEMINI_API_KEY && env.LIVE_TICKET_SECRET);
+}
 
 // ---------------------------------------------------------------------------
 // Slot registry — the free-tier ceiling is the binding constraint, not rate.
@@ -78,9 +81,15 @@ export function liveSessionCount(): number {
 // ---------------------------------------------------------------------------
 
 export function mintLiveTicket(claims: Omit<LiveTicketClaims, "purpose" | "jti">): string {
+    const secret = env.LIVE_TICKET_SECRET;
+    if (!secret || !env.GEMINI_API_KEY) {
+        // Unreachable through `startLiveSession`, which refuses first; loud here
+        // because a silent empty-secret signature would verify against itself.
+        throw new Error("Live sessions are not configured (LIVE_TICKET_SECRET / GEMINI_API_KEY missing).");
+    }
     return jwt.sign(
         { ...claims, purpose: "live", jti: crypto.randomUUID() },
-        ticketSecret,
+        secret,
         { expiresIn: LIVE_TICKET_TTL_SECONDS },
     );
 }
@@ -105,9 +114,10 @@ export function consumeLiveTicket(id: string): boolean {
 }
 
 export function verifyLiveTicket(token: string): LiveTicketClaims | null {
-    if (!token) return null;
+    const secret = env.LIVE_TICKET_SECRET;
+    if (!token || !secret) return null;
     try {
-        const claims = jwt.verify(token, ticketSecret) as LiveTicketClaims;
+        const claims = jwt.verify(token, secret) as LiveTicketClaims;
         return claims.purpose === "live" ? claims : null;
     } catch {
         return null;
@@ -146,7 +156,7 @@ export async function startLiveSession(
     userId: string,
     input: StartLiveSessionInput,
 ): Promise<ServiceResult<LiveSessionHandle>> {
-    if (!env.GEMINI_API_KEY) {
+    if (!liveConfigured()) {
         return { status: 503, message: "Voice sessions are not configured on this server." };
     }
 

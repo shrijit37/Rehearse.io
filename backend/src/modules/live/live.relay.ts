@@ -51,26 +51,36 @@ function closableCode(code: number): number {
 }
 
 /**
- * The one frame the browser sends that is not a Live frame: "ask question N".
- * The socket outlives a single question, so moving on is a control message
- * rather than a reconnect — which is what keeps a practice run one session in
- * the database, one greeting, and one slot against the concurrency cap.
+ * Classifies one text frame from the browser.
+ *
+ * The browser speaks the Live protocol directly, so anything that is not our
+ * `{proxy: ...}` envelope is relayed verbatim. A frame that *is* our envelope
+ * but fails validation must never be relayed: the upstream understands only
+ * Live frames, so forwarding a malformed advance would kill the session
+ * upstream instead of being ignored here.
  */
-function parseQuestionRequest(payload: string): { index: number; question?: string } | null {
+function classifyClientFrame(
+    payload: string,
+): { kind: "ask"; index: number; question?: string } | { kind: "drop" } | { kind: "forward" } {
     let parsed: unknown;
     try {
         parsed = JSON.parse(payload);
     } catch {
-        return null;
+        return { kind: "forward" };
     }
-    if (typeof parsed !== "object" || parsed === null) return null;
-    const proxy = (parsed as { proxy?: unknown }).proxy;
-    if (typeof proxy !== "object" || proxy === null) return null;
-    const { type, index, question } = proxy as { type?: unknown; index?: unknown; question?: unknown };
-    if (type !== "ask") return null;
-    const parsedIndex = Number(index);
-    if (!Number.isInteger(parsedIndex) || parsedIndex < 0 || parsedIndex >= LIVE_MAX_QUESTIONS) return null;
-    return { index: parsedIndex, question: typeof question === "string" ? question : undefined };
+    if (typeof parsed !== "object" || parsed === null || !("proxy" in parsed)) return { kind: "forward" };
+    const proxy = parsed.proxy;
+    if (typeof proxy !== "object" || proxy === null) return { kind: "forward" };
+
+    const type = "type" in proxy ? proxy.type : undefined;
+    if (type !== "ask") return { kind: "drop" };
+
+    const parsedIndex = Number("index" in proxy ? proxy.index : Number.NaN);
+    if (!Number.isInteger(parsedIndex) || parsedIndex < 0 || parsedIndex >= LIVE_MAX_QUESTIONS) {
+        return { kind: "drop" };
+    }
+    const question = "question" in proxy ? proxy.question : undefined;
+    return { kind: "ask", index: parsedIndex, question: typeof question === "string" ? question : undefined };
 }
 
 function buildSetup(claims: LiveTicketClaims, handle: string | null) {
@@ -338,9 +348,15 @@ export function relayLiveSession({ client, claims, apiKey, deps = liveDeps }: Re
         // through unchanged in case a client ever streams raw PCM.
         const payload = isBinary ? Buffer.from(data as Buffer) : data.toString();
         if (!isBinary && typeof payload === "string") {
-            const next = parseQuestionRequest(payload);
-            if (next) {
-                askQuestion(next.index, next.question);
+            const classified = classifyClientFrame(payload);
+            if (classified.kind === "ask") {
+                askQuestion(classified.index, classified.question);
+                return;
+            }
+            if (classified.kind === "drop") {
+                // Our envelope, unusable: counted as refused, never relayed —
+                // the upstream would close the session over a non-Live frame.
+                console.warn("[live] dropped an unusable question frame");
                 return;
             }
         }

@@ -1,4 +1,5 @@
 import z from "zod";
+import { LIVE_MAX_QUESTIONS } from "../live/live.config";
 
 // DSA problems come from the AI service and their example inputs/outputs may
 // arrive as strings, arrays, or objects. Coerce anything non-string to a JSON
@@ -37,7 +38,10 @@ export const createInterviewSchema = z.object({
     organizationId: z.string().min(1),
     expiresAt: z.string().min(1),
     interviewType: z.enum(["behavioral", "dsa", "mixed"]).optional().default("behavioral"),
-    questions: z.array(z.string()).optional().default([]),
+    // Bounded to what a spoken session can address: the live relay refuses an
+    // advance past its cap, so a longer list would hold questions no session
+    // could ever reach.
+    questions: z.array(z.string()).max(LIVE_MAX_QUESTIONS).optional().default([]),
     dsaProblems: z.array(dsaProblemSchema).optional().default([]),
     dsaDifficulty: z.enum(["easy", "medium", "hard", "mixed"]).optional().default("medium"),
     status: z.enum(["draft", "active"]).optional().default("draft"),

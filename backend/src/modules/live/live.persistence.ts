@@ -1,5 +1,5 @@
 import type { ResultItem } from "../../db/schema";
-import { findInviteById, findInterviewRowById, updateInvite } from "../../db/repositories/interviews";
+import { findInviteById, findInterviewRowById, mutateInvite } from "../../db/repositories/interviews";
 import { saveSession } from "../rehearsal/rehearsal.service";
 import { scoreAnswer, type AnswerScore } from "./live.scoring";
 import type { LiveTicketClaims } from "./live.service";
@@ -51,27 +51,33 @@ export const UNSCORED_FEEDBACK = "This answer could not be scored. Your transcri
  */
 async function recordInterviewTurn(claims: LiveTicketClaims, turn: LiveTurn): Promise<void> {
     if (!claims.inviteId) return;
-    const invite = await findInviteById(claims.inviteId);
-    if (!invite || invite.candidateId !== claims._id || invite.status !== "started") {
-        console.warn("[live] refusing to persist a turn for an invite that is no longer open");
-        return;
+    const outcome = await mutateInvite(claims.inviteId, async (invite) => {
+        if (invite.candidateId !== claims._id || invite.status !== "started") {
+            return { kind: "refuse" as const, status: 409, message: "This session is no longer open" };
+        }
+        const interview = await findInterviewRowById(invite.interviewId);
+        if (!interview) {
+            return { kind: "refuse" as const, status: 404, message: "Interview not found" };
+        }
+
+        const questions = interview.questions ?? [];
+        const results: ResultItem[] = [...invite.results];
+        const record: ResultItem = {
+            question: questions[turn.questionIndex] ?? turn.question,
+            transcription: turn.transcription,
+            score: turn.score,
+            feedback: turn.feedback,
+        };
+        const existing = results.findIndex((r) => r.question === record.question);
+        if (existing >= 0) results[existing] = record;
+        else results.push(record);
+
+        return { kind: "write" as const, patch: { results } };
+    });
+    if (!outcome.invite) {
+        // The fixed event only: an invite id maps back to a candidate.
+        console.warn("[live] refusing to persist a turn: the session is no longer open");
     }
-    const interview = await findInterviewRowById(invite.interviewId);
-    if (!interview) return;
-
-    const questions = interview.questions ?? [];
-    const results: ResultItem[] = [...invite.results];
-    const record: ResultItem = {
-        question: questions[turn.questionIndex] ?? turn.question,
-        transcription: turn.transcription,
-        score: turn.score,
-        feedback: turn.feedback,
-    };
-    const existing = results.findIndex((r) => r.question === record.question);
-    if (existing >= 0) results[existing] = record;
-    else results.push(record);
-
-    await updateInvite(invite.id, { results });
 }
 
 export const liveDeps: LiveDeps = {

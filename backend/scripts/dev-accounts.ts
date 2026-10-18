@@ -20,7 +20,25 @@ export interface DevAccount {
     onboarded: boolean;
 }
 
-export const DEV_PASSWORD = process.env.DEV_AUTH_PASSWORD ?? "admin123";
+/**
+ * The password the seeded accounts are given. It comes from the environment
+ * rather than a literal here: the value is a local-only fixture for accounts
+ * that exist nowhere else, and `./scripts/dev` is what puts it in the
+ * environment (and what prints it). Missing means the stack was not started
+ * through that script, so say so instead of minting a second password that the
+ * printed credentials would then misdescribe.
+ */
+function requireDevPassword(): string {
+    const password = process.env.DEV_AUTH_PASSWORD;
+    if (!password) {
+        throw new Error(
+            "DEV_AUTH_PASSWORD is not set — start the stack with ./scripts/dev, or export it yourself.",
+        );
+    }
+    return password;
+}
+
+export const DEV_PASSWORD = requireDevPassword();
 
 export const DEV_ACCOUNTS: DevAccount[] = [
     { id: "dev-candidate", email: "candidate@shrijit.tech", name: "Test Candidate", role: "candidate", onboarded: true },

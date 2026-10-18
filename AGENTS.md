@@ -25,13 +25,29 @@ CI calls the same targets.
 
 ```bash
 make setup      # install backend (bun) + frontend (npm) + ai-service deps, create .env
-make dev        # migrate + run all three dev servers
+make dev        # migrate + seed + dev auth + backend + ai-service + web
+make stop       # stop the running dev stack
 make test       # backend typecheck + smoke test (needs running server + DB)
 make lint       # frontend eslint
 make build      # backend typecheck + frontend build + ai compileall
 make migrate    # drizzle-kit migrate against DATABASE_URL
 make health     # polls $APP_URL/health until status ok (600s budget)
 ```
+
+`./scripts/dev` owns the local stack (`--fresh`, `--no-ai`, `--stop`, `--help`;
+ports via `WEB_PORT`/`API_PORT`/`AI_PORT`/`DEV_AUTH_PORT`;
+logs in `.dev/logs/`, state in `.dev/` — both git-ignored). Sign-in is delegated
+to the shared auth service, whose `.shrijit.tech` cookie never reaches
+`localhost`, so the stack substitutes for it:
+
+- **local** runs `backend/scripts/dev-auth.ts` (a localhost stand-in for
+  `auth.shrijit.tech`) and `backend/scripts/seed-dev.ts` creates two test
+  accounts — `candidate@shrijit.tech` and `recruiter@shrijit.tech`, both
+  `admin123`, candidate pre-onboarded, recruiter in org "Dev Org". They exist
+  **only** in the local dev database and dev auth service; never create them on
+  the shared auth service. Open the SPA at `http://127.0.0.1:5173` — a
+  `localhost` page is a different site from a `127.0.0.1` API, so the session
+  cookie cannot flow (the dev auth service refuses it with that explanation).
 
 ### Backend (`/backend`, Bun)
 

@@ -1,11 +1,17 @@
 # Canonical Makefile. scripts/ holds the real logic.
-.PHONY: setup dev test lint build migrate health
+# `make dev` runs the full local stack; `make stop` stops it.
+.PHONY: setup dev stop test lint build migrate health
+
+MODE ?= local
 
 setup:
 	./scripts/setup
 
 dev:
-	./scripts/dev
+	./scripts/dev $(MODE)
+
+stop:
+	./scripts/dev --stop
 
 test:
 	./scripts/test

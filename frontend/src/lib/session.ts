@@ -19,28 +19,61 @@ export const SESSION_USER_KEY = "user:v1";
 const UNVERSIONED_SESSION_USER_KEY = "user";
 
 /**
- * Read the cached user, or null when there is none (or it cannot be read).
- *
- * A session cached under the unversioned key is adopted into the versioned one
- * on first read, so adding the version does not sign anyone out; the old record
- * is dropped as it is adopted.
+ * `localStorage.getItem`, which throws outright when storage is disabled (private
+ * browsing) rather than answering null — so every read is guarded on its own.
  */
-export function readStoredUser(): User | null {
+function readKey(key: string): string | null {
 	try {
-		const raw = localStorage.getItem(SESSION_USER_KEY);
-		if (raw) return JSON.parse(raw) as User;
-		const unversioned = localStorage.getItem(UNVERSIONED_SESSION_USER_KEY);
-		if (!unversioned) return null;
-		localStorage.removeItem(UNVERSIONED_SESSION_USER_KEY);
-		localStorage.setItem(SESSION_USER_KEY, unversioned);
-		return JSON.parse(unversioned) as User;
+		return localStorage.getItem(key);
 	} catch {
-		// Storage blocked (private mode, disabled cookies) or the record is
-		// unreadable. A cache that cannot be read means the visitor is treated as
-		// signed out, which is also what a stale record has to mean.
-		clearStoredUser();
 		return null;
 	}
+}
+
+function clearKey(key: string): void {
+	try {
+		localStorage.removeItem(key);
+	} catch {
+		// Storage blocked: there is no cache to drop.
+	}
+}
+
+/**
+ * A record that cannot be parsed is dropped — that one record only, so a corrupt
+ * cache never takes a readable one down with it — and reads as no session.
+ */
+function parseUser(raw: string, key: string): User | null {
+	try {
+		return JSON.parse(raw) as User;
+	} catch {
+		clearKey(key);
+		return null;
+	}
+}
+
+/**
+ * Read the cached user, or null when there is none (or it cannot be read).
+ *
+ * A session cached under the unversioned key is adopted into the versioned one on
+ * first read, so adding the version does not sign anyone out. The adoption writes
+ * the new record before dropping the old one, so a write that fails — quota, or
+ * storage that only reads — leaves the session that is still readable in place for
+ * the next read to try again.
+ */
+export function readStoredUser(): User | null {
+	const versioned = readKey(SESSION_USER_KEY);
+	if (versioned) return parseUser(versioned, SESSION_USER_KEY);
+	const unversioned = readKey(UNVERSIONED_SESSION_USER_KEY);
+	if (!unversioned) return null;
+	const adopted = parseUser(unversioned, UNVERSIONED_SESSION_USER_KEY);
+	if (!adopted) return null;
+	try {
+		localStorage.setItem(SESSION_USER_KEY, unversioned);
+	} catch {
+		return adopted;
+	}
+	clearKey(UNVERSIONED_SESSION_USER_KEY);
+	return adopted;
 }
 
 /** Cache the user a sign-in, an onboarding, or a profile edit just returned. */
@@ -50,10 +83,6 @@ export function writeStoredUser(user: AuthUser | User): void {
 
 /** Drop the cached user. The session itself ends at the auth service. */
 export function clearStoredUser(): void {
-	try {
-		localStorage.removeItem(SESSION_USER_KEY);
-		localStorage.removeItem(UNVERSIONED_SESSION_USER_KEY);
-	} catch {
-		// Storage blocked: there is no cache to drop.
-	}
+	clearKey(SESSION_USER_KEY);
+	clearKey(UNVERSIONED_SESSION_USER_KEY);
 }

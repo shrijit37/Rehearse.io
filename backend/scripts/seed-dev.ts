@@ -34,10 +34,11 @@ function databaseName(url: string): string {
     }
 }
 
+/** Loopback only: an absent host (`postgresql:///db`) is not a dev signal. */
 function isLocalHost(url: string): boolean {
     try {
         const { hostname } = new URL(url);
-        return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "";
+        return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
     } catch {
         return false;
     }

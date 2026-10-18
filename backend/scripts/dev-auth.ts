@@ -16,6 +16,8 @@
  *   POST /api/auth/sign-in/email  -> sets better-auth.session_token
  *   POST /api/auth/sign-up/email  -> creates a local account (no verification mail)
  *   POST /api/auth/sign-out       -> clears the session
+ *   POST /api/auth/update-user    -> renames the account (the profile page's
+ *                                    display-name write-through)
  *   POST /api/auth/sign-in/social -> refused: no OAuth provider in dev
  *   GET  /__dev/health            -> readiness for scripts/dev
  *
@@ -325,6 +327,21 @@ const server = Bun.serve({
             // link first, so the UI's "check your inbox" step stays real here.
             console.log(`[dev-auth] created account ${account.email} (${account.id}); verification skipped in dev`);
             return json({ user: publicUser(account) }, 200, origin);
+        }
+
+        if (pathname === "/api/auth/update-user" && req.method === "POST") {
+            // The real Better Auth endpoint the profile page writes the display
+            // name through; without it here, a name edit could not be verified
+            // locally at all.
+            const current = sessionForRequest(req);
+            if (!current) return json({ message: "Unauthorized", code: "UNAUTHORIZED" }, 401, origin);
+            const name = readString(await readBody(req), "name").trim();
+            if (name) {
+                current.account.name = name;
+                writeJson(ACCOUNTS_FILE, accounts);
+                console.log(`[dev-auth] update-user ${current.account.email} -> name "${name}"`);
+            }
+            return json({ user: publicUser(current.account) }, 200, origin);
         }
 
         if (pathname === "/api/auth/sign-out" && req.method === "POST") {

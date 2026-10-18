@@ -15,8 +15,17 @@ npm run lint      # eslint .
 npm run preview   # preview the production build
 ```
 
-Set `VITE_API_URL` **before** `npm run build` — it is baked into the
-bundle. Unset means the app talks to `http://localhost:9000`.
+Two build/dev-time vars, both baked per run (`import.meta.env`):
+
+- `VITE_API_URL` — API base. Unset means `http://localhost:9000`; a production
+  build must set it (`deploy-frontend.yml` fails the deploy when `localhost:9000`
+  appears in the bundle).
+- `VITE_AUTH_URL` — shared auth service. Unset means `https://auth.shrijit.tech`.
+
+Vite resolves `VITE_*` from the process environment last, so an inline value
+wins over `frontend/.env*`. `make dev` (root) uses that: mode `local` points
+both at the local stack, `MODE=prod` points both at the relay that fronts the
+deployed API. Prefer it over hand-setting these.
 
 ## Routes
 
@@ -29,10 +38,16 @@ Candidate (`ProtectedRoute role="candidate" requireOnboarded`):
 Recruiter (`ProtectedRoute role="recruiter"`): `/recruiter`,
 `/recruiter/interviews/new`, `/recruiter/interviews/:id` (results).
 
-Auth state is token + user JSON in `localStorage`. `ProtectedRoute` handles
-login redirects, role-mismatch redirects, and the candidate onboarding gate.
-The shared API client (`src/lib/api.ts`) injects the Bearer token and on 401
-clears the session and redirects to `/signup`.
+Auth state is the shared-auth session cookie plus the profile JSON cached in
+`localStorage` by `src/pages/SignUp.tsx` after `/api/auth/claim`. `ProtectedRoute`
+handles login redirects, role-mismatch redirects, and the candidate onboarding
+gate. `src/lib/api.ts` sends `credentials: "include"` (no local token; the
+`tokenOverride` Bearer is only for candidate invite tokens) and on 401 clears
+the cached profile and redirects to `/signup`.
+
+Auth flows need the page to share a site with the API and the auth service —
+in production they are siblings under one domain; in local dev the root
+`make dev` serves all three on `127.0.0.1` for the same reason.
 
 ## Architecture
 

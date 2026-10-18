@@ -37,6 +37,9 @@ const COOKIE = "better-auth.session_token";
 const UPSTREAM_TIMEOUT_MS = 60_000;
 /** Paths that belong to the shared auth service rather than to the API. */
 const AUTH_PATHS = /^\/api\/auth\/(get-session|sign-in\/|sign-up\/|sign-out)/;
+/** Auth paths that hand out a session: a cookie in their response *is* the session.
+ * Sign-up counts: the shared service signs the new account in as it answers. */
+const SESSION_ESTABLISHING_PATHS = /^\/api\/auth\/(sign-in|sign-up)\//;
 
 for (const [name, url] of [
     ["DEV_API_URL", API_URL],
@@ -64,6 +67,16 @@ function sessionPairs(response: Response): string[] {
         if (SESSION_COOKIE_NAME.test(name) && pair.includes("=") && !pair.endsWith("=")) pairs.push(pair);
     }
     return pairs;
+}
+
+/** The account email in a sign-in/sign-up payload, read as untrusted data: a
+ * shape this is not (or one without an email) reports as "unknown" rather than
+ * failing to capture the session that came with it. */
+function accountEmail(payload: unknown): string {
+    if (!payload || typeof payload !== "object" || !("user" in payload)) return "unknown";
+    const { user } = payload;
+    if (!user || typeof user !== "object" || !("email" in user)) return "unknown";
+    return typeof user.email === "string" ? user.email : "unknown";
 }
 
 interface StoredSession {
@@ -303,22 +316,23 @@ const server = Bun.serve({
 
             const pairs = sessionPairs(response);
             const hasToken = pairs.some((pair) => pair.startsWith(`${COOKIE}=`) || pair.startsWith(`__Secure-${COOKIE}=`));
-            if (pathname === "/api/auth/sign-in/email" && response.ok && hasToken) {
-                const account = await response
+            // Any auth path that answers with a session cookie establishes one —
+            // sign-up does, the shared service signs the new account in as it
+            // answers — so the cookie is kept whatever produced it.
+            const establishes = SESSION_ESTABLISHING_PATHS.test(pathname);
+            if (establishes && response.ok && hasToken) {
+                const payload: unknown = await response
                     .clone()
                     .json()
                     .catch(() => null as unknown);
-                const email =
-                    account && typeof account === "object" && "user" in account
-                        ? String((account as { user?: { email?: string } }).user?.email ?? "unknown")
-                        : "unknown";
+                const email = accountEmail(payload);
                 saveSession({ cookie: pairs.join("; "), email, savedAt: Date.now() });
                 console.log(
                     `[relay] signed in as ${email} (${pairs.length} session cookie(s) stored in ${SESSION_FILE})`,
                 );
-            } else if (pathname === "/api/auth/sign-in/email" && response.ok) {
+            } else if (establishes && response.ok) {
                 console.warn(
-                    "[relay] sign-in succeeded but no session cookie was offered; the deployed auth service may have changed its cookie policy",
+                    `[relay] ${pathname} succeeded but no session cookie was offered; the deployed auth service may have changed its cookie policy`,
                 );
             }
             if (pathname === "/api/auth/sign-out") {
@@ -350,9 +364,12 @@ const server = Bun.serve({
             if (!response) {
                 return done(json({ message: `deployed API unreachable: ${error}` }, 502, origin), "api-error");
             }
-            if (response.status === 401 && current) {
-                // The relay's credential is the only session in play; a 401
-                // means it is dead. Clearing it keeps the SPA's redirect honest.
+            if (response.status === 401 && current && req.headers.get("authorization") === null) {
+                // Only a 401 to a call that carried no credential of its own
+                // proves the injected cookie died. The SPA sends a request-scoped
+                // Bearer for interview invite links (frontend/src/lib/api.ts), and
+                // that route answers 401 for a bad invite token while the stored
+                // session is perfectly alive.
                 console.log("[relay] got 401 from the API; clearing the stored session");
                 saveSession(null);
             }

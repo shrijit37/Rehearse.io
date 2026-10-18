@@ -210,6 +210,18 @@ def _optional_text(value: object, limit: int) -> str | None:
     return text or None
 
 
+def _as_list(value: object) -> list:
+    """A list field from a model reply, or [] when it answered with something else.
+
+    Nothing validates the model's JSON shape before this point, and a chatty
+    model does answer `"skills": "Python, SQL"` or `"experience": {...}`. Iterated
+    as-is, a string becomes one skill per character and an object raises
+    TypeError on the slice below — a resume that only had an odd reply would
+    come back as a 500 instead of the empty read the caller is written for.
+    """
+    return value if isinstance(value, list) else []
+
+
 def _normalize_parsed_profile(raw: object) -> dict:
     """Keep only what the resume stated, capped to the columns that store it.
 
@@ -230,7 +242,7 @@ def _normalize_parsed_profile(raw: object) -> dict:
         out["location"] = location
 
     skills: list[str] = []
-    for entry in raw.get("skills") or []:
+    for entry in _as_list(raw.get("skills")):
         skill = _capped_text(entry, 60)
         if skill and skill not in skills:
             skills.append(skill)
@@ -240,7 +252,7 @@ def _normalize_parsed_profile(raw: object) -> dict:
         out["skills"] = skills
 
     experience: list[dict] = []
-    for row in (raw.get("experience") or [])[:20]:
+    for row in _as_list(raw.get("experience"))[:20]:
         if not isinstance(row, dict):
             continue
         title = _capped_text(row.get("title"), 120)
@@ -259,7 +271,7 @@ def _normalize_parsed_profile(raw: object) -> dict:
         out["experience"] = experience
 
     education: list[dict] = []
-    for row in (raw.get("education") or [])[:10]:
+    for row in _as_list(raw.get("education"))[:10]:
         if not isinstance(row, dict):
             continue
         school = _capped_text(row.get("school"), 160)

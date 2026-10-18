@@ -155,7 +155,8 @@ auth — dev only).
   unchanged rather than that it succeeds, and reports when the read is
   unavailable in that environment.
 - Resume must be a valid PDF or rehearsal start fails with a 500. A headshot
-  must be a JPEG or PNG.
+  must be a JPEG or PNG — the magic bytes are checked as **hex**, never as a
+  utf8 decode (which turned them into U+FFFD and rejected every real photo).
 - Sign-in is delegated to the shared auth service (`auth.shrijit.tech`, Better
   Auth). `users` has `auth_id` (unique) and a nullable `password`; there is no
   local login endpoint. Frontend 401s drop the cached user and redirect.

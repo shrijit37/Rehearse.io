@@ -95,9 +95,10 @@ needs server SSH or the Dokploy UI — see blockers).
 ## Secrets truth
 
 - Prod values live in **Doppler**, project `platform`, config `prd`, under
-  prefix `REHEARSE_` (5 secrets — see the infrastructure table). Dokploy
-  resolves them at deploy time via the `doppler-prod` secrets provider; proven
-  by `/ready` returning `database: up`.
+  prefix `REHEARSE_` — the five refs the app resolves (see the infrastructure
+  table) plus `REHEARSE_GEMINI_API_KEY` and `REHEARSE_LIVE_TICKET_SECRET`,
+  added 2026-10-18 and awaiting their compose-env refs. Dokploy
+  resolves them at deploy time via the `doppler-prod` secrets provider.
 - CI authenticates to Doppler with a read-only, config-scoped service token —
   repo secret `DOPPLER_TOKEN`, scoped to `platform`/`prd`, so no client
   credentials and no per-repo identity variable exist. *(Historical: CI used an
@@ -238,10 +239,12 @@ remains:
    key into `authorized_keys` (OCI console / any surviving access) or supply
    Dokploy UI credentials. `.github/workflows/server-debug.yml` is ready to
    re-dispatch once a working key is in `DEPLOY_SSH_KEY`.
-2. **Provision `GEMINI_API_KEY`** (Doppler `platform`/`prd` →
-   `${{vault.doppler-prod.REHEARSE_GEMINI_API_KEY}}` in the compose app env):
-   the spoken interview is Gemini-Live-only since the batch path was retired,
-   and voice answers 503 until it exists.
+2. **Wire the voice secrets into the compose app env**: both keys now exist in
+   Doppler (`REHEARSE_GEMINI_API_KEY`, `REHEARSE_LIVE_TICKET_SECRET`), but the
+   compose env does not reference them yet — add
+   `${{vault.doppler-prod.REHEARSE_GEMINI_API_KEY}}` and
+   `${{vault.doppler-prod.REHEARSE_LIVE_TICKET_SECRET}}`, then prove a socket
+   survives Traefik for ≥5 minutes. Voice answers 503 until then.
 3. **Tear down the legacy stack**: compose `rehease.io` (`nzPkuLqdeC91WWtPNyuH8`,
    name typo is real) with its exited `rehearse-backend` container — the last
    Mongo-era artifact. Needs SSH or the Dokploy UI (blocked by 1).

@@ -1,7 +1,6 @@
 import type { Request, Response } from "express";
 import {
     startRehearsal,
-    evaluateAnswer,
     saveSession,
     getHistory,
     startDsaPractice,
@@ -21,29 +20,6 @@ export const handleStartRehearsal = async (req: Request, res: Response): Promise
     }
     const targetRole = typeof req.query.targetRole === "string" ? req.query.targetRole : "Software Engineer";
     const result = await startRehearsal(userId, targetRole);
-    res.status(result.status).json({
-        message: result.message,
-        ...(result.data ? result.data : {}),
-    });
-};
-
-export const handleEvaluateAnswer = async (req: Request, res: Response): Promise<void> => {
-    const file = req.file as Express.Multer.File | undefined;
-    if (!file) {
-        res.status(400).json({ message: "No audio file uploaded" });
-        return;
-    }
-    const question = typeof req.body?.question === "string" ? req.body.question : "";
-    if (!question) {
-        res.status(400).json({ message: "No question provided for evaluation" });
-        return;
-    }
-    const result = await evaluateAnswer({
-        audioBuffer: file.buffer,
-        mimetype: file.mimetype,
-        filename: file.originalname,
-        question,
-    });
     res.status(result.status).json({
         message: result.message,
         ...(result.data ? result.data : {}),

@@ -11,8 +11,8 @@ checks). This file is the truth. If any other doc disagrees, this file wins.
 `37859186667`), the API answers `/health` and `/ready` (`database: up`) in
 production, and the frontend is served by Cloudflare Pages at
 `https://rehearse.io.shrijit.tech/` with the correct API URL baked in. What
-remains is owner-side cleanup: rotate the Groq key, retire the old Netlify
-frontend and the legacy compose stack, and recover server SSH access.
+remains is owner-side cleanup: retire the old Netlify frontend and the legacy
+compose stack, and recover server SSH access.
 
 ## Live endpoints (probed 2026-10-09)
 
@@ -108,9 +108,9 @@ needs server SSH or the Dokploy UI — see blockers).
   never printed. Verify with
   `/accounts/10eb3a39a0105dc9bed75a7d34ac66f7/tokens/verify` (it is a `cfat_`
   token — `/user/tokens/verify` does not apply).
-- `REHEARSE_GROQ_API_KEY` deliberately **not created**: the only key
-  available was pasted into chat (compromised-once). Rotate in the Groq
-  console, then store the replacement in Doppler `platform`/`prd`.
+- Groq is **retired** (2026-10-18): the batch audio endpoints and every Groq
+  client were deleted, so there is no `REHEARSE_GROQ_API_KEY` to rotate or
+  create. The compromised-once key was never stored anywhere.
 - `.env` files are git-ignored; templates only in the repo. No live secrets
   in git.
 
@@ -126,7 +126,8 @@ this repo):
 ```text
 backend/    Bun runtime + Express 5 + TypeScript + Drizzle ORM, port 9000
 frontend/   React 19 + Vite 7 + TypeScript + TailwindCSS 4 (static SPA)
-ai-service/ FastAPI (Python 3.11+), port 8000, Groq-only (STT/TTS/LLM)
+ai-service/ FastAPI (Python 3.11+), port 8000; text inference only, on an
+            env-configured OpenAI-compatible endpoint (no audio endpoints)
 postgres    shared instance, one DB per env (rehearse_io_prod / _dev)
 ```
 
@@ -138,19 +139,19 @@ postgres    shared instance, one DB per env (rehearse_io_prod / _dev)
 | RBAC (`recruiter` / `candidate`) | Implemented | `authenticateToken` → `authorize(...)` middleware chain. |
 | Candidate onboarding (resume/photo/audio) | Implemented | Files stored as base64 **in Postgres**, optionally encrypted with `ENCRYPTION_KEY`. Requires valid PDF resume. |
 | Consent + GDPR (export / delete / consent version) | Implemented | `consentGiven/consentDate/consentVersion`, `POST /api/users/export-data`, `DELETE /api/users/delete-account` (soft delete). |
-| Voice rehearsal (behavioral) | Implemented, needs `GROQ_API_KEY` | Resume-tailored questions → record → Whisper STT → LLM score/feedback. |
-| DSA practice | implemented, needs `GROQ_API_KEY` | AI-generated problems → code submit → correctness/quality/complexity eval. No code execution sandbox; LLM judges statically. |
+| Voice rehearsal (behavioral) | Implemented, needs `GEMINI_API_KEY` | Live Gemini session over the backend's `/ws/live` socket: the model transcribes and speaks per turn; the relay scores each answer with the Gemini REST rubric and persists it. Batch record→Whisper→score path deleted 2026-10-18. |
+| DSA practice | implemented, needs the `LLM_*` text-inference endpoint | AI-generated problems → code submit → correctness/quality/complexity eval. No code execution sandbox; LLM judges statically. |
 | Recruiter interviews (behavioral/dsa/mixed) | Implemented | CRUD + expiry + status draft/active/closed, DSA problem embedding. |
 | Candidate invite links | Implemented | `POST /:id/invite` mints token, sha256-hashed at rest; `GET /candidate/accept/:token` is public. |
 | Candidate interview flow (voice then coding) | Implemented | `behavioral` → `dsa` → `done` rounds tracked on the invite. |
 | Results dashboards (candidate + recruiter) | Implemented | History endpoints + `CandidateResults` / `RecruiterDashboard` pages. |
 | Organizations + member invites | Implemented | `Organization` with admin/recruiter members. |
 | Audit log | Write-only | `AuditLog` written on signup/login/onboard/interview/org/profile actions. **No API reads it.** No viewer UI. |
-| TTS | Dual mode | Browser `SpeechSynthesis` default; Groq Orpheus (`canopylabs/orpheus-v1-english`, voice `tara`) opt-in per call with automatic fallback. Orpheus needs Groq-console terms accepted. |
+| TTS | Browser only | `useSpeak` uses the browser `SpeechSynthesis` API for reading a question aloud; the coach's voice comes from the Live socket. The Groq Orpheus proxy and its dead `useGroqTts` branch were deleted 2026-10-18. |
 | S3 file storage | **Not implemented** | The boot-time `HeadBucket` check was **removed** 2026-10-09 (dead code). Nothing uploads to S3; PII lives in Postgres. `AWS_*` vars are optional and inert. |
 | Rate limiting | Implemented | General + stricter auth limiter, env-tunable. |
 | Input sanitization | Implemented | Strips prototype-pollution keys (`__proto__`, `constructor`, `prototype`); name HTML-tag strip. The old Mongo operator-key stripping was removed with the data layer. |
-| Health endpoints | **Verified live in prod** | Backend `GET /health` = liveness (no DB check, by design). **`GET /ready`** = `200` only when Postgres answers, `503` otherwise — currently `200 database:up` in prod. CI and Dokploy gate on `scripts/health`. AI `GET /health` reports STT/TTS availability. Frontend is static (no health endpoint). |
+| Health endpoints | **Verified live in prod** | Backend `GET /health` = liveness (no DB check, by design). **`GET /ready`** = `200` only when Postgres answers, `503` otherwise — currently `200 database:up` in prod. CI and Dokploy gate on `scripts/health`. AI `GET /health` reports `llm_available`/`llm_model`. Frontend is static (no health endpoint). |
 | Tests | **Smoke suite only** | `backend/tests/smoke.ts`: 48 end-to-end assertions against a live server + real Postgres. Wired into `make test` (runs when `SMOKE_BASE_URL` is set) and CI. No unit tests, no coverage. Frontend still has lint+build only. |
 
 ## Data layer truth
@@ -237,10 +238,10 @@ remains:
    key into `authorized_keys` (OCI console / any surviving access) or supply
    Dokploy UI credentials. `.github/workflows/server-debug.yml` is ready to
    re-dispatch once a working key is in `DEPLOY_SSH_KEY`.
-2. **Rotate `GROQ_API_KEY`** in the Groq console, then create
-   `REHEARSE_GROQ_API_KEY` in Doppler `platform`/`prd` and add
-   `${{vault.doppler-prod.REHEARSE_GROQ_API_KEY}}` to the compose app env
-   (voice/DSA features return errors until this exists).
+2. **Provision `GEMINI_API_KEY`** (Doppler `platform`/`prd` →
+   `${{vault.doppler-prod.REHEARSE_GEMINI_API_KEY}}` in the compose app env):
+   the spoken interview is Gemini-Live-only since the batch path was retired,
+   and voice answers 503 until it exists.
 3. **Tear down the legacy stack**: compose `rehease.io` (`nzPkuLqdeC91WWtPNyuH8`,
    name typo is real) with its exited `rehearse-backend` container — the last
    Mongo-era artifact. Needs SSH or the Dokploy UI (blocked by 1).
@@ -256,9 +257,9 @@ No code changes are blocked. Items 1–4 are owner-side access/cleanup.
 - `make migrate` applies migrations to a real Postgres 16.15 and is
   idempotent.
 - `make test` with `SMOKE_BASE_URL` set: **48 passed, 0 failed**.
-- The AI service was **not** run this session (no `GROQ_API_KEY` in env, and
-  its deps are not installed locally). It degrades honestly: missing
-  `GROQ_API_KEY` disables STT/TTS with 503s and `false` health flags; missing
+- The AI service was **not** run this session (its deps are not installed
+  locally). It degrades honestly: missing `LLM_BASE_URL`/`LLM_MODEL` disables
+  text inference with 503s and a `false` health flag; missing
   `API_KEY` disables backend→AI auth with a warning (dev only).
 - Docker is unavailable in this environment; the real image build happens in
   CI (and succeeded — multi-arch, deployed).
@@ -274,9 +275,9 @@ No code changes are blocked. Items 1–4 are owner-side access/cleanup.
    on a stack being replaced anyway: owner chose to **fold routing into a
    single cutover**. **Done** — API router attached and healthy.
 4. Prod data: **start empty, ignore old volume** (never inspected).
-5. `GROQ_API_KEY`: owner supplied a key, but it is **compromised-once** (it is
-   in this chat transcript). Rotate it; store the replacement only in
-   Doppler `platform`/`prd`. **Still open — owner action.**
+5. `GROQ_API_KEY`: **resolved by retirement** (2026-10-18) — the batch audio
+   path and every Groq client were deleted, so there is no key to rotate and
+   nothing sends data to Groq.
 6. PM2/Netlify remnants: remove after cutover. PM2 config and dead deploy
    stub already **deleted**; Netlify site retirement **still open**.
 7. IDs: Mongo ObjectIds → **UUIDs**. The frontend consumes only the `_id`

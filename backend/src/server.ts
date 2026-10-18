@@ -5,7 +5,8 @@ import userRoutes from "./modules/user/user.routes";
 import rehearsalRoutes from "./modules/rehearsal/rehearsal.routes";
 import organizationRoutes from "./modules/organization/organization.routes";
 import interviewRoutes from "./modules/interview/interview.routes";
-import ttsRoutes from "./modules/tts/tts.routes";
+import liveRoutes from "./modules/live/live.routes";
+import { attachLiveUpgrade } from "./modules/live/live.upgrade";
 import { connectDB } from "./config/db";
 import { env } from "./config/env";
 import { authenticateToken } from "./middleware/auth.middleware";
@@ -100,7 +101,7 @@ app.use("/api/users", authenticateToken, userRoutes);
 app.use("/api/rehearsal", rehearsalRoutes);
 app.use("/api/org", organizationRoutes);
 app.use("/api/interviews", interviewRoutes);
-app.use("/api/tts", ttsRoutes);
+app.use("/api/live", liveRoutes);
 
 // Uniform fleet health contract (standards/platform.md#health): exactly
 // GET /health -> { status, service, version, checks }. Postgres is the
@@ -121,9 +122,13 @@ app.use(errorHandler);
 
 connectDB()
     .then((): void => {
-        app.listen(port, () => {
+        const server = app.listen(port, () => {
             console.log(`Server is running on port ${port}`);
         });
+        // The Live voice socket upgrades the same HTTP server the REST API
+        // listens on: it must be attached where the server is created, not via
+        // Express, which never sees an upgrade request.
+        attachLiveUpgrade(server);
     })
     .catch((error: unknown): void => {
         console.error("Failed to start server:", error);

@@ -6,7 +6,6 @@ import {
     updateInterview,
     generateInvite,
     acceptInvite,
-    evaluateCandidateAnswer,
     submitInterviewAnswer,
     getMyInterviews,
     generateDsaForInterview,
@@ -127,41 +126,6 @@ export const handleAcceptInvite = async (req: Request, res: Response): Promise<v
         ...(result.interview ? { interview: result.interview } : {}),
         ...(result.token ? { token: result.token } : {}),
         ...(result.user ? { user: result.user } : {}),
-    });
-};
-
-export const handleEvaluateCandidateAnswer = async (req: Request, res: Response): Promise<void> => {
-    const userId = getUserId(req);
-    if (!userId) {
-        res.status(401).json({ message: "Unauthorized" });
-        return;
-    }
-    const file = req.file as Express.Multer.File | undefined;
-    if (!file) {
-        res.status(400).json({ message: "No audio file uploaded" });
-        return;
-    }
-    const question = typeof req.body?.question === "string" ? req.body.question : "";
-    const inviteId = typeof req.body?.inviteId === "string" ? req.body.inviteId : "";
-    if (!question) {
-        res.status(400).json({ message: "No question provided for evaluation" });
-        return;
-    }
-    if (!inviteId) {
-        res.status(400).json({ message: "inviteId is required" });
-        return;
-    }
-
-    const result = await evaluateCandidateAnswer(userId, {
-        audioBuffer: file.buffer,
-        mimetype: file.mimetype,
-        filename: file.originalname,
-        question,
-        inviteId,
-    });
-    res.status(result.status).json({
-        message: result.message,
-        ...(result.data ? result.data : {}),
     });
 };
 

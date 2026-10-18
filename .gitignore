@@ -32,6 +32,9 @@ fix-*.md
 # Runtime crash logs from the legacy PM2 era
 nohup.out
 
+# Infisical CLI project binding (local; secrets live in the vault)
+.infisical.yaml
+
 # Impeccable design-agent state (hook config, decision mocks, review captures).
 # DESIGN.md at the root is the durable record and stays tracked.
 .impeccable/

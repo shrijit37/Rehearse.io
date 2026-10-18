@@ -30,6 +30,15 @@ const envConfig = () => {
         ENCRYPTION_KEY: z.string().optional(),
         AI_SERVICE_URL: z.string().optional().default("http://localhost:8000"),
         AI_SERVICE_API_KEY: z.string().optional(),
+        // Google AI Studio key for the Live voice sessions. Optional so an
+        // unset key cannot stop the API booting; POST /api/live/session answers
+        // 503 until it exists.
+        GEMINI_API_KEY: z.string().optional(),
+        // Signs the 60-second live-session tickets. Its own secret, never
+        // JWT_SECRET, so a live ticket can never authenticate the REST API —
+        // see live.service.ts. Optional like the key above: the feature answers
+        // 503 until both exist.
+        LIVE_TICKET_SECRET: z.string().optional(),
         // Default allow-list when unset: the local dev client plus the deployed Cloudflare Pages origins.
         ALLOWED_ORIGINS: z.string().optional().default(
             "http://localhost:5173,http://localhost:3000,https://rehearse.io.shrijit.tech,https://rehearse-io.pages.dev",

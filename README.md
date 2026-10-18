@@ -22,15 +22,18 @@ Monorepo with three services:
 - **Candidate practice**: voice rehearsal + DSA coding practice with AI scoring
 - **Recruiter interviews**: behavioral, DSA-only, or mixed (voice then coding)
 - **Invite links**: shareable candidate links with multi-round progress
-- **AI evaluation**: Whisper transcription + LLM feedback for voice;
-  correctness / quality / complexity for code (static LLM review, no sandbox)
+- **AI evaluation**: spoken answers transcribed and scored live over a Gemini
+  socket; correctness / quality / complexity for code (static LLM review, no
+  sandbox)
 - **Results dashboards**: per-candidate behavioral and DSA breakdowns
 - **Organizations**: multi-recruiter orgs with member invites
 - **Consent + GDPR**: consent versioning, data export, soft-delete account
 - **Audit log**: security events recorded (write-only, no viewer yet)
 
-All AI features need `GROQ_API_KEY` (STT + TTS + LLM via LiteLLM). Without it
-the AI service returns honest 503s and `false` health flags.
+Spoken sessions need `GEMINI_API_KEY` (Live API); text inference (scenario
+generation, DSA) needs `LLM_BASE_URL` + `LLM_MODEL` pointing at any
+OpenAI-compatible endpoint. Missing config returns honest 503s and `false`
+health flags.
 
 ## Getting started (local dev)
 

@@ -1,11 +1,8 @@
 import express from "express";
-import multer from "multer";
 import { authenticateToken } from "../../middleware/auth.middleware";
 import { requireOnboarded } from "../../middleware/requireOnboarded.middleware";
-import { MAX_AUDIO_SIZE } from "../../config/constants";
 import {
     handleStartRehearsal,
-    handleEvaluateAnswer,
     handleSaveSession,
     handleGetHistory,
     handleStartDsaPractice,
@@ -13,16 +10,9 @@ import {
 } from "./rehearsal.controller";
 
 const router = express.Router();
-const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: MAX_AUDIO_SIZE },
-});
 
 // GET /api/rehearsal/start
 router.get("/start", authenticateToken, requireOnboarded, handleStartRehearsal);
-
-// POST /api/rehearsal/evaluate
-router.post("/evaluate", authenticateToken, requireOnboarded, upload.single("audio"), handleEvaluateAnswer);
 
 // POST /api/rehearsal/session
 router.post("/session", authenticateToken, handleSaveSession);

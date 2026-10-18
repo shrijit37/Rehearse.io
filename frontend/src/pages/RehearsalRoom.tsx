@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,13 +10,9 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSpeak } from "@/hooks/useSpeak";
+import { useLiveAnswer } from "@/hooks/useLiveAnswer";
+import type { LiveTurnResult } from "@/lib/live/socket";
 import BehavioralRound from "@/components/BehavioralRound";
-interface ResultItem {
-	question: string;
-	transcription: string;
-	score: number;
-	feedback: string;
-}
 
 const PRESET_ROLES = [
 	"Software Engineer",
@@ -38,24 +34,42 @@ const RehearsalRoom: React.FC = () => {
 	const [customRole, setCustomRole] = useState<string>("");
 	const [questions, setQuestions] = useState<string[]>([]);
 	const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
-	const [isRecording, setIsRecording] = useState<boolean>(false);
 	const [isLoading, setIsLoading] = useState<boolean>(false);
-	const [isEvaluating, setIsEvaluating] = useState<boolean>(false);
 	const [evaluation, setEvaluation] = useState<{
-		score: number;
+		score: number | null;
 		feedback: string;
 	} | null>(null);
-	const [sessionResults, setSessionResults] = useState<ResultItem[]>([]);
 	const [error, setError] = useState<string | null>(null);
-	const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
 
 	const { speak, stop, speaking, supported: ttsSupported } = useSpeak();
 
-	const streamRef = useRef<MediaStream | null>(null);
-	const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-	const audioChunksRef = useRef<Blob[]>([]);
-	const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
-	const isMovingNext = useRef(false);
+	const handleTurn = useCallback((turn: LiveTurnResult) => {
+		setEvaluation({ score: turn.score, feedback: turn.feedback });
+	}, []);
+
+	const handleLiveError = useCallback((message: string) => setError(message), []);
+
+	// One live session for the whole run: the socket opens when the interview
+	// step does and every question is asked over it. The backend writes one
+	// session row when it closes, so the run stays one session in the history.
+	const live = useLiveAnswer({
+		active: step === "interview" && questions.length > 0,
+		// `questionIndex` matters on a restart as much as on the first start: the
+		// ticket pins the question the session opens on, and a restart at question
+		// 3 whose ticket says 0 asks the wrong question and scores it as the first.
+		request: { mode: "practice", targetRole, questions, questionIndex: currentQuestionIndex },
+		onTurn: handleTurn,
+		onError: handleLiveError,
+	});
+
+	// Advance the conversation in place when the candidate moves on. Question 0 is
+	// the one the ticket starts on, and the backend ignores an ask for the
+	// question it is already on, so this is safe to fire on every change.
+	const askQuestion = live.ask;
+	useEffect(() => {
+		if (step !== "interview") return;
+		askQuestion(currentQuestionIndex, questions[currentQuestionIndex]);
+	}, [askQuestion, step, currentQuestionIndex, questions]);
 
 	const startInterview = async (role: string) => {
 		setTargetRole(role);
@@ -67,6 +81,8 @@ const RehearsalRoom: React.FC = () => {
 			);
 			if (data.questions?.length > 0) setQuestions(data.questions);
 			else throw new Error("No interview questions were returned.");
+			setCurrentQuestionIndex(0);
+			setEvaluation(null);
 			setStep("interview");
 		} catch (err: unknown) {
 			setError(err instanceof Error ? err.message : "An error occurred.");
@@ -74,25 +90,6 @@ const RehearsalRoom: React.FC = () => {
 			setIsLoading(false);
 		}
 	};
-
-	useEffect(() => {
-		if (isRecording) {
-			setRecordingSeconds(0);
-			timerIntervalRef.current = setInterval(
-				() => setRecordingSeconds((p) => p + 1),
-				1000,
-			);
-		} else {
-			if (timerIntervalRef.current) {
-				clearInterval(timerIntervalRef.current);
-				timerIntervalRef.current = null;
-			}
-		}
-		return () => {
-			if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-		};
-	}, [isRecording]);
-
 
 	const handleSpeakQuestion = () => {
 		if (speaking) {
@@ -104,131 +101,24 @@ const RehearsalRoom: React.FC = () => {
 		}
 	};
 
-	// Stop TTS when starting recording
-	const handleToggleRecording = async () => {
+	const handleNext = () => {
 		if (speaking) stop();
-		if (isRecording) {
-			if (
-				mediaRecorderRef.current &&
-				mediaRecorderRef.current.state !== "inactive"
-			)
-				mediaRecorderRef.current.stop();
-			setIsRecording(false);
-			if (streamRef.current) {
-				streamRef.current.getTracks().forEach((t) => t.stop());
-				streamRef.current = null;
-			}
-		} else {
-			try {
-				setError(null);
-				setEvaluation(null);
-				audioChunksRef.current = [];
-				const stream = await navigator.mediaDevices.getUserMedia({
-					audio: true,
-				});
-				streamRef.current = stream;
-				const mediaRecorder = new MediaRecorder(stream, {
-					mimeType: "audio/webm",
-				});
-				mediaRecorderRef.current = mediaRecorder;
-				mediaRecorder.ondataavailable = (e) => {
-					if (e.data?.size > 0) audioChunksRef.current.push(e.data);
-				};
-				mediaRecorder.onstop = async () => {
-					if (isMovingNext.current) {
-						isMovingNext.current = false;
-						return;
-					}
-					const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-					await handleEvaluate(blob);
-				};
-				mediaRecorder.start();
-				setIsRecording(true);
-			} catch {
-				setError(
-					"Could not access microphone. Check permissions and try again.",
-				);
-			}
-		}
-	};
-
-	const handleEvaluate = async (audioBlob: Blob) => {
-		setIsEvaluating(true);
-		setError(null);
-		try {
-			const formData = new FormData();
-			formData.append("audio", audioBlob, "answer.webm");
-			formData.append("question", questions[currentQuestionIndex]);
-			const data = await api.post<{
-				score: number;
-				feedback: string;
-				transcription: string;
-			}>("/api/rehearsal/evaluate", formData);
-			const newResult = {
-				question: questions[currentQuestionIndex],
-				transcription: data.transcription || "",
-				score: data.score,
-				feedback: data.feedback,
-			};
-			setSessionResults((prev) => {
-				const u = [...prev];
-				u[currentQuestionIndex] = newResult;
-				return u;
-			});
-			setEvaluation({ score: data.score, feedback: data.feedback });
-		} catch (err: unknown) {
-			setError(err instanceof Error ? err.message : "Evaluation failed.");
-		} finally {
-			setIsEvaluating(false);
-		}
-	};
-
-	const handleFinishSession = async (resultsPayload: ResultItem[]) => {
-		setIsEvaluating(true);
-		try {
-			await api.post("/api/rehearsal/session", {
-				results: resultsPayload,
-				targetRole,
-			});
-			navigate("/dashboard");
-		} catch {
-			setError("Failed to save session. Please try again.");
-		} finally {
-			setIsEvaluating(false);
-		}
-	};
-
-	const handleNext = async () => {
-		if (speaking) stop();
-		isMovingNext.current = true;
-		if (isRecording) {
-			if (mediaRecorderRef.current?.state !== "inactive")
-				mediaRecorderRef.current?.stop();
-			setIsRecording(false);
-			if (streamRef.current) {
-				streamRef.current.getTracks().forEach((t) => t.stop());
-				streamRef.current = null;
-			}
-		}
 		setEvaluation(null);
 		setError(null);
 		if (currentQuestionIndex < questions.length - 1) {
 			setCurrentQuestionIndex((p) => p + 1);
 		} else {
-			const answered = sessionResults.filter(Boolean);
-			if (answered.length === 0) navigate("/dashboard");
-			else await handleFinishSession(answered);
+			// The backend writes the session when this page's socket closes.
+			navigate("/dashboard");
 		}
-		isMovingNext.current = false;
 	};
 
-	useEffect(
-		() => () => {
-			if (streamRef.current)
-				streamRef.current.getTracks().forEach((t) => t.stop());
-		},
-		[],
-	);
+	const handleRetryAnswer = () => {
+		if (speaking) stop();
+		setEvaluation(null);
+		setError(null);
+		live.restart();
+	};
 
 	// Role picker step
 	if (step === "role-picker") {
@@ -356,10 +246,9 @@ const RehearsalRoom: React.FC = () => {
 			questions={questions}
 			currentQuestionIndex={currentQuestionIndex}
 			currentQuestion={currentQuestion}
-			isRecording={isRecording}
-			isEvaluating={isEvaluating}
+			liveState={live.state}
+			liveTranscript={live.transcript}
 			evaluation={evaluation}
-			recordingSeconds={recordingSeconds}
 			isLastQuestion={isLastQuestion}
 			hasDsaAfter={false}
 			error={error}
@@ -371,8 +260,9 @@ const RehearsalRoom: React.FC = () => {
 				setError(null);
 			}}
 			onSpeakQuestion={handleSpeakQuestion}
-			onToggleRecording={handleToggleRecording}
-			onResetEvaluation={() => setEvaluation(null)}
+			onStopSession={live.stop}
+			onRestartSession={live.restart}
+			onRetryAnswer={handleRetryAnswer}
 			onNext={handleNext}
 		/>
 	);

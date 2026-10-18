@@ -39,23 +39,6 @@ async function aiJson(path: string, payload: Record<string, unknown>): Promise<a
     return res.json();
 }
 
-/** POST multipart FormData to the AI service. */
-async function aiForm(path: string, form: FormData): Promise<Response> {
-    let res: Response;
-    try {
-        res = await fetch(`${AI_SERVICE_URL}${path}`, {
-            method: "POST",
-            headers: authHeaders(), // fetch sets the multipart boundary automatically
-            body: form,
-        });
-    } catch (err) {
-        const message = err instanceof Error ? err.message : "network error";
-        throw new Error(`AI service unreachable (${AI_SERVICE_URL}): ${message}`);
-    }
-    if (!res.ok) await handleError(res, `AI ${path}`);
-    return res;
-}
-
 export interface ScenarioResult {
     questions: string[];
 }
@@ -66,31 +49,6 @@ export async function generateScenario(resumeText: string, targetRole: string): 
         target_role: targetRole.slice(0, 200),
     });
     return { questions: Array.isArray(data?.questions) ? data.questions : [] };
-}
-
-export interface EvaluateAudioResult {
-    score: number;
-    feedback: string;
-    transcription: string;
-}
-
-export async function evaluateAudio(params: {
-    audioBuffer: Buffer;
-    mimetype: string;
-    filename: string;
-    question: string;
-}): Promise<EvaluateAudioResult> {
-    const form = new FormData();
-    form.append("audio", new Blob([params.audioBuffer], { type: params.mimetype || "audio/webm" }), params.filename || "answer.webm");
-    form.append("question", params.question.slice(0, 500));
-
-    const res = await aiForm("/api/evaluate-audio", form);
-    const data: any = await res.json();
-    return {
-        score: typeof data?.score === "number" ? data.score : 0,
-        feedback: typeof data?.feedback === "string" ? data.feedback : "",
-        transcription: typeof data?.transcription === "string" ? data.transcription : "",
-    };
 }
 
 export interface DsaGeneratedProblem {
@@ -164,23 +122,5 @@ export async function evaluateDsa(payload: {
         feedback: typeof data?.feedback === "string" ? data.feedback : "",
         strengths: Array.isArray(data?.strengths) ? data.strengths : [],
         improvements: Array.isArray(data?.improvements) ? data.improvements : [],
-    };
-}
-
-export interface TtsResult {
-    arrayBuffer: ArrayBuffer;
-    contentType: string;
-}
-
-export async function tts(text: string, voice: string): Promise<TtsResult> {
-    const form = new FormData();
-    form.append("text", text);
-    form.append("voice", voice || "Fritz-PlayAI");
-
-    const res = await aiForm("/api/tts", form);
-    const arrayBuffer = await res.arrayBuffer();
-    return {
-        arrayBuffer,
-        contentType: res.headers.get("content-type") || "audio/mpeg",
     };
 }

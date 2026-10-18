@@ -76,8 +76,9 @@ There is no local password login and the app never stores passwords.
 
 **Capabilities.** Candidate practice (voice rehearsal + DSA coding practice with
 AI scoring); recruiter interviews (behavioral / DSA-only / mixed); shareable
-invite links with multi-round progress; AI evaluation (Whisper transcription +
-LLM feedback for voice, static LLM review for code); per-candidate results
+invite links with multi-round progress; AI evaluation (spoken answers
+transcribed and scored over a Gemini Live session; static LLM review for
+code); per-candidate results
 dashboards; multi-recruiter organizations; consent + GDPR export + soft delete;
 a write-only audit log of security events with no viewer yet.
 
@@ -86,9 +87,11 @@ a write-only audit log of security events with no viewer yet.
 - **Code is evaluated by static LLM review — there is no sandbox and no
   execution.** Scores are model judgement, not test-case results, and no surface
   may imply otherwise.
-- **Every AI feature depends on `GROQ_API_KEY`.** Without it the AI service
-  returns honest 503s and reports false health flags. It is not yet set in
-  production.
+- **AI features depend on explicit provider config, and none of it is set in
+  production.** Spoken sessions run on the Gemini Live API (`GEMINI_API_KEY`);
+  text inference (scenario generation, DSA) runs on any OpenAI-compatible
+  endpoint named by `LLM_BASE_URL`/`LLM_MODEL`. Missing config makes the
+  affected endpoints return honest 503s.
 - **A resume must be a valid PDF or rehearsal start fails.** Resumes, photos,
   and audio are stored base64 in Postgres, encrypted when `ENCRYPTION_KEY` is
   set; S3 is not wired up.

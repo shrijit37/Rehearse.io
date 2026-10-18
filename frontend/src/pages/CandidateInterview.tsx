@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSpeak } from "@/hooks/useSpeak";
+import { useLiveAnswer } from "@/hooks/useLiveAnswer";
+import type { LiveTurnResult } from "@/lib/live/socket";
 import type { Interview, CandidateInvite, User, DsaResultItem } from "@/types";
 import DsaRound, { type DsaEvaluation } from "@/components/DsaRound";
 import type { DsaProblem } from "@/components/DsaProblemPanel";
@@ -33,26 +35,63 @@ const CandidateInterview: React.FC = () => {
 	const [dsaProblems, setDsaProblems] = useState<DsaProblem[]>([]);
 	const [phase, setPhase] = useState<Phase>("behavioral");
 	const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-	const [isRecording, setIsRecording] = useState(false);
 	const [isLoading, setIsLoading] = useState(true);
-	const [isEvaluating, setIsEvaluating] = useState(false);
 	const [evaluation, setEvaluation] = useState<{
-		score: number;
+		score: number | null;
 		feedback: string;
 	} | null>(null);
 	const [sessionResults, setSessionResults] = useState<ResultItem[]>([]);
 	const [dsaResults, setDsaResults] = useState<DsaEvaluation[]>([]);
 	const [error, setError] = useState<string | null>(null);
-	const [recordingSeconds, setRecordingSeconds] = useState(0);
 	const [completed, setCompleted] = useState(false);
 
 	const { speak, stop, speaking, supported: ttsSupported } = useSpeak();
 
-	const streamRef = useRef<MediaStream | null>(null);
-	const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-	const audioChunksRef = useRef<Blob[]>([]);
-	const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-	const isMovingNext = useRef(false);
+	const handleTurn = useCallback(
+		(turn: LiveTurnResult) => {
+			setEvaluation({ score: turn.score, feedback: turn.feedback });
+			// Local mirror of what the backend has written, so the summary screen
+			// can show this answer without refetching the invite. Keyed by the
+			// turn's own index: a score arrives seconds after the answer, by which
+			// time the candidate may have moved on.
+			const result: ResultItem = {
+				question: turn.question || questions[turn.questionIndex],
+				transcription: turn.transcription,
+				score: turn.score,
+				feedback: turn.feedback,
+			};
+			setSessionResults((prev) => {
+				const updated = [...prev];
+				updated[turn.questionIndex] = result;
+				return updated;
+			});
+		},
+		[questions],
+	);
+
+	const handleLiveError = useCallback((message: string) => setError(message), []);
+
+	// One live session for the whole behavioural round: the backend reads each
+	// question from the invite and persists every scored turn itself. The candidate
+	// token rides the ticket request the way it rides every other candidate call.
+	const live = useLiveAnswer({
+		active: phase === "behavioral" && !!invite?._id && questions.length > 0,
+		// The index travels with the ticket, not just with the `ask` effect: a
+		// restart (or a reload that resumes at question 3) otherwise opens a socket
+		// pinned to question 1 and overwrites the answer already stored for it.
+		request: { mode: "interview", inviteId: invite?._id, questionIndex: currentQuestionIndex },
+		tokenOverride: authToken,
+		onTurn: handleTurn,
+		onError: handleLiveError,
+	});
+
+	// The interview's question text comes from the database, so the page sends only
+	// the index; the backend ignores an ask for the question it is already on.
+	const askQuestion = live.ask;
+	useEffect(() => {
+		if (phase !== "behavioral") return;
+		askQuestion(currentQuestionIndex);
+	}, [askQuestion, phase, currentQuestionIndex]);
 
 	useEffect(() => {
 		if (!token) {
@@ -173,25 +212,6 @@ const CandidateInterview: React.FC = () => {
 		}
 	}, [completed, phase]);
 
-	useEffect(() => {
-		if (isRecording) {
-			setRecordingSeconds(0);
-			timerIntervalRef.current = setInterval(
-				() => setRecordingSeconds((p) => p + 1),
-				1000,
-			);
-		} else {
-			if (timerIntervalRef.current) {
-				clearInterval(timerIntervalRef.current);
-				timerIntervalRef.current = null;
-			}
-		}
-		return () => {
-			if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-		};
-	}, [isRecording]);
-
-
 	const currentQuestion = questions[currentQuestionIndex];
 
 	const handleSpeakQuestion = () => {
@@ -202,97 +222,8 @@ const CandidateInterview: React.FC = () => {
 		}
 	};
 
-	const handleToggleRecording = async () => {
-		if (speaking) stop();
-		if (isRecording) {
-			if (
-				mediaRecorderRef.current &&
-				mediaRecorderRef.current.state !== "inactive"
-			)
-				mediaRecorderRef.current.stop();
-			setIsRecording(false);
-			if (streamRef.current) {
-				streamRef.current.getTracks().forEach((t) => t.stop());
-				streamRef.current = null;
-			}
-		} else {
-			try {
-				setError(null);
-				setEvaluation(null);
-				audioChunksRef.current = [];
-				const stream = await navigator.mediaDevices.getUserMedia({
-					audio: true,
-				});
-				streamRef.current = stream;
-				const mediaRecorder = new MediaRecorder(stream, {
-					mimeType: "audio/webm",
-				});
-				mediaRecorderRef.current = mediaRecorder;
-				mediaRecorder.ondataavailable = (e) => {
-					if (e.data?.size > 0) audioChunksRef.current.push(e.data);
-				};
-				mediaRecorder.onstop = async () => {
-					if (isMovingNext.current) {
-						isMovingNext.current = false;
-						return;
-					}
-					const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-					await handleEvaluate(blob);
-				};
-				mediaRecorder.start();
-				setIsRecording(true);
-			} catch {
-				setError("Could not access microphone. Please check permissions.");
-			}
-		}
-	};
-
-	const handleEvaluate = async (audioBlob: Blob) => {
-		setIsEvaluating(true);
-		setError(null);
-		try {
-			const formData = new FormData();
-			formData.append("audio", audioBlob, "answer.webm");
-			formData.append("question", questions[currentQuestionIndex]);
-			formData.append("inviteId", invite?._id || "");
-			const data = await api.post<{
-				score: number;
-				feedback: string;
-				transcription: string;
-			}>("/api/interviews/candidate/evaluate", formData, {
-				tokenOverride: authToken || undefined,
-			});
-			const newResult = {
-				question: questions[currentQuestionIndex],
-				transcription: data.transcription || "",
-				score: data.score,
-				feedback: data.feedback,
-			};
-			setSessionResults((prev) => {
-				const u = [...prev];
-				u[currentQuestionIndex] = newResult;
-				return u;
-			});
-			setEvaluation({ score: data.score, feedback: data.feedback });
-		} catch (err: unknown) {
-			setError(err instanceof Error ? err.message : "Evaluation failed");
-		} finally {
-			setIsEvaluating(false);
-		}
-	};
-
 	const handleNextBehavioral = async () => {
 		if (speaking) stop();
-		isMovingNext.current = true;
-		if (isRecording) {
-			if (mediaRecorderRef.current?.state !== "inactive")
-				mediaRecorderRef.current?.stop();
-			setIsRecording(false);
-			if (streamRef.current) {
-				streamRef.current.getTracks().forEach((t) => t.stop());
-				streamRef.current = null;
-			}
-		}
 		setEvaluation(null);
 		setError(null);
 
@@ -330,7 +261,13 @@ const CandidateInterview: React.FC = () => {
 		} catch (err: unknown) {
 			setError(err instanceof Error ? err.message : "Failed to submit answer");
 		}
-		isMovingNext.current = false;
+	};
+
+	const handleRetryAnswer = () => {
+		if (speaking) stop();
+		setEvaluation(null);
+		setError(null);
+		live.restart();
 	};
 
 	const handleDsaEvaluate = async (payload: {
@@ -514,10 +451,9 @@ const CandidateInterview: React.FC = () => {
 			questions={questions}
 			currentQuestionIndex={currentQuestionIndex}
 			currentQuestion={currentQuestion}
-			isRecording={isRecording}
-			isEvaluating={isEvaluating}
+			liveState={live.state}
+			liveTranscript={live.transcript}
 			evaluation={evaluation}
-			recordingSeconds={recordingSeconds}
 			isLastQuestion={isLastQuestion}
 			hasDsaAfter={hasDsaAfter}
 			error={error}
@@ -525,8 +461,9 @@ const CandidateInterview: React.FC = () => {
 			ttsSupported={ttsSupported}
 			onBack={() => navigate("/")}
 			onSpeakQuestion={handleSpeakQuestion}
-			onToggleRecording={handleToggleRecording}
-			onResetEvaluation={() => setEvaluation(null)}
+			onStopSession={live.stop}
+			onRestartSession={live.restart}
+			onRetryAnswer={handleRetryAnswer}
 			onNext={handleNextBehavioral}
 		/>
 	);

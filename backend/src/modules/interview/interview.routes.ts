@@ -1,8 +1,6 @@
 import express from "express";
-import multer from "multer";
 import { authenticateToken } from "../../middleware/auth.middleware";
 import { authorize } from "../../middleware/authorize.middleware";
-import { MAX_AUDIO_SIZE } from "../../config/constants";
 import {
     handleCreateInterview,
     handleListInterviews,
@@ -10,7 +8,6 @@ import {
     handleUpdateInterview,
     handleGenerateInvite,
     handleAcceptInvite,
-    handleEvaluateCandidateAnswer,
     handleSubmitInterviewAnswer,
     handleGetMyInterviews,
     handleGenerateDsaForInterview,
@@ -18,10 +15,6 @@ import {
 } from "./interview.controller";
 
 const router = express.Router();
-const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: MAX_AUDIO_SIZE },
-});
 
 // ---------------------------------------------------------------------------
 // Recruiter routes
@@ -38,7 +31,6 @@ router.get("/candidate/my-interviews", authenticateToken, authorize("candidate")
 // Accept invite via token (no auth required — public link)
 router.get("/candidate/accept/:token", handleAcceptInvite);
 
-router.post("/candidate/evaluate", authenticateToken, authorize("candidate"), upload.single("audio"), handleEvaluateCandidateAnswer);
 router.post("/candidate/submit", authenticateToken, authorize("candidate"), handleSubmitInterviewAnswer);
 router.post("/candidate/evaluate-dsa", authenticateToken, authorize("candidate"), handleEvaluateInterviewDsa);
 

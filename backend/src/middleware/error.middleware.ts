@@ -12,7 +12,7 @@ interface AppError extends Error {
 export function errorHandler(err: AppError, req: Request, res: Response, next: NextFunction): void {
     console.error(err.stack || err.message);
 
-    // Multer / body-parser errors carry a status code — respect it.
+    // Body-parser errors carry a status code — respect it.
     const status = err.status || 500;
     res.status(status).json({
         message: err.message || "Internal Server Error",

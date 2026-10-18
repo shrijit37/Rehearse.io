@@ -1,16 +1,12 @@
 import os
-import json
 import re
 import hmac
 import logging
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Header, Request
-from fastapi.concurrency import run_in_threadpool
+from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
 from pydantic import BaseModel
 from dotenv import load_dotenv
-import litellm
 from openai import OpenAI
 
 # Import refactored utilities
@@ -49,51 +45,52 @@ app.add_middleware(
 # Register rate limiting middleware
 app.middleware("http")(rate_limit_middleware)
 
-# Maximum file upload size: 25MB (matches OpenAI Whisper limit)
-MAX_AUDIO_SIZE = int(os.getenv("MAX_AUDIO_SIZE_MB", "25")) * 1024 * 1024
-ALLOWED_AUDIO_TYPES = {
-    "audio/webm", "audio/wav", "audio/mpeg", "audio/mp3",
-    "audio/m4a", "audio/ogg", "audio/flac", "audio/mp4",
-}
+# Text inference — the LLM behind scenario generation, DSA problem generation
+# and audio/DSA evaluation. Any OpenAI-compatible chat-completions endpoint
+# works, configured entirely by env: a hosted API (e.g. Groq's
+# https://api.groq.com/openai/v1) or a self-hosted gateway. There is no provider
+# default — while LLM_BASE_URL or LLM_MODEL is unset, text inference reports
+# unavailable on /health and its endpoints answer 503.
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "").strip()
+LLM_MODEL = os.getenv("LLM_MODEL", "").strip()
+LLM_API_KEY = os.getenv("LLM_API_KEY", "").strip()
 
-MODEL_NAME = os.getenv("LITELLM_MODEL", "groq/llama-3.3-70b-versatile")
+TEXT_INFERENCE_UNAVAILABLE = (
+    "Text inference is not configured. Set LLM_BASE_URL, LLM_MODEL and, when the "
+    "endpoint requires one, LLM_API_KEY."
+)
 
-# Groq text-to-speech configuration.
-# NOTE: Groq decommissioned `playai-tts`; the current TTS models are Canopy Labs
-# Orpheus (e.g. canopylabs/orpheus-v1-english). These require the Groq org admin
-# to accept model terms in the console before they will generate audio. Until
-# then the AI service returns 400/500 and the frontend falls back to the browser
-# SpeechSynthesis API automatically.
-TTS_MODEL = os.getenv("TTS_MODEL", "canopylabs/orpheus-v1-english")
-DEFAULT_TTS_VOICE = os.getenv("TTS_VOICE", "tara")
-ALLOWED_TTS_VOICES = [
-    "tara", "leah", "jess", "leo", "dan", "mia", "zac", "zoe",
-]
-
-# Speech-to-Text via Groq
-from stt_provider import create_stt_provider
-
-stt_provider = None
-try:
-    stt_provider = create_stt_provider()
-    if stt_provider:
-        logger.info("STT provider initialized with Groq")
-except Exception as exc:
-    logger.warning("STT provider failed to initialize: %s", exc)
-    logger.warning("Transcription will be unavailable until GROQ_API_KEY is set.")
-
-# TTS via Groq
-groq_api_key = os.getenv("GROQ_API_KEY")
-tts_client = None
-if groq_api_key:
+# Text inference client — the same OpenAI SDK, pointed at the configured endpoint.
+llm_client = None
+if LLM_BASE_URL and LLM_MODEL:
     try:
-        tts_client = OpenAI(
-            api_key=groq_api_key,
-            base_url="https://api.groq.com/openai/v1",
-        )
-        logger.info("Groq TTS client initialized")
+        llm_client = OpenAI(base_url=LLM_BASE_URL, api_key=LLM_API_KEY or "not-needed")
+        logger.info("Text inference client initialized: %s at %s", LLM_MODEL, LLM_BASE_URL)
     except Exception as exc:
-        logger.warning("Groq TTS client failed to initialize: %s", exc)
+        logger.warning("Text inference client failed to initialize: %s", exc)
+else:
+    logger.warning(
+        "LLM_BASE_URL/LLM_MODEL are not set. Text inference (scenario, audio and "
+        "DSA evaluation) is unavailable."
+    )
+
+
+def require_llm() -> None:
+    """Fail a text endpoint honestly when no text-inference endpoint is configured."""
+    if llm_client is None:
+        raise HTTPException(status_code=503, detail=TEXT_INFERENCE_UNAVAILABLE)
+
+
+def llm_json(messages: list[dict], *, timeout: int) -> str:
+    """One JSON-mode completion from the configured text-inference endpoint."""
+    response = llm_client.chat.completions.create(
+        model=LLM_MODEL,
+        messages=messages,
+        response_format={"type": "json_object"},
+        timeout=timeout,
+    )
+    return response.choices[0].message.content or ""
+
 
 # Shared API key for backend→AI authentication.
 # Accept either API_KEY or AI_SERVICE_API_KEY so the value matches the backend.
@@ -137,6 +134,7 @@ def root():
 
 @app.post("/api/generate-scenario")
 def generate_scenario(payload: ScenarioRequest, _auth=Depends(verify_api_key)):
+    require_llm()
     try:
         # Truncate inputs to prevent abuse
         resume_text = payload.resume_text[:10000]
@@ -156,17 +154,14 @@ def generate_scenario(payload: ScenarioRequest, _auth=Depends(verify_api_key)):
             f"}}"
         )
 
-        response = litellm.completion(
-            model=MODEL_NAME,
-            messages=[
+        content = llm_json(
+            [
                 {"role": "system", "content": "You are a professional HR assistant that outputs JSON format only."},
                 {"role": "user", "content": prompt}
             ],
-            response_format={"type": "json_object"},
             timeout=30,
         )
 
-        content = response.choices[0].message.content or ""
         default_fallback = {
             "questions": [
                 f"Can you explain your experience as it relates to the '{target_role}' role?",
@@ -192,178 +187,9 @@ def generate_scenario(payload: ScenarioRequest, _auth=Depends(verify_api_key)):
 def health_check():
     return {
         "status": "ok",
-        "stt_available": stt_provider is not None,
-        "stt_backend": "groq" if stt_provider else None,
-        "tts_available": tts_client is not None,
-        "tts_backend": "groq" if tts_client else None,
+        "llm_available": llm_client is not None,
+        "llm_model": LLM_MODEL or None,
     }
-
-
-@app.post("/api/evaluate-audio")
-async def evaluate_audio(
-    audio: UploadFile = File(...),
-    question: str = Form(...),
-    _auth=Depends(verify_api_key),
-):
-    try:
-        # Validate content type
-        if audio.content_type and audio.content_type not in ALLOWED_AUDIO_TYPES:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid audio type: {audio.content_type}. Allowed: {', '.join(ALLOWED_AUDIO_TYPES)}"
-            )
-
-        # Reject oversized uploads before buffering the whole body into memory
-        if audio.size is not None and audio.size > MAX_AUDIO_SIZE:
-            raise HTTPException(
-                status_code=413,
-                detail=f"Audio file too large. Maximum size is {MAX_AUDIO_SIZE // (1024*1024)}MB"
-            )
-
-        # Read and validate file size
-        audio_bytes = await audio.read()
-        if len(audio_bytes) > MAX_AUDIO_SIZE:
-            raise HTTPException(
-                status_code=413,
-                detail=f"Audio file too large. Maximum size is {MAX_AUDIO_SIZE // (1024*1024)}MB"
-            )
-        if len(audio_bytes) == 0:
-            raise HTTPException(status_code=400, detail="Empty audio file")
-
-        if not stt_provider:
-            raise HTTPException(
-                status_code=503,
-                detail="STT service not configured. Set GROQ_API_KEY."
-            )
-
-        # Perform STT transcription using the configured provider (blocking → threadpool)
-        try:
-            transcription_text = await run_in_threadpool(
-                stt_provider.transcribe,
-                audio_bytes,
-                audio.content_type or "audio/webm",
-            )
-        except Exception:
-            logger.exception("STT transcription failed")
-            raise HTTPException(
-                status_code=503,
-                detail="Speech-to-text processing failed. Please try again with clearer audio.",
-            )
-
-        # Truncate transcription to prevent abuse
-        transcription_text = transcription_text[:5000]
-        question_text = question[:500]
-
-        prompt = (
-            f"You are a professional HR interviewer conducting a job interview rehearsal.\n"
-            f"Evaluate the candidate's answer below against the interview question provided.\n\n"
-            f"Interview Question:\n{question_text}\n\n"
-            f"Candidate's Transcribed Answer:\n{transcription_text}\n\n"
-            f"Provide your feedback strictly in the following JSON format:\n"
-            f"{{\n"
-            f"  \"score\": <an integer between 1 and 10>,\n"
-            f"  \"feedback\": \"<a concise 2-3 sentence evaluation of the answer, highlighting strengths and areas of improvement>\"\n"
-            f"}}"
-        )
-
-        response = await run_in_threadpool(
-            lambda: litellm.completion(
-                model=MODEL_NAME,
-                messages=[
-                    {"role": "system", "content": "You are a professional HR assistant that outputs JSON format only."},
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"},
-                timeout=30,
-            )
-        )
-
-        content = response.choices[0].message.content or ""
-        default_fallback = {
-            "score": 7,
-            "feedback": "Answer recorded successfully. The evaluation model returned an unconventional response format, but your response contains solid elements."
-        }
-
-        parsed_response = parse_json_safely(content, default_fallback)
-        if "score" not in parsed_response or "feedback" not in parsed_response:
-            parsed_response = default_fallback
-
-        # Validate score range
-        try:
-            score = int(parsed_response["score"])
-            parsed_response["score"] = max(1, min(10, score))
-        except (ValueError, TypeError):
-            parsed_response["score"] = 7
-
-        parsed_response["transcription"] = transcription_text
-        return parsed_response
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Error evaluating audio")
-        raise HTTPException(
-            status_code=500,
-            detail="An error occurred during audio evaluation"
-        )
-
-
-@app.post("/api/tts")
-async def text_to_speech(
-    text: str = Form(...),
-    voice: str = Form(""),
-    _auth=Depends(verify_api_key),
-):
-    """
-    Convert text to speech using Groq's OpenAI-compatible TTS API (Orpheus).
-
-    Returns audio/mpeg bytes.
-    Voices: Canopy Labs Orpheus voices, e.g. tara, leah, jess, leo, dan, mia, zac, zoe.
-    """
-    if not tts_client:
-        raise HTTPException(
-            status_code=503,
-            detail="TTS service not configured. Set GROQ_API_KEY."
-        )
-
-    if not text or len(text) > 5000:
-        raise HTTPException(
-            status_code=400,
-            detail="Text must be between 1 and 5000 characters."
-        )
-
-    selected_voice = voice.strip() or DEFAULT_TTS_VOICE
-    if selected_voice not in ALLOWED_TTS_VOICES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid voice. Must be one of: {', '.join(ALLOWED_TTS_VOICES)}"
-        )
-
-    try:
-        response = await run_in_threadpool(
-            lambda: tts_client.audio.speech.create(
-                model=TTS_MODEL,
-                voice=selected_voice,
-                input=text,
-                response_format="mp3",
-            )
-        )
-
-        audio_bytes = response.content
-
-        return Response(
-            content=audio_bytes,
-            media_type="audio/mpeg",
-            headers={
-                "Content-Disposition": "inline; filename=\"speech.mp3\"",
-                "Content-Length": str(len(audio_bytes)),
-            }
-        )
-    except Exception as e:
-        logger.exception("TTS generation failed")
-        raise HTTPException(
-            status_code=500,
-            detail="Text-to-speech generation failed."
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -423,6 +249,7 @@ STARTER_TEMPLATES = {
 @app.post("/api/generate-dsa-problems")
 def generate_dsa_problems(payload: DsaGenerateRequest, _auth=Depends(verify_api_key)):
     """Generate DSA interview problems tailored to a role and difficulty."""
+    require_llm()
     try:
         target_role = (payload.target_role or "Software Engineer")[:200]
         difficulty = (payload.difficulty or "medium").lower()
@@ -467,19 +294,16 @@ def generate_dsa_problems(payload: DsaGenerateRequest, _auth=Depends(verify_api_
         )
 
         try:
-            response = litellm.completion(
-                model=MODEL_NAME,
-                messages=[
+            content = llm_json(
+                [
                     {
                         "role": "system",
                         "content": "You are an expert DSA interviewer that outputs valid JSON only.",
                     },
                     {"role": "user", "content": prompt},
                 ],
-                response_format={"type": "json_object"},
                 timeout=60,
             )
-            content = response.choices[0].message.content or ""
             parsed = parse_json_safely(content, {})
             problems = parsed.get("problems") if isinstance(parsed, dict) else None
             if not isinstance(problems, list) or len(problems) == 0:
@@ -528,6 +352,7 @@ def generate_dsa_problems(payload: DsaGenerateRequest, _auth=Depends(verify_api_
 @app.post("/api/evaluate-dsa")
 def evaluate_dsa(payload: DsaEvaluateRequest, _auth=Depends(verify_api_key)):
     """AI-evaluate a candidate's DSA code submission."""
+    require_llm()
     try:
         title = (payload.title or "")[:300]
         description = (payload.description or "")[:8000]
@@ -601,19 +426,16 @@ def evaluate_dsa(payload: DsaEvaluateRequest, _auth=Depends(verify_api_key)):
         }
 
         try:
-            response = litellm.completion(
-                model=MODEL_NAME,
-                messages=[
+            content = llm_json(
+                [
                     {
                         "role": "system",
                         "content": "You are an expert DSA code reviewer that outputs valid JSON only.",
                     },
                     {"role": "user", "content": prompt},
                 ],
-                response_format={"type": "json_object"},
                 timeout=45,
             )
-            content = response.choices[0].message.content or ""
             parsed = parse_json_safely(content, default_fallback)
         except Exception as llm_err:
             logger.warning("LLM DSA evaluation failed: %s", llm_err)

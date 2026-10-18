@@ -54,9 +54,10 @@ const PrivacyPolicy = () => {
               <section>
                 <h2 className="text-base font-bold text-foreground mb-2">4. Data Sharing</h2>
                 <p>
-                  We do not sell your personal data. We share data only with our third-party AI service provider (Groq) strictly for
-                  interview evaluation processing. That processor is bound by its data processing terms. We do not share
-                  data with any other third parties unless required by law.
+                  We do not sell your personal data. We share data only with our third-party AI service providers — Google's
+                  Gemini API for spoken interview sessions, and the configured text-inference provider for question generation
+                  and code review — strictly for interview evaluation processing. Those processors are bound by their data
+                  processing terms. We do not share data with any other third parties unless required by law.
                 </p>
               </section>
 

@@ -13,13 +13,14 @@ import {
     listInterviewSessions,
     listInvitesForCandidate,
     listInvitesForInterview,
+    mutateInvite,
     updateInterviewSession,
     updateInvite,
+    type InvitePatch,
 } from "../../db/repositories/interviews";
 import { withId } from "../../db/shape";
 import type { DsaResultItem, ResultItem } from "../../db/schema";
 import {
-    evaluateAudio,
     evaluateDsa as aiEvaluateDsa,
     generateDsaProblems,
 } from "../../utils/aiClient";
@@ -309,63 +310,14 @@ export const acceptInvite = async (rawToken: string): Promise<InterviewResult> =
     }
 };
 
-export const evaluateCandidateAnswer = async (
-    userId: string,
-    params: { audioBuffer: Buffer; mimetype: string; filename: string; question: string; inviteId: string },
-): Promise<InterviewResult> => {
-    try {
-        if (!isValidId(params.inviteId)) return { status: 400, message: "Invalid inviteId" };
-        const invite = await findInviteById(params.inviteId);
-        if (!invite) return { status: 404, message: "Invite not found" };
-        if (invite.candidateId !== userId) return { status: 403, message: "Not authorized for this invite" };
-        if (invite.status !== "started") return { status: 400, message: "Invite is not active" };
-
-        const interview = await findInterviewRowById(invite.interviewId);
-        if (!interview) return { status: 404, message: "Interview not found" };
-
-        const questionIndex = interview.questions.indexOf(params.question);
-        if (questionIndex === -1) {
-            return { status: 400, message: "Question not found in this interview" };
-        }
-
-        const ai = await evaluateAudio({
-            audioBuffer: params.audioBuffer,
-            mimetype: params.mimetype,
-            filename: params.filename,
-            question: params.question,
-        });
-
-        const results: ResultItem[] = [...invite.results];
-        const existingIndex = results.findIndex(
-            (r) => interview.questions.indexOf(r.question) === questionIndex,
-        );
-        const record: ResultItem = {
-            question: interview.questions[questionIndex]!,
-            transcription: ai.transcription,
-            score: ai.score,
-            feedback: ai.feedback,
-        };
-        if (existingIndex >= 0) {
-            results[existingIndex] = record;
-        } else {
-            results.push(record);
-        }
-        await updateInvite(invite.id, { results });
-
-        return {
-            status: 200,
-            message: "Answer evaluated",
-            data: { score: ai.score, feedback: ai.feedback, transcription: ai.transcription || "No transcription available" },
-        };
-    } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : "unknown error";
-        return { status: 502, message: "AI service failed to evaluate your answer. Please try again.", data: { error: message } };
-    }
-};
-
 export const submitInterviewAnswer = async (userId: string, input: SubmitAnswerInput): Promise<InterviewResult> => {
     try {
         if (!isValidId(input.inviteId)) return { status: 400, message: "Invalid inviteId format" };
+
+        // Validated on an unlocked read; the write below re-checks authority
+        // against the locked row. The interview is read here, not inside the
+        // transaction, so a locked writer never needs a second pooled
+        // connection (`DATABASE_POOL_MAX` is 10).
         const invite = await findInviteById(input.inviteId);
         if (!invite) return { status: 404, message: "Invite not found" };
         if (invite.candidateId !== userId) return { status: 403, message: "Not authorized" };
@@ -376,45 +328,61 @@ export const submitInterviewAnswer = async (userId: string, input: SubmitAnswerI
             return { status: 400, message: "Invalid question index" };
         }
 
-        const results: ResultItem[] = [...invite.results];
-        const existingIndex = results.findIndex(
-            (r) => interview.questions.indexOf(r.question) === input.questionIndex,
-        );
-        if (existingIndex === -1) {
-            results.push({
-                question: interview.questions[input.questionIndex]!,
-                transcription: "",
-                score: null,
-                feedback: "",
-            });
-        }
-
-        const hasDsa = (interview.dsaProblems?.length || 0) > 0;
-        const behavioralDone = results.length >= (interview.questions.length || 0);
-
-        const patch: Parameters<typeof updateInvite>[1] = { results };
-        let nextRound: string | null = null;
-        let completed = false;
-        if (behavioralDone) {
-            if ((interview.interviewType === "mixed" || interview.interviewType === "dsa") && hasDsa) {
-                patch.currentRound = "dsa";
-                nextRound = "dsa";
-            } else {
-                patch.status = "completed";
-                patch.currentRound = "done";
-                patch.completedAt = new Date();
-                completed = true;
+        // Written under the same row lock the live relay uses: both paths
+        // rebuild the whole `results` array from the row they read, so without
+        // the lock the slower writer erases the other's fresh answer.
+        const outcome = await mutateInvite<{ nextRound: string | null; completed: boolean }>(input.inviteId, (locked) => {
+            if (locked.candidateId !== userId) {
+                return { kind: "refuse" as const, status: 403, message: "Not authorized" };
             }
+            if (locked.status !== "started") {
+                return { kind: "refuse" as const, status: 400, message: "Invite is not in started status" };
+            }
+
+            const results: ResultItem[] = [...locked.results];
+            const existingIndex = results.findIndex(
+                (r) => interview.questions.indexOf(r.question) === input.questionIndex,
+            );
+            if (existingIndex === -1) {
+                results.push({
+                    question: interview.questions[input.questionIndex]!,
+                    transcription: "",
+                    score: null,
+                    feedback: "",
+                });
+            }
+
+            const hasDsa = (interview.dsaProblems?.length || 0) > 0;
+            const behavioralDone = results.length >= (interview.questions.length || 0);
+
+            const patch: InvitePatch = { results };
+            let nextRound: string | null = null;
+            let completed = false;
+            if (behavioralDone) {
+                if ((interview.interviewType === "mixed" || interview.interviewType === "dsa") && hasDsa) {
+                    patch.currentRound = "dsa";
+                    nextRound = "dsa";
+                } else {
+                    patch.status = "completed";
+                    patch.currentRound = "done";
+                    patch.completedAt = new Date();
+                    completed = true;
+                }
+            }
+            return { kind: "write" as const, patch, data: { nextRound, completed } };
+        });
+
+        if (outcome.refused) {
+            return { status: outcome.refused.status, message: outcome.refused.message };
         }
-        const saved = await updateInvite(invite.id, patch);
 
         return {
             status: 200,
             message: "Answer submitted",
             data: {
-                invite: saved ?? invite,
-                ...(nextRound ? { nextRound } : {}),
-                ...(completed ? { completed: true } : {}),
+                invite: outcome.invite,
+                ...(outcome.data?.nextRound ? { nextRound: outcome.data.nextRound } : {}),
+                ...(outcome.data?.completed ? { completed: true } : {}),
             },
         };
     } catch (error: unknown) {
@@ -492,7 +460,7 @@ export const evaluateInterviewDsa = async (userId: string, input: EvaluateInterv
         const problem = (interview.dsaProblems || [])[input.problemIndex];
         if (!problem) return { status: 400, message: "Invalid problem index" };
 
-        const patch: Parameters<typeof updateInvite>[1] = {};
+        const patch: InvitePatch = {};
         if (invite.status === "pending") {
             patch.status = "started";
             patch.startedAt = invite.startedAt || new Date();

@@ -1,4 +1,5 @@
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:9000";
+/** Exported so the live socket can derive its ws:// origin from the same base. */
+export const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:9000";
 
 interface RequestOptions extends Omit<RequestInit, "body"> {
   body?: unknown;

@@ -22,7 +22,10 @@ export const evaluateDsaSchema = z.object({
 const resultItemSchema = z.object({
     question: z.string(),
     transcription: z.string(),
-    score: z.number(),
+    // The column is `number | null` and the views already render a null score as
+    // "—" (ResultDetailPanel, Dashboard.scoresFrom), so an answer whose scoring
+    // call failed is stored as unscored rather than given an invented grade.
+    score: z.number().nullable(),
     feedback: z.string(),
 });
 

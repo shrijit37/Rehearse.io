@@ -1,13 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { api } from "@/lib/api";
 
 interface UseSpeakOptions {
 	rate?: number;
 	pitch?: number;
 	voice?: SpeechSynthesisVoice;
 	onEnd?: () => void;
-	/** Use Groq TTS API instead of browser SpeechSynthesis */
-	useGroqTts?: boolean;
 }
 
 interface UseSpeakReturn {
@@ -20,11 +17,11 @@ interface UseSpeakReturn {
 }
 
 /**
- * A custom hook for text-to-speech.
+ * A custom hook for text-to-speech, spoken by the browser.
  *
- * Supports two modes:
- * 1. Browser SpeechSynthesis API (default) — works offline, free
- * 2. Groq TTS API — higher quality voices, requires backend AI service running
+ * This is the non-conversational path — reading a question aloud, for instance.
+ * The spoken interview itself is not synthesised here: the coach's voice is the
+ * 24 kHz audio of a live session (`src/lib/live/`).
  *
  * @example
  * const { speak, stop, speaking, supported } = useSpeak();
@@ -36,7 +33,6 @@ export function useSpeak(): UseSpeakReturn {
 	const [supported, setSupported] = useState(false);
 	const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
 	const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-	const audioElementRef = useRef<HTMLAudioElement | null>(null);
 	const mountedRef = useRef(true);
 
 	useEffect(() => {
@@ -70,21 +66,6 @@ export function useSpeak(): UseSpeakReturn {
 		return () => {
 			mountedRef.current = false;
 			synth.cancel();
-			if (audioElementRef.current) {
-				audioElementRef.current.pause();
-				audioElementRef.current = null;
-			}
-		};
-	}, []);
-
-	// Cleanup audio on unmount
-	useEffect(() => {
-		return () => {
-			if (audioElementRef.current) {
-				audioElementRef.current.pause();
-				audioElementRef.current.remove();
-				audioElementRef.current = null;
-			}
 		};
 	}, []);
 
@@ -140,84 +121,24 @@ export function useSpeak(): UseSpeakReturn {
 	);
 
 	const speak = useCallback(
-		async (text: string, options?: UseSpeakOptions) => {
+		(text: string, options?: UseSpeakOptions) => {
 			if (!text.trim()) return;
 
 			// Stop any ongoing playback
 			if (window.speechSynthesis) {
 				window.speechSynthesis.cancel();
 			}
-			if (audioElementRef.current) {
-				audioElementRef.current.pause();
-				audioElementRef.current.remove();
-				audioElementRef.current = null;
-			}
 			currentUtteranceRef.current = null;
 
-			// Use Groq TTS if requested
-			if (options?.useGroqTts) {
-				try {
-					setSpeaking(true);
-					const formData = new FormData();
-					formData.append("text", text);
-					formData.append("voice", "tara");
-
-					// Call backend proxy → AI service TTS
-					const response = await api.post<Response>(
-						"/api/tts",
-						formData,
-						{ raw: true },
-					);
-
-					// api client returns the raw Response when `raw: true`
-					const audioBlob = await response.blob();
-					const audioUrl = URL.createObjectURL(audioBlob);
-					const audio = new Audio(audioUrl);
-					audioElementRef.current = audio;
-
-					audio.onended = () => {
-						URL.revokeObjectURL(audioUrl);
-						if (mountedRef.current) {
-							setSpeaking(false);
-						}
-						options?.onEnd?.();
-					};
-
-					audio.onerror = () => {
-						URL.revokeObjectURL(audioUrl);
-						if (mountedRef.current) {
-							setSpeaking(false);
-						}
-					};
-
-					await audio.play();
-				} catch {
-					// Fall back to browser TTS on error
-					if (mountedRef.current) {
-						setSpeaking(false);
-					}
-					if (supported && window.speechSynthesis) {
-						speakBrowserTTS(text, options);
-					}
-				}
-				return;
-			}
-
-			// Default: use browser SpeechSynthesis
 			speakBrowserTTS(text, options);
 		},
-		[supported, speakBrowserTTS],
+		[speakBrowserTTS],
 	);
 
 
 	const stop = useCallback(() => {
 		if (window.speechSynthesis) {
 			window.speechSynthesis.cancel();
-		}
-		if (audioElementRef.current) {
-			audioElementRef.current.pause();
-			audioElementRef.current.remove();
-			audioElementRef.current = null;
 		}
 		currentUtteranceRef.current = null;
 		if (mountedRef.current) {

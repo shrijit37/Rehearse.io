@@ -44,6 +44,9 @@ const interviewTargetRoleSchema = z.string().min(1).max(200);
 const interviewQuestionsSchema = z
     .array(z.string().max(LIVE_MAX_QUESTION_CHARS))
     .max(LIVE_MAX_QUESTIONS);
+/** Every status the `interview_status` column defines, including the ones a
+ *  recruiter only reaches by updating: "closed" is how an interview is retired. */
+const interviewStatusSchema = z.enum(["draft", "active", "closed"]);
 
 export const createInterviewSchema = z.object({
     title: z.string().min(1),
@@ -55,7 +58,7 @@ export const createInterviewSchema = z.object({
     questions: interviewQuestionsSchema.optional().default([]),
     dsaProblems: z.array(dsaProblemSchema).optional().default([]),
     dsaDifficulty: z.enum(["easy", "medium", "hard", "mixed"]).optional().default("medium"),
-    status: z.enum(["draft", "active"]).optional().default("draft"),
+    status: interviewStatusSchema.optional().default("draft"),
 });
 
 /**
@@ -76,7 +79,7 @@ export const updateInterviewSchema = z.object({
     questions: interviewQuestionsSchema.optional(),
     dsaProblems: z.array(dsaProblemSchema).optional(),
     dsaDifficulty: z.enum(["easy", "medium", "hard", "mixed"]).optional(),
-    status: z.enum(["draft", "active"]).optional(),
+    status: interviewStatusSchema.optional(),
 });
 
 export const generateInviteSchema = z.object({

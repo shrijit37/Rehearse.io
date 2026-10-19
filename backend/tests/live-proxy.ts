@@ -30,6 +30,9 @@ import type { AddressInfo } from "node:net";
 import express from "express";
 import { WebSocketServer, WebSocket as WsClient } from "ws";
 import type { LiveTurn } from "../src/modules/live/live.persistence";
+// Env-free, so it can be static where the modules below cannot: the statuses the
+// update schema must cover are the column's, not a list written twice.
+import { interviewStatus } from "../src/db/schema";
 
 const { attachLiveUpgrade } = await import("../src/modules/live/live.upgrade");
 const { mintLiveTicket, liveSessionCount } = await import("../src/modules/live/live.service");
@@ -670,6 +673,13 @@ check(
     "an update carries only the fields it was sent, with no default filled in",
     Object.keys(updateInterviewSchema.parse({ status: "active" })).join(",") === "status",
     JSON.stringify(Object.keys(updateInterviewSchema.parse({ status: "active" }))),
+);
+// "closed" is how the dashboard retires an interview, so a status enum that
+// forgets it breaks a live action. Checked against the column's own values.
+check(
+    "an update accepts every status the database defines",
+    interviewStatus.enumValues.every((status) => updateInterviewSchema.safeParse({ status }).success),
+    JSON.stringify(interviewStatus.enumValues),
 );
 
 console.log("\n== teardown ==");

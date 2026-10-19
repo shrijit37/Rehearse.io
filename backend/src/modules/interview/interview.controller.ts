@@ -14,6 +14,7 @@ import {
 import { logAudit } from "../../middleware/auditLog";
 import {
     createInterviewSchema,
+    updateInterviewSchema,
     generateInviteSchema,
     submitAnswerSchema,
     evaluateDsaSchema,
@@ -90,7 +91,12 @@ export const handleUpdateInterview = async (req: Request, res: Response): Promis
         res.status(401).json({ message: "Unauthorized" });
         return;
     }
-    const result = await updateInterview(userId, paramId(req), req.body);
+    const parsed = updateInterviewSchema.safeParse(req.body);
+    if (!parsed.success) {
+        res.status(400).json({ message: parsed.error.issues[0]?.message || "Invalid input" });
+        return;
+    }
+    const result = await updateInterview(userId, paramId(req), parsed.data);
     res.status(result.status).json({
         message: result.message,
         ...(result.interview ? { interview: result.interview } : {}),

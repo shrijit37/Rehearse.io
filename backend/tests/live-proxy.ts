@@ -654,6 +654,24 @@ check(
     !createInterviewSchema.safeParse({ ...interview, targetRole: "r".repeat(201) }).success,
 );
 
+// The update path writes what a spoken session reads, so it is bounded the same
+// way — and a patch must carry only what the caller sent, or a status change
+// would also write the defaults over the stored row.
+const { updateInterviewSchema } = await import("../src/modules/interview/interview.validation");
+check(
+    "an update refuses a question past what one spoken turn can carry",
+    !updateInterviewSchema.safeParse({ questions: ["q".repeat(LIVE_MAX_QUESTION_CHARS + 1)] }).success,
+);
+check(
+    "an update refuses a role a live session would refuse",
+    !updateInterviewSchema.safeParse({ targetRole: "r".repeat(201) }).success,
+);
+check(
+    "an update carries only the fields it was sent, with no default filled in",
+    Object.keys(updateInterviewSchema.parse({ status: "active" })).join(",") === "status",
+    JSON.stringify(Object.keys(updateInterviewSchema.parse({ status: "active" }))),
+);
+
 console.log("\n== teardown ==");
 
 capped.socket.close();

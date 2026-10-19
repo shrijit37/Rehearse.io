@@ -30,6 +30,9 @@ import type { AddressInfo } from "node:net";
 import express from "express";
 import { WebSocketServer, WebSocket as WsClient } from "ws";
 import type { LiveTurn } from "../src/modules/live/live.persistence";
+// Env-free, so it can be static where the modules below cannot: the statuses the
+// update schema must cover are the column's, not a list written twice.
+import { interviewStatus } from "../src/db/schema";
 
 const { attachLiveUpgrade } = await import("../src/modules/live/live.upgrade");
 const { mintLiveTicket, liveSessionCount } = await import("../src/modules/live/live.service");
@@ -113,8 +116,11 @@ const upstream = new WebSocketServer({ port: 0 });
 await new Promise<void>((resolve) => upstream.once("listening", resolve));
 const upstreamPort = listeningPort(upstream);
 // Read at call time by liveUpstreamUrl, so setting it once the fake is
-// listening is enough to keep the whole run offline.
+// listening is enough to keep the whole run offline. Aiming the relay at an
+// override also takes an explicit opt-in (never in production), which is
+// asserted below.
 process.env.GEMINI_LIVE_WS_URL = `ws://127.0.0.1:${upstreamPort}`;
+process.env.ALLOW_LIVE_WS_OVERRIDE = "true";
 
 // Everything the relay logs, so the redaction guarantee can be asserted instead
 // of assumed: the API key rides in the upstream URL, and transcripts are the
@@ -225,6 +231,10 @@ const saves: { userId: string; turns: LiveTurn[] }[] = [];
 let scoringFails = false;
 let saveStatus = 201;
 let saveThrows = false;
+// Lets a test hold `recordTurn` open and observe what has *not* happened yet —
+// the ordering between persisting an answer and telling the client its score.
+let recordTurnHold = false;
+let releaseRecordTurn: () => void = () => {};
 attachLiveUpgrade(server, {
     async score(question, transcription) {
         scored.push({ question, transcription });
@@ -233,6 +243,11 @@ attachLiveUpgrade(server, {
     },
     async recordTurn(_claims, turn) {
         recorded.push(turn);
+        if (recordTurnHold) {
+            await new Promise<void>((resolve) => {
+                releaseRecordTurn = resolve;
+            });
+        }
     },
     async resolveQuestion(_claims, index) {
         return `database question ${index}`;
@@ -301,15 +316,20 @@ function openClient(ticket: string): Promise<TestClient> {
 const PRACTICE_USER = "00000000-0000-0000-0000-000000000001";
 /** The client that spans several questions — the one whose saves prove the shape. */
 const MULTI_QUESTION_USER = "00000000-0000-0000-0000-000000000002";
-const ticketFor = (instruction: string, userId = PRACTICE_USER): string =>
+const BASE_QUESTION = "Tell me about a time you had to make a decision with incomplete data.";
+/**
+ * A practice ticket. `trigger` rides in the *question*: the coach's instruction
+ * is built from the question in the relay (the browser never carries it), and
+ * the fake upstream keys its SILENT/DROP/GOAWAY behaviours off the instruction
+ * it is handed.
+ */
+const ticketFor = (trigger?: string, userId = PRACTICE_USER): string =>
     mintLiveTicket({
         _id: userId,
         mode: "practice",
-        question: "Tell me about a time you had to make a decision with incomplete data.",
+        question: trigger ? `${BASE_QUESTION} ${trigger}` : BASE_QUESTION,
         questionIndex: 0,
         targetRole: "Software Engineer",
-        instruction,
-        kickoff: "Greet and ask.",
     });
 
 console.log("\n== auth ==");
@@ -343,7 +363,7 @@ mintServer.close();
 
 console.log("\n== relay ==");
 
-const good = await openClient(ticketFor("You are a test coach.", MULTI_QUESTION_USER));
+const good = await openClient(ticketFor(undefined, MULTI_QUESTION_USER));
 const connected = await waitFor(() => (good.socket.readyState === WsClient.OPEN ? true : undefined));
 check("valid ticket upgrades", connected === true, `state=${good.socket.readyState}, error=${good.error ?? "none"}`);
 
@@ -357,10 +377,24 @@ check(
     JSON.stringify(setup?.generationConfig?.speechConfig ?? {}),
 );
 check("transcripts are requested both ways", Boolean(setup?.inputAudioTranscription && setup?.outputAudioTranscription));
-check("instruction reaches the upstream", String(setup?.systemInstruction?.parts?.[0]?.text).includes("test coach"));
+const instructionText = String(setup?.systemInstruction?.parts?.[0]?.text);
+check(
+    "the setup instruction is built from the ticket's role and question",
+    instructionText.includes("Software Engineer") && instructionText.includes(BASE_QUESTION),
+    instructionText.slice(0, 120),
+);
+check(
+    "the setup instruction ends with the question whole, not a cut of it",
+    instructionText.endsWith(`The question for this turn is: "${BASE_QUESTION}"`),
+    instructionText.slice(-90),
+);
 
 const kickoff = await waitFor(() => upstreamConnections[0]?.textTurns[0]);
-check("relay opens the conversation with the kickoff turn", kickoff === "Greet and ask.", String(kickoff));
+check(
+    "relay opens the conversation with the shipped opener",
+    kickoff === "Greet the candidate in one short sentence, then ask the question.",
+    String(kickoff),
+);
 
 check(
     "setupComplete is relayed to the browser",
@@ -513,6 +547,141 @@ check(
     `kickoffs=${JSON.stringify(upstreamConnections[firstConnection + 1]?.textTurns ?? [])}`,
 );
 
+console.log("\n== what the browser's ticket carries ==");
+
+// A ticket is a bearer value the candidate holds, and a JWT payload is base64
+// rather than encryption, so what it carries is what the candidate can read.
+// This is an allow-list: any claim added later has to be justified here.
+const TICKET_CLAIMS = [
+    "_id",
+    "purpose",
+    "mode",
+    "inviteId",
+    "jti",
+    "question",
+    "questionIndex",
+    "targetRole",
+    "iat",
+    "exp",
+];
+const decodedTicket = JSON.parse(
+    Buffer.from(ticketFor("trigger.").split(".")[1]!, "base64url").toString("utf8"),
+) as Record<string, unknown>;
+check(
+    "a ticket carries nothing beyond the turn the candidate is on",
+    Object.keys(decodedTicket).every((key) => TICKET_CLAIMS.includes(key)),
+    Object.keys(decodedTicket).join(","),
+);
+check(
+    "a ticket carries no coach instruction or opener",
+    !("instruction" in decodedTicket) &&
+        !("kickoff" in decodedTicket) &&
+        !JSON.stringify(decodedTicket).includes("spoken interview coach"),
+    JSON.stringify(decodedTicket).slice(0, 160),
+);
+
+console.log("\n== aiming the upstream socket ==");
+
+// Dynamic for the same reason as the imports at the top: `live.config` reads
+// `process.env` at module scope, and the assertions below change those values.
+const { liveUpstreamUrl, buildLiveInstruction, LIVE_MAX_INSTRUCTION_CHARS, LIVE_MAX_QUESTION_CHARS } =
+    await import("../src/modules/live/live.config");
+const overrideUrl = liveUpstreamUrl("k");
+check("an opted-in non-production run reaches the override", overrideUrl.startsWith("ws://127.0.0.1:"), overrideUrl);
+const savedAllow = process.env.ALLOW_LIVE_WS_OVERRIDE;
+const savedAppEnv = process.env.APP_ENV;
+const savedNodeEnv = process.env.NODE_ENV;
+delete process.env.ALLOW_LIVE_WS_OVERRIDE;
+check(
+    "without the opt-in the override is ignored",
+    liveUpstreamUrl("k").startsWith("wss://generativelanguage.googleapis.com/"),
+    liveUpstreamUrl("k"),
+);
+process.env.ALLOW_LIVE_WS_OVERRIDE = "true";
+process.env.APP_ENV = "production";
+check(
+    "production ignores the override even when it is opted in",
+    liveUpstreamUrl("k").startsWith("wss://generativelanguage.googleapis.com/"),
+    liveUpstreamUrl("k"),
+);
+delete process.env.APP_ENV;
+process.env.NODE_ENV = "production";
+check(
+    "a production NODE_ENV alone closes the override",
+    liveUpstreamUrl("k").startsWith("wss://generativelanguage.googleapis.com/"),
+    liveUpstreamUrl("k"),
+);
+if (savedAllow === undefined) delete process.env.ALLOW_LIVE_WS_OVERRIDE;
+else process.env.ALLOW_LIVE_WS_OVERRIDE = savedAllow;
+if (savedAppEnv === undefined) delete process.env.APP_ENV;
+else process.env.APP_ENV = savedAppEnv;
+if (savedNodeEnv === undefined) delete process.env.NODE_ENV;
+else process.env.NODE_ENV = savedNodeEnv;
+
+console.log("\n== the instruction the coach hears ==");
+
+// The relay sends this text to the model and persists the same question on the
+// turn, so the model has to hear the question whole: the preamble is what gives
+// way when the two do not both fit.
+const longestQuestion = "q".repeat(LIVE_MAX_QUESTION_CHARS);
+const longestRole = "r".repeat(200);
+const atBounds = buildLiveInstruction(longestRole, longestQuestion);
+check(
+    "the instruction stays within its bound at the longest question and role the API accepts",
+    atBounds.length <= LIVE_MAX_INSTRUCTION_CHARS,
+    `len=${atBounds.length} cap=${LIVE_MAX_INSTRUCTION_CHARS}`,
+);
+check("the question survives that instruction whole", atBounds.endsWith(`"${longestQuestion}"`), atBounds.slice(-24));
+const hugeQuestion = "Q".repeat(LIVE_MAX_INSTRUCTION_CHARS + 50);
+const overBound = buildLiveInstruction("Software Engineer", hugeQuestion);
+check(
+    "a question longer than the bound is still spoken whole, not cut",
+    overBound.endsWith(`"${hugeQuestion}"`),
+    `len=${overBound.length} cap=${LIVE_MAX_INSTRUCTION_CHARS}`,
+);
+
+// And an interview cannot hand the session a question or a role those bounds
+// were measured against, so the two halves cannot disagree.
+const { createInterviewSchema } = await import("../src/modules/interview/interview.validation");
+const interview = { title: "Round 1", organizationId: "org", expiresAt: "2030-01-01", targetRole: "Software Engineer" };
+check(
+    "an interview accepts a question at the bound",
+    createInterviewSchema.safeParse({ ...interview, questions: [longestQuestion], targetRole: longestRole }).success,
+);
+check(
+    "an interview refuses a question past what one spoken turn can carry",
+    !createInterviewSchema.safeParse({ ...interview, questions: ["q".repeat(LIVE_MAX_QUESTION_CHARS + 1)] }).success,
+);
+check(
+    "an interview refuses a role a live session would refuse",
+    !createInterviewSchema.safeParse({ ...interview, targetRole: "r".repeat(201) }).success,
+);
+
+// The update path writes what a spoken session reads, so it is bounded the same
+// way — and a patch must carry only what the caller sent, or a status change
+// would also write the defaults over the stored row.
+const { updateInterviewSchema } = await import("../src/modules/interview/interview.validation");
+check(
+    "an update refuses a question past what one spoken turn can carry",
+    !updateInterviewSchema.safeParse({ questions: ["q".repeat(LIVE_MAX_QUESTION_CHARS + 1)] }).success,
+);
+check(
+    "an update refuses a role a live session would refuse",
+    !updateInterviewSchema.safeParse({ targetRole: "r".repeat(201) }).success,
+);
+check(
+    "an update carries only the fields it was sent, with no default filled in",
+    Object.keys(updateInterviewSchema.parse({ status: "active" })).join(",") === "status",
+    JSON.stringify(Object.keys(updateInterviewSchema.parse({ status: "active" }))),
+);
+// "closed" is how the dashboard retires an interview, so a status enum that
+// forgets it breaks a live action. Checked against the column's own values.
+check(
+    "an update accepts every status the database defines",
+    interviewStatus.enumValues.every((status) => updateInterviewSchema.safeParse({ status }).success),
+    JSON.stringify(interviewStatus.enumValues),
+);
+
 console.log("\n== teardown ==");
 
 capped.socket.close();
@@ -547,8 +716,6 @@ const interviewTicket = mintLiveTicket({
     question: "First interview question?",
     questionIndex: 0,
     targetRole: "Software Engineer",
-    instruction: "You are a test coach.",
-    kickoff: "Greet and ask.",
 });
 const connectionsBeforeInterview = upstreamConnections.length;
 const interviewClient = await openClient(interviewTicket);
@@ -569,6 +736,31 @@ check(
     (askedFromDatabase ?? "").includes("database question 1"),
     String(askedFromDatabase),
 );
+
+// Why a submit cannot race the write. The page's Next/Finish button lives inside
+// the branch that renders a score (BehavioralRound), and the relay sends that
+// score only after `recordTurn` resolves — so an answer cannot be submitted while
+// its own turn is still on the way to the invite. Held open here to assert the
+// half of it that is observable from the client.
+recordTurnHold = true;
+const turnFrames = (): unknown[] => interviewClient.frames.filter((frame) => frame.proxy?.type === "turn");
+const turnsBeforeAnswer = turnFrames().length;
+interviewClient.socket.send(JSON.stringify({ realtimeInput: { audio: { data: "AAAA", mimeType: "audio/pcm;rate=16000" } } }));
+await sleep(400);
+check(
+    "no score reaches the client while its turn is still being written",
+    turnFrames().length === turnsBeforeAnswer,
+    `turn frames=${JSON.stringify(turnFrames())}`,
+);
+releaseRecordTurn();
+recordTurnHold = false;
+check("the score reaches the client once the turn is written", await waitUntil(() => turnFrames().length > 0, 4000));
+check(
+    "the interview answer was written against the question it answered",
+    recorded.some((turn) => turn.question === "database question 1" && turn.transcription === "answer 1"),
+    JSON.stringify(recorded.map((turn) => `${turn.question} <- ${turn.transcription}`)),
+);
+
 interviewClient.socket.close();
 await waitUntil(() => liveSessionCount() === 0, 3000);
 
@@ -586,6 +778,11 @@ console.log("\n== redaction and failure paths ==");
 
 const allLogs = captured.join("\n");
 check("the API key never reaches a log line", !allLogs.includes("test-key"), "a log line carried the key");
+check(
+    "the upstream URL never reaches a log line",
+    !allLogs.includes("?key=") && !allLogs.includes("127.0.0.1:"),
+    "a log line carried the upstream URL, which has the key in its query string",
+);
 check(
     "spoken content never reaches a log line",
     !allLogs.includes("Hello.") && !allLogs.includes(PCM_24K_SILENCE.slice(0, 24)),

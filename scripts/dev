@@ -424,23 +424,21 @@ backend_env_has() { [[ -f "$ROOT/backend/.env" ]] && grep -qE "^$1=.+" "$ROOT/ba
 # The value the backend will send as `Authorization: Bearer` to the ai-service.
 # Local mode passes the same value to the ai-service as API_KEY so the pair
 # always matches — the old flow only worked when both files happened to agree.
+#
+# It is read with the backend's own dotenv, out of the backend's own
+# node_modules (which `require_deps` has already checked), so nothing here
+# reimplements dotenv's rules — quoting, inline comments, a `#` inside a quoted
+# value, an `=` inside a value. A hand-rolled version did: it treated a value as
+# quoted when a quote appeared *anywhere* in it, so an unquoted
+# `abc'def # comment` kept its comment, the comment text became the secret this
+# script handed the ai-service, the pair stopped matching, and every
+# authenticated ai-service route answered as an API-side 500.
 backend_ai_service_key() {
-    local value
-    value="$(grep -E '^AI_SERVICE_API_KEY=' "$ROOT/backend/.env" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
-    # For an unquoted value, drop an inline comment and trailing whitespace, as
-    # dotenv would. Without this the comment text becomes the secret this script
-    # hands the ai-service, so the pair stops matching and every authenticated
-    # ai-service route 403s. A quoted value is left alone: a '#' inside it is
-    # literal.
-    if [[ "$value" != *\"* && "$value" != *\'* ]]; then
-        value="$(printf '%s' "$value" | sed -e 's/#.*$//' -e 's/[[:space:]]*$//')"
-    fi
-    # Strip one layer of surrounding quotes, as dotenv would.
-    value="${value%\"}"
-    value="${value#\"}"
-    value="${value%\'}"
-    value="${value#\'}"
-    printf '%s' "$value"
+    DOTENV_DIR="$ROOT/backend/node_modules/dotenv" ENV_FILE="$ROOT/backend/.env" bun -e '
+const dotenv = require(process.env.DOTENV_DIR);
+const parsed = dotenv.parse(require("fs").readFileSync(process.env.ENV_FILE, "utf8"));
+process.stdout.write(parsed.AI_SERVICE_API_KEY ?? "");
+'
 }
 
 local_env() {

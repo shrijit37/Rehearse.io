@@ -5,9 +5,6 @@
 /frontend/.env
 /ai-service/.env
 .env
-# Dev stack state from scripts/dev: logs, pid file, dev auth accounts and
-# sessions, the prod-mode relay session. Machine-local, never committed.
-/.dev/
 # Local Pi runtime state
 .atl/
 .pi/

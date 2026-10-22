@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "./ui/button";
 import { signOut } from "../lib/auth-client";
 import { label } from "@/lib/labels";
+import { clearStoredUser, readStoredUser } from "@/lib/session";
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -15,11 +16,8 @@ const Navbar = () => {
 
   useEffect(() => {
     const checkAuth = () => {
-      const storedUser = localStorage.getItem("user");
-      if (storedUser) {
-        try { setUser(JSON.parse(storedUser)); }
-        catch { setUser(null); }
-      } else { setUser(null); }
+      const storedUser = readStoredUser();
+      setUser(storedUser);
     };
     checkAuth();
     window.addEventListener("storage", checkAuth);
@@ -40,7 +38,7 @@ const Navbar = () => {
 
   const handleLogout = async () => {
     await signOut().catch(() => {});
-    localStorage.removeItem("user");
+    clearStoredUser();
     setUser(null);
     setShowDropdown(false);
     navigate("/");

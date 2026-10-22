@@ -20,6 +20,7 @@ import {
 import { api, type ApiError } from "@/lib/api";
 import { updateAccountName } from "@/lib/auth-client";
 import { label } from "@/lib/labels";
+import { readStoredUser, writeStoredUser } from "@/lib/session";
 import type {
 	ProfileEducation,
 	ProfileExperience,
@@ -338,41 +339,53 @@ const CandidateProfile = () => {
 		[],
 	);
 
-	/** Drops a stored blob and the object URL that made it viewable. */
-	const clearStored = useCallback((kind: "photo" | "voice") => {
+	/**
+	 * Points a plate at the object URL that holds its stored file, or at none.
+	 * Both the save path and the failure path come through here: the URL this
+	 * replaces is revoked and dropped from `urlsRef` in the same step that
+	 * forgets it, so no plate can be left pointing at a live URL that nothing
+	 * tracks, and no revoked URL can be left behind in `urlsRef`.
+	 */
+	const setStoredUrl = useCallback((kind: "photo" | "voice", url?: string) => {
 		setStoredMedia((prev) => {
 			const current = prev[kind];
 			if (current) {
 				URL.revokeObjectURL(current);
-				urlsRef.current = urlsRef.current.filter((url) => url !== current);
+				urlsRef.current = urlsRef.current.filter((entry) => entry !== current);
 			}
-			return { ...prev, [kind]: undefined };
+			return { ...prev, [kind]: url };
 		});
 	}, []);
 
+	/** Drops a stored blob and the object URL that made it viewable. */
+	const clearStored = useCallback((kind: "photo" | "voice") => setStoredUrl(kind), [setStoredUrl]);
+
 	/** Refreshes one stored file after it changes, or reports why it cannot load. */
-	const refreshStored = useCallback(async (kind: "photo" | "voice") => {
-		try {
-			const res = await api.get<Response>(`/api/users/profile/media/${kind}`, { raw: true });
-			if (!res.ok) {
-				const body = await res.json().catch(() => null);
-				clearStored(kind);
-				const text =
-					body?.message ||
-					`Could not load the ${kind === "photo" ? "stored headshot" : "stored sample"} (${res.status})`;
+	const refreshStored = useCallback(
+		async (kind: "photo" | "voice") => {
+			try {
+				const res = await api.get<Response>(`/api/users/profile/media/${kind}`, { raw: true });
+				if (!res.ok) {
+					const body = await res.json().catch(() => null);
+					clearStored(kind);
+					const text =
+						body?.message ||
+						`Could not load the ${kind === "photo" ? "stored headshot" : "stored sample"} (${res.status})`;
+					if (kind === "photo") setPhotoNote({ kind: "error", text });
+					else setVoiceNote({ kind: "error", text });
+					return;
+				}
+				const url = URL.createObjectURL(await res.blob());
+				urlsRef.current.push(url);
+				setStoredUrl(kind, url);
+			} catch (err) {
+				const text = err instanceof Error ? err.message : "Could not load the stored file";
 				if (kind === "photo") setPhotoNote({ kind: "error", text });
 				else setVoiceNote({ kind: "error", text });
-				return;
 			}
-			const url = URL.createObjectURL(await res.blob());
-			urlsRef.current.push(url);
-			setStoredMedia((prev) => ({ ...prev, [kind]: url }));
-		} catch (err) {
-			const text = err instanceof Error ? err.message : "Could not load the stored file";
-			if (kind === "photo") setPhotoNote({ kind: "error", text });
-			else setVoiceNote({ kind: "error", text });
-		}
-	}, [clearStored]);
+		},
+		[clearStored, setStoredUrl],
+	);
 
 	/** Applies a fresh server record, syncing only the scope the caller changed. */
 	const applyProfile = useCallback((next: UserProfile, scope: SyncScope) => {
@@ -532,14 +545,16 @@ const CandidateProfile = () => {
 			return;
 		}
 		if (!(await savePlate("identity", "Name", { name: next }, "identity"))) return;
-		const cached = localStorage.getItem("user");
-		if (cached) {
-			try {
-				localStorage.setItem("user", JSON.stringify({ ...JSON.parse(cached), name: next }));
-			} catch {
-				// An unreadable cached user is dropped by the route guard anyway.
+		try {
+			const cached = readStoredUser();
+			if (cached) {
+				writeStoredUser({ ...cached, name: next });
+				window.dispatchEvent(new Event("storage"));
 			}
-			window.dispatchEvent(new Event("storage"));
+		} catch {
+			// Storage disabled or over quota: the cache keeps the old name until
+			// the next sign-in rebuilds it. The name is saved either way — the
+			// record is the truth, this is only the local cache.
 		}
 	};
 
@@ -606,9 +621,14 @@ const CandidateProfile = () => {
 	const addSkill = () => {
 		const next = skillDraft.trim();
 		if (!next) return;
-		setSkills((prev) =>
-			prev.some((skill) => skill.toLowerCase() === next.toLowerCase()) ? prev : [...prev, next],
-		);
+		// The cap lives in the updater, not only on the button: a disabled submit
+		// button does not stop an implicit submit from the input's Enter key.
+		setSkills((prev) => {
+			if (prev.length >= SKILLS_MAX) return prev;
+			return prev.some((skill) => skill.toLowerCase() === next.toLowerCase())
+				? prev
+				: [...prev, next];
+		});
 		setSkillDraft("");
 	};
 

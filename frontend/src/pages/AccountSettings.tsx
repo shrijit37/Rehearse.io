@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { CONSENT_VERSION } from "@/lib/consent";
+import { clearStoredUser, readStoredUser } from "@/lib/session";
 import type { User } from "@/types";
 
 /**
@@ -36,12 +37,12 @@ const AccountSettings: React.FC = () => {
 	const [consentError, setConsentError] = useState<string | null>(null);
 
 	useEffect(() => {
-		const stored = localStorage.getItem("user");
+		const stored = readStoredUser();
 		if (!stored) {
 			navigate("/signup");
 			return;
 		}
-		setUser(JSON.parse(stored));
+		setUser(stored);
 		api
 			.get<{
 				consentGiven: boolean;
@@ -85,8 +86,9 @@ const AccountSettings: React.FC = () => {
 			await api.delete("/api/users/delete-account", {
 				password: deletePassword,
 			});
+			// The pre-cookie build kept its credential here; drop it on the way out.
 			localStorage.removeItem("token");
-			localStorage.removeItem("user");
+			clearStoredUser();
 			navigate("/");
 		} catch (err: unknown) {
 			setDeleteError(err instanceof Error ? err.message : "Failed to delete account");

@@ -37,39 +37,77 @@ health flags.
 
 ## Getting started (local dev)
 
-Prerequisites: Bun, Node 22+, Python 3.11+, and a reachable PostgreSQL
-(the shared laptop instance is the convention: `createdb rehearse_io_dev`).
+Prerequisites: Bun, Node 22+, Python 3.11+, and a reachable PostgreSQL.
+`make dev` (mode 1) uses `postgresql://postgres@localhost:5432/rehearse_io_dev`
+(the shared laptop instance by convention; the dev script starts the repo's own
+cluster at `~/.local/share/rehearse-pg` when it is down, and creates the
+database if it is missing).
 
 ```bash
-make setup                       # install all three services + create .env files
-export DATABASE_URL=postgresql://postgres@localhost:5432/rehearse_io_dev
-export JWT_SECRET=$(openssl rand -hex 32)
-make migrate                     # create/update tables
-make dev                         # backend :9000, frontend :5173, ai :8000
+make setup                 # install all three services + create .env files
+make dev                   # mode 1: the whole stack on this machine
 ```
 
-Service URLs: backend `http://localhost:9000`, frontend
-`http://localhost:5173`, AI `http://localhost:8000`.
+Mode 1 (`./scripts/dev local`) applies migrations, seeds the test accounts,
+then runs dev auth :4000, ai-service :8000, API :9000 and web :5173. It prints
+both test credentials when ready:
+
+```text
+candidate@shrijit.tech / admin123   candidate, onboarding already done
+recruiter@shrijit.tech / admin123   recruiter, org "Dev Org"
+```
+
+Sign in at <http://127.0.0.1:5173/signup> → "Sign in". These two accounts exist
+only in the local database and the local dev auth service — the shared auth
+service has no such users, and they must never be created there.
+
+Mode 2 (`make dev MODE=prod`) runs only the web dev server, pointed at the
+**deployed** API through a local relay that holds your real prod session:
+
+```bash
+make dev MODE=prod         # writes go to production data; sign in with your
+                           # shared-auth email + password (no Google/GitHub)
+make stop                  # stop whichever mode is running
+```
+
+Why a dev auth service and a relay exist at all: sign-in is delegated to
+`auth.shrijit.tech`, whose session cookie is scoped to `.shrijit.tech` and is
+never sent to `localhost`. Mode 1 replaces that service on localhost; mode 2
+keeps the deployed session server-side in the relay. Details:
+`backend/scripts/dev-auth.ts`, `backend/scripts/dev-relay.ts`.
+
+Other flags: `--fresh` (drop and re-seed the dev database), `--no-ai`, `--stop`,
+`--help`. Ports are overridable (`WEB_PORT`, `API_PORT`, `AI_PORT`,
+`DEV_AUTH_PORT`, `DEV_RELAY_PORT`). Logs land in `.dev/logs/<service>.log`, and
+the terminal shows them prefixed per service.
 
 Health: backend `GET /health` (the fleet contract; Postgres is the critical
 check, `503` when down — there is no `/ready` route);
-AI `GET /health` (reports STT/TTS availability).
+AI `GET /health` (reports `llm_available`).
 
 ## Make targets
 
-`make setup | dev | test | lint | build | migrate | health` — each maps 1:1 to
-a script in `scripts/`. CI calls these too, never framework commands directly.
+`make setup | dev | stop | test | lint | build | migrate | health` — each maps
+1:1 to a script in `scripts/`. CI calls these too, never framework commands
+directly. `make dev` takes `MODE=local` (default) or `MODE=prod`.
 
 ## Tests
 
 ```bash
-make migrate
-(cd backend && bun src/server.ts) &
-SMOKE_BASE_URL=http://127.0.0.1:9000 make test
+make dev &   # smoke needs a live API + Postgres; the summary prints the accounts
+cd backend && SMOKE_BASE_URL=http://127.0.0.1:9000 \
+  AUTH_URL=http://127.0.0.1:4000 \
+  SMOKE_EMAIL=candidate@shrijit.tech SMOKE_PASSWORD=admin123 \
+  SMOKE_RECRUITER_EMAIL=recruiter@shrijit.tech SMOKE_RECRUITER_PASSWORD=admin123 \
+  bun tests/smoke.ts
 ```
 
-`backend/tests/smoke.ts` covers auth, orgs, interviews, invite-token hashing,
-placeholder claiming, GDPR export, and consent against a real Postgres.
+Those are the seeded dev credentials (see *Getting started*), so the suite runs
+with no vault access. Against a deployed API, CI supplies real smoke accounts
+from Doppler instead (`REHEARSE_SMOKE_EMAIL` / `REHEARSE_SMOKE_PASSWORD`).
+
+`backend/tests/smoke.ts` covers auth, session resolution, role gating and the
+org/interview surfaces against a live server and a real Postgres.
 
 ## Deployment
 Deploy procedure (branches, workflows, secrets, gate failures) is in

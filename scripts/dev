@@ -67,7 +67,10 @@ DEV_PG_DIR="${DEV_PG_DIR:-$HOME/.local/share/rehearse-pg}"
 # The password for the seeded local accounts. It exists nowhere else in source:
 # this is the value the stand-in enforces and the one the summary prints, and a
 # real environment (or CI) can override it. The accounts are local-only.
+# Exported here rather than with the rest of the local env: the seed runs before
+# that, and the seed and the stand-in both refuse to start without it.
 DEV_AUTH_PASSWORD="${DEV_AUTH_PASSWORD:-admin123}"
+export DEV_AUTH_PASSWORD
 
 STATE_DIR="$ROOT/.dev"
 LOG_DIR="$STATE_DIR/logs"
@@ -465,10 +468,6 @@ local_env() {
     # is allowed, so a hard CORS error (rather than a silent cookie failure)
     # shows up if the browser is pointed at a different one.
     export ALLOWED_ORIGINS="http://127.0.0.1:$WEB_PORT,http://localhost:$WEB_PORT,http://127.0.0.1:5173,http://localhost:5173,http://localhost:3000"
-    # The dev-auth stand-in refuses to start without it, and the summary below
-    # prints it: exporting this script's resolved value is what keeps the printed
-    # credentials and the password it enforces the same value.
-    export DEV_AUTH_PASSWORD
 }
 
 summary_local() {

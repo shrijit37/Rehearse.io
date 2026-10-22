@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { CONSENT_VERSION } from "@/lib/consent";
+import { readStoredUser } from "@/lib/session";
 import { ShieldCheck } from "lucide-react";
 
 const CONSENT_KEY = "rehearse_cookie_consent";
@@ -48,7 +49,7 @@ const CookieConsent = () => {
 			// session, so carry on rather than failing the whole flow.
 		}
 		// Record the same acknowledgement against the account, when signed in
-		if (localStorage.getItem("user")) {
+		if (readStoredUser()) {
 			api
 				.post("/api/users/consent", {
 					consentGiven: true,

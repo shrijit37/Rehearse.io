@@ -1,9 +1,10 @@
-import { Menu, X, LogOut, LayoutDashboard, Settings, Building2, Users, Code2 } from "lucide-react";
+import { Menu, X, LogOut, LayoutDashboard, Settings, Building2, Users, Code2, UserRound } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "./ui/button";
 import { signOut } from "../lib/auth-client";
 import { label } from "@/lib/labels";
+import { clearStoredUser, readStoredUser } from "@/lib/session";
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -15,11 +16,8 @@ const Navbar = () => {
 
   useEffect(() => {
     const checkAuth = () => {
-      const storedUser = localStorage.getItem("user");
-      if (storedUser) {
-        try { setUser(JSON.parse(storedUser)); }
-        catch { setUser(null); }
-      } else { setUser(null); }
+      const storedUser = readStoredUser();
+      setUser(storedUser);
     };
     checkAuth();
     window.addEventListener("storage", checkAuth);
@@ -40,7 +38,7 @@ const Navbar = () => {
 
   const handleLogout = async () => {
     await signOut().catch(() => {});
-    localStorage.removeItem("user");
+    clearStoredUser();
     setUser(null);
     setShowDropdown(false);
     navigate("/");
@@ -108,6 +106,11 @@ const Navbar = () => {
                     <Code2 className="h-3.5 w-3.5" />
                     DSA
                   </button>
+                  <button onClick={() => navigate("/profile")}
+                    className={`px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5 ${isActive("/profile") ? activePlate : inactiveNavLink}`}>
+                    <UserRound className="h-3.5 w-3.5" />
+                    Profile
+                  </button>
                 </>
               )}
             </div>
@@ -146,6 +149,13 @@ const Navbar = () => {
                         <LayoutDashboard className="h-3.5 w-3.5 text-muted-foreground" />
                         {isRecruiter ? "Recruiter dashboard" : "My interviews"}
                       </button>
+                      {!isRecruiter && (
+                        <button onClick={() => { navigate("/profile"); setShowDropdown(false); }}
+                          className="w-full text-left px-3 py-2 text-[13px] text-foreground hover:bg-surface-active rounded-md flex items-center gap-2 transition-colors">
+                          <UserRound className="h-3.5 w-3.5 text-muted-foreground" />
+                          Profile
+                        </button>
+                      )}
                       <button onClick={() => { navigate("/account"); setShowDropdown(false); }}
                         className="w-full text-left px-3 py-2 text-[13px] text-foreground hover:bg-surface-active rounded-md flex items-center gap-2 transition-colors">
                         <Settings className="h-3.5 w-3.5 text-muted-foreground" />
@@ -220,6 +230,10 @@ const Navbar = () => {
                       <button className={`text-left w-full px-3 py-2 rounded-md transition-colors ${isActive("/practice/dsa") ? "bg-sign-black text-sign-white" : "text-foreground hover:bg-surface-active"}`}
                         onClick={() => { navigate("/practice/dsa"); setIsMenuOpen(false); }}>
                         <Code2 className="inline h-4 w-4 mr-2 -mt-0.5" />DSA practice
+                      </button>
+                      <button className={`text-left w-full px-3 py-2 rounded-md transition-colors ${isActive("/profile") ? "bg-sign-black text-sign-white" : "text-foreground hover:bg-surface-active"}`}
+                        onClick={() => { navigate("/profile"); setIsMenuOpen(false); }}>
+                        <UserRound className="inline h-4 w-4 mr-2 -mt-0.5" />Profile
                       </button>
                     </>
                   )}

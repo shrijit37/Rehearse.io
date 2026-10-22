@@ -87,6 +87,20 @@ auth — dev only).
 - **AI integration**: backend `src/utils/aiClient.ts` calls FastAPI at
   `AI_SERVICE_URL` — JSON only (the multipart audio path went with the batch
   interview flow). Shared-secret `Authorization: Bearer`.
+- **Candidate profile** (`/profile`): the candidate's own record — resume,
+  headshot, voice sample, and the structured profile (headline, location, skills,
+  roles, qualifications) that a practice round is generated from.
+  `GET /api/users` returns it *without* the sealed blobs; each file is fetched on
+  demand from `GET /api/users/profile/media/:kind`, owner only, never inlined.
+  `PATCH /api/users/profile` writes one plate at a time. The display name is
+  owned by the auth service, so the page writes `POST /api/auth/update-user`
+  first and mirrors locally second — `resolveSessionUser` rebuilds the name from
+  every session, so a local-only edit would be reverted at next sign-in.
+- **Resume read**: `POST /api/users/profile/parse-resume` **previews by default
+  and writes nothing**; `apply: true` with `sections: [...]` writes only what the
+  candidate accepted, so re-reading can never silently undo their corrections.
+  Replacing the resume clears `resume_parsed_at`. The text a round actually
+  reads is built by `src/utils/profileText.ts` and shown verbatim on the page.
 - **Invite tokens**: raw token returned once at creation, sha256-hashed at
   rest; lookup hashes again (`findInviteByRawToken`). Never store raw tokens.
 - **Frontend entrypoint**: `src/main.tsx` → `App.tsx`, React Router with flat
@@ -126,8 +140,25 @@ auth — dev only).
 - Backend has no unit tests; `tests/smoke.ts` is the end-to-end suite and needs
   a running server plus a migrated database.
 - PII (resume/photo/audio) is base64 **in Postgres**, encrypted when
-  `ENCRYPTION_KEY` is set. S3 is not wired up at all.
-- Resume must be a valid PDF or rehearsal start fails with a 500.
+  `ENCRYPTION_KEY` is set. S3 is not wired up at all. **Set it for local dev
+  too**: a blob sealed under one key is unreadable once the key changes or is
+  removed, and the resume read then fails with "ENCRYPTION_KEY is missing or has
+  changed" — `decryptField` returns `""` rather than throwing, so the symptom is
+  an empty resume, not a crash. A blob recorded under an unknown key has to be
+  replaced (`/profile` → Replace resume).
+- Reading a resume also needs a working text endpoint in `ai-service/.env`
+  (`LLM_BASE_URL` + `LLM_MODEL` + a real `LLM_API_KEY`). `scripts/dev` prints
+  "DSA enabled (ai-service has an LLM endpoint)" when those two names are merely
+  non-empty, so the banner is **not** proof that inference works; with a missing
+  key the read answers 5xx and `/profile` says the reading service could not
+  answer. `tests/smoke.ts` therefore asserts that a preview leaves the record
+  unchanged rather than that it succeeds, and reports when the read is
+  unavailable in that environment.
+- Resume must be a valid PDF or rehearsal start fails with a 500. A headshot
+  must be a JPEG or PNG — the magic bytes are checked as **hex**, never as a
+  utf8 decode (which turned them into U+FFFD and rejected every real photo).
+  `/profile` also offers a file-picker path for candidates with no working
+  camera, and removal for both artifacts.
 - Sign-in is delegated to the shared auth service (`auth.shrijit.tech`, Better
   Auth). `users` has `auth_id` (unique) and a nullable `password`; there is no
   local login endpoint. Frontend 401s drop the cached user and redirect.

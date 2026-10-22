@@ -2,6 +2,7 @@ import { decryptField } from "../../utils/encryption";
 import { findUserById } from "../../db/repositories/users";
 import { createRehearsalSession, listRehearsalSessions } from "../../db/repositories/rehearsals";
 import { extractTextFromBase64Pdf } from "../../utils/pdfParser";
+import { profileHasContent, profileToRoundText } from "../../utils/profileText";
 import {
     generateScenario,
     generateDsaProblems,
@@ -26,17 +27,36 @@ export const startRehearsal = async (userId: string, targetRole: string): Promis
         const user = await findUserById(userId);
         if (!user) return { status: 404, message: "User not found" };
 
-        const resumePlain = decryptField(user.resume);
-        let resumeText = "";
-        try {
-            resumeText = await extractTextFromBase64Pdf(resumePlain);
-        } catch (parseErr) {
-            const message = parseErr instanceof Error ? parseErr.message : "unknown error";
-            return {
-                status: 500,
-                message: "Failed to parse resume PDF. Please ensure you uploaded a valid PDF document.",
-                data: { error: message },
-            };
+        const profile = {
+            headline: user.headline,
+            location: user.location,
+            skills: user.skills,
+            experience: user.experience,
+            education: user.education,
+        };
+        // What the profile page shows the candidate is what the round is built
+        // from. The raw PDF extraction is the fallback for a candidate who has
+        // not maintained a profile yet.
+        let resumeText = profileHasContent(profile) ? profileToRoundText(profile) : "";
+        if (!resumeText) {
+            const resumePlain = decryptField(user.resume);
+            if (!resumePlain) {
+                return {
+                    status: 400,
+                    message:
+                        "Add a headline to your profile, or upload a resume, before starting a practice round.",
+                };
+            }
+            try {
+                resumeText = await extractTextFromBase64Pdf(resumePlain);
+            } catch (parseErr) {
+                const message = parseErr instanceof Error ? parseErr.message : "unknown error";
+                return {
+                    status: 500,
+                    message: "Failed to parse resume PDF. Please ensure you uploaded a valid PDF document.",
+                    data: { error: message },
+                };
+            }
         }
 
         const aiResponse = await generateScenario(resumeText, targetRole || "Software Engineer");

@@ -43,6 +43,73 @@ export interface ScenarioResult {
     questions: string[];
 }
 
+/**
+ * The structured profile the AI service reads out of a resume. Every field is
+ * optional: a read that finds nothing is a valid answer, and the caller decides
+ * whether it is worth storing.
+ */
+export interface ParsedResumeProfile {
+    headline?: string;
+    location?: string;
+    skills?: string[];
+    experience?: Array<{ title: string; company: string; period?: string; summary?: string }>;
+    education?: Array<{ school: string; qualification?: string; period?: string }>;
+}
+
+/** Text from a model reply, present and non-empty, or undefined. */
+function readText(value: unknown): string | undefined {
+    return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+/** An array of non-empty strings from a model reply; undefined when absent. */
+function readStringList(value: unknown): string[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const out = value
+        .map(readText)
+        .filter((entry): entry is string => entry !== undefined);
+    return out.length > 0 ? out : undefined;
+}
+
+/** One list of record-like rows from a model reply, keeping only rows with content. */
+function readRows<T extends object>(
+    value: unknown,
+    build: (row: Record<string, unknown>) => T | null,
+): T[] | undefined {
+    if (!Array.isArray(value)) return undefined;
+    const out = value
+        .map((row) =>
+            row && typeof row === "object" && !Array.isArray(row)
+                ? build(row as Record<string, unknown>)
+                : null,
+        )
+        .filter((row): row is T => row !== null);
+    return out.length > 0 ? out : undefined;
+}
+
+export async function parseResume(resumeText: string): Promise<ParsedResumeProfile> {
+    const data = await aiJson("/api/parse-resume", { resume_text: resumeText.slice(0, 10000) });
+    return {
+        headline: readText(data?.headline),
+        location: readText(data?.location),
+        skills: readStringList(data?.skills),
+        experience: readRows(data?.experience, (row) => {
+            const title = readText(row.title) ?? "";
+            const company = readText(row.company) ?? "";
+            if (!title && !company) return null;
+            const period = readText(row.period);
+            const summary = readText(row.summary);
+            return { title, company, ...(period ? { period } : {}), ...(summary ? { summary } : {}) };
+        }),
+        education: readRows(data?.education, (row) => {
+            const school = readText(row.school) ?? "";
+            const qualification = readText(row.qualification);
+            if (!school && !qualification) return null;
+            const period = readText(row.period);
+            return { school, ...(qualification ? { qualification } : {}), ...(period ? { period } : {}) };
+        }),
+    };
+}
+
 export async function generateScenario(resumeText: string, targetRole: string): Promise<ScenarioResult> {
     const data = await aiJson("/api/generate-scenario", {
         resume_text: resumeText.slice(0, 10000),

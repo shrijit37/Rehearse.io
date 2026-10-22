@@ -14,6 +14,7 @@ import {
 	Volume2,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { writeStoredUser } from "@/lib/session";
 import type { User } from "@/types";
 
 interface OnboardingStep {
@@ -225,7 +226,7 @@ const Onboarding = () => {
 				"/api/users/onboard",
 				payload,
 			);
-			if (data.user) localStorage.setItem("user", JSON.stringify(data.user));
+			if (data.user) writeStoredUser(data.user);
 			window.dispatchEvent(new Event("storage"));
 			navigate("/dashboard");
 		} catch (err: unknown) {

@@ -94,7 +94,7 @@ directly. `make dev` takes `MODE=local` (default) or `MODE=prod`.
 ## Tests
 
 ```bash
-make dev &   # or ./scripts/dev local; smoke needs a live API + Postgres
+make dev &   # smoke needs a live API + Postgres; the summary prints the accounts
 cd backend && SMOKE_BASE_URL=http://127.0.0.1:9000 \
   AUTH_URL=http://127.0.0.1:4000 \
   SMOKE_EMAIL=candidate@shrijit.tech SMOKE_PASSWORD=admin123 \

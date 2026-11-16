@@ -25,13 +25,34 @@ CI calls the same targets.
 
 ```bash
 make setup      # install backend (bun) + frontend (npm) + ai-service deps, create .env
-make dev        # migrate + run all three dev servers
+make dev        # mode 1 (local): migrate + seed + dev auth + backend + ai-service + web
+make dev MODE=prod  # mode 2: web dev server against the deployed API (via a local relay)
+make stop       # stop whichever mode is running
 make test       # backend typecheck + smoke test (needs running server + DB)
 make lint       # frontend eslint
 make build      # backend typecheck + frontend build + ai compileall
 make migrate    # drizzle-kit migrate against DATABASE_URL
 make health     # polls $APP_URL/health until status ok (600s budget)
 ```
+
+`./scripts/dev` owns both modes (`--fresh`, `--no-ai`, `--stop`, `--help`;
+ports via `WEB_PORT`/`API_PORT`/`AI_PORT`/`DEV_AUTH_PORT`/`DEV_RELAY_PORT`;
+logs in `.dev/logs/`, state in `.dev/` — both git-ignored). Sign-in is delegated
+to the shared auth service, whose `.shrijit.tech` cookie never reaches
+`localhost`, so each mode substitutes for it:
+
+- **local** runs `backend/scripts/dev-auth.ts` (a localhost stand-in for
+  `auth.shrijit.tech`) and `backend/scripts/seed-dev.ts` creates two test
+  accounts — `candidate@shrijit.tech` and `recruiter@shrijit.tech`, both
+  `admin123`, candidate pre-onboarded, recruiter in org "Dev Org". They exist
+  **only** in the local dev database and dev auth service; never create them on
+  the shared auth service. Open the SPA at `http://127.0.0.1:5173` — a
+  `localhost` page is a different site from a `127.0.0.1` API, so the session
+  cookie cannot flow (the dev auth service refuses it with that explanation).
+- **prod** runs `backend/scripts/dev-relay.ts`, which signs in against the real
+  auth service, keeps the session server-side in `.dev/prod-session.json`, and
+  injects it into proxied API calls. Writes go to production data; Google/GitHub
+  sign-in and `/ws/live` do not work through it.
 
 ### Backend (`/backend`, Bun)
 
@@ -87,6 +108,20 @@ auth — dev only).
 - **AI integration**: backend `src/utils/aiClient.ts` calls FastAPI at
   `AI_SERVICE_URL` — JSON only (the multipart audio path went with the batch
   interview flow). Shared-secret `Authorization: Bearer`.
+- **Candidate profile** (`/profile`): the candidate's own record — resume,
+  headshot, voice sample, and the structured profile (headline, location, skills,
+  roles, qualifications) that a practice round is generated from.
+  `GET /api/users` returns it *without* the sealed blobs; each file is fetched on
+  demand from `GET /api/users/profile/media/:kind`, owner only, never inlined.
+  `PATCH /api/users/profile` writes one plate at a time. The display name is
+  owned by the auth service, so the page writes `POST /api/auth/update-user`
+  first and mirrors locally second — `resolveSessionUser` rebuilds the name from
+  every session, so a local-only edit would be reverted at next sign-in.
+- **Resume read**: `POST /api/users/profile/parse-resume` **previews by default
+  and writes nothing**; `apply: true` with `sections: [...]` writes only what the
+  candidate accepted, so re-reading can never silently undo their corrections.
+  Replacing the resume clears `resume_parsed_at`. The text a round actually
+  reads is built by `src/utils/profileText.ts` and shown verbatim on the page.
 - **Invite tokens**: raw token returned once at creation, sha256-hashed at
   rest; lookup hashes again (`findInviteByRawToken`). Never store raw tokens.
 - **Frontend entrypoint**: `src/main.tsx` → `App.tsx`, React Router with flat
@@ -126,8 +161,25 @@ auth — dev only).
 - Backend has no unit tests; `tests/smoke.ts` is the end-to-end suite and needs
   a running server plus a migrated database.
 - PII (resume/photo/audio) is base64 **in Postgres**, encrypted when
-  `ENCRYPTION_KEY` is set. S3 is not wired up at all.
-- Resume must be a valid PDF or rehearsal start fails with a 500.
+  `ENCRYPTION_KEY` is set. S3 is not wired up at all. **Set it for local dev
+  too**: a blob sealed under one key is unreadable once the key changes or is
+  removed, and the resume read then fails with "ENCRYPTION_KEY is missing or has
+  changed" — `decryptField` returns `""` rather than throwing, so the symptom is
+  an empty resume, not a crash. A blob recorded under an unknown key has to be
+  replaced (`/profile` → Replace resume).
+- Reading a resume also needs a working text endpoint in `ai-service/.env`
+  (`LLM_BASE_URL` + `LLM_MODEL` + a real `LLM_API_KEY`). `scripts/dev` prints
+  "DSA enabled (ai-service has an LLM endpoint)" when those two names are merely
+  non-empty, so the banner is **not** proof that inference works; with a missing
+  key the read answers 5xx and `/profile` says the reading service could not
+  answer. `tests/smoke.ts` therefore asserts that a preview leaves the record
+  unchanged rather than that it succeeds, and reports when the read is
+  unavailable in that environment.
+- Resume must be a valid PDF or rehearsal start fails with a 500. A headshot
+  must be a JPEG or PNG — the magic bytes are checked as **hex**, never as a
+  utf8 decode (which turned them into U+FFFD and rejected every real photo).
+  `/profile` also offers a file-picker path for candidates with no working
+  camera, and removal for both artifacts.
 - Sign-in is delegated to the shared auth service (`auth.shrijit.tech`, Better
   Auth). `users` has `auth_id` (unique) and a nullable `password`; there is no
   local login endpoint. Frontend 401s drop the cached user and redirect.
@@ -137,3 +189,10 @@ auth — dev only).
   not define Postgres.
 - Secrets live in Doppler (`platform`/`prd`, `REHEARSE_*`). `.env.example`
   documents names only.
+- The ai-service shared secret is one value in two places: the backend sends
+  `AI_SERVICE_API_KEY` as a Bearer token and `scripts/dev` passes that same value
+  to the ai-service as `API_KEY`, so the pair always matches — **unless the line
+  carries a trailing `#` comment**, which the dev script would forward as part of
+  the secret. `backend_ai_service_key` now strips comments and whitespace for
+  unquoted values; keep the value alone on its line anyway. When the pair does
+  mismatch, every backend→ai-service call 401s and the API reports it as a 500.

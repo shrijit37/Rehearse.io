@@ -5,6 +5,9 @@
 /frontend/.env
 /ai-service/.env
 .env
+# Dev stack state from scripts/dev: logs, pid file, dev auth accounts and
+# sessions, the prod-mode relay session. Machine-local, never committed.
+/.dev/
 # Local Pi runtime state
 .atl/
 .pi/
@@ -39,3 +42,9 @@ nohup.out
 # DESIGN.md at the root is the durable record and stays tracked.
 .impeccable/
 frontend/.impeccable/
+
+# dotenvx private keys — stored in GitHub Actions, never committed
+.env.keys
+
+# dotenvx-encrypted env — safe to commit; private key lives in GitHub Actions
+!.env.production

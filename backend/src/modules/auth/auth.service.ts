@@ -4,6 +4,7 @@ import {
     findUserByEmail,
     updateUser,
     type UserPatch,
+    type UserRecord,
 } from "../../db/repositories/users";
 import type { IClaimSchema } from "./auth.validation";
 
@@ -14,10 +15,7 @@ export interface SessionUser {
     name?: string | null;
 }
 
-/** A local user row as the repository returns it: public columns plus _id, no password. */
-type LocalUser = NonNullable<Awaited<ReturnType<typeof findUserByAuthId>>>;
-
-export const toPublicUser = (user: LocalUser) => ({
+export const toPublicUser = (user: UserRecord) => ({
     id: user.id,
     _id: user.id,
     name: user.name,
@@ -31,8 +29,12 @@ export const toPublicUser = (user: LocalUser) => ({
  * an invited placeholder with a matching email -> claimed, otherwise created.
  * Returns null when the row cannot be trusted (deleted, or already bound to a
  * different auth account), which the middleware turns into a 401.
+ *
+ * The auth service owns the display name, and this refreshes the local copy from
+ * every session — so a name edited on the profile page is written there FIRST
+ * (POST /api/auth/update-user) and PATCH /api/users/profile only mirrors it.
  */
-export async function resolveSessionUser(sessionUser: SessionUser): Promise<LocalUser | null> {
+export async function resolveSessionUser(sessionUser: SessionUser): Promise<UserRecord | null> {
     const email = sessionUser.email.toLowerCase().trim();
     const byAuthId = await findUserByAuthId(sessionUser.id);
     const existing = byAuthId ?? (await findUserByEmail(email));
@@ -56,7 +58,7 @@ export async function resolveSessionUser(sessionUser: SessionUser): Promise<Loca
 }
 
 /** Records the choices the sign-up form collected here: role and consent. */
-export async function claimProfile(userId: string, data: IClaimSchema): Promise<LocalUser> {
+export async function claimProfile(userId: string, data: IClaimSchema): Promise<UserRecord> {
     const patch: UserPatch = {};
     if (data.role) patch.role = data.role;
     if (data.consentGiven !== undefined) {

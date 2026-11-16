@@ -193,6 +193,149 @@ def health_check():
 
 
 # ---------------------------------------------------------------------------
+# Candidate profile — reading a resume into the structured record
+# ---------------------------------------------------------------------------
+
+class ResumeParseRequest(BaseModel):
+    resume_text: str
+
+
+def _capped_text(value: object, limit: int) -> str:
+    """A trimmed, length-capped string from a model reply; "" when it is not a string."""
+    return value.strip()[:limit] if isinstance(value, str) else ""
+
+
+def _optional_text(value: object, limit: int) -> str | None:
+    text = _capped_text(value, limit)
+    return text or None
+
+
+def _normalize_parsed_profile(raw: object) -> dict:
+    """Keep only what the resume stated, capped to the columns that store it.
+
+    The candidate edits every one of these fields, so a field the model invented
+    costs them a correction. Empty is the honest answer, and an empty reply is
+    valid: the caller reports that the read found nothing.
+    """
+    if not isinstance(raw, dict):
+        return {}
+
+    out: dict = {}
+
+    headline = _optional_text(raw.get("headline"), 160)
+    if headline:
+        out["headline"] = headline
+    location = _optional_text(raw.get("location"), 80)
+    if location:
+        out["location"] = location
+
+    skills: list[str] = []
+    for entry in raw.get("skills") or []:
+        skill = _capped_text(entry, 60)
+        if skill and skill not in skills:
+            skills.append(skill)
+        if len(skills) >= 30:
+            break
+    if skills:
+        out["skills"] = skills
+
+    experience: list[dict] = []
+    for row in (raw.get("experience") or [])[:20]:
+        if not isinstance(row, dict):
+            continue
+        title = _capped_text(row.get("title"), 120)
+        company = _capped_text(row.get("company"), 120)
+        if not title and not company:
+            continue
+        role = {"title": title, "company": company}
+        period = _optional_text(row.get("period"), 60)
+        if period:
+            role["period"] = period
+        summary = _optional_text(row.get("summary"), 1200)
+        if summary:
+            role["summary"] = summary
+        experience.append(role)
+    if experience:
+        out["experience"] = experience
+
+    education: list[dict] = []
+    for row in (raw.get("education") or [])[:10]:
+        if not isinstance(row, dict):
+            continue
+        school = _capped_text(row.get("school"), 160)
+        qualification = _optional_text(row.get("qualification"), 120)
+        if not school and not qualification:
+            continue
+        entry = {"school": school}
+        if qualification:
+            entry["qualification"] = qualification
+        period = _optional_text(row.get("period"), 60)
+        if period:
+            entry["period"] = period
+        education.append(entry)
+    if education:
+        out["education"] = education
+
+    return out
+
+
+@app.post("/api/parse-resume")
+def parse_resume(payload: ResumeParseRequest, _auth=Depends(verify_api_key)):
+    """Read a resume's text into the structured profile its owner maintains."""
+    require_llm()
+    try:
+        resume_text = (payload.resume_text or "")[:10000]
+        if len(resume_text.strip()) < 40:
+            raise HTTPException(
+                status_code=422,
+                detail="The resume text is too short to read a profile from",
+            )
+
+        prompt = (
+            "You are reading a candidate's resume into a structured profile that the candidate "
+            "will review and correct in their account.\n\n"
+            f"Resume:\n{resume_text}\n\n"
+            "Rules:\n"
+            "- Use only what the resume states. Never invent an employer, a date, a school, or a skill.\n"
+            "- Omit any field the resume does not state; an empty answer is the correct answer.\n"
+            "- headline: the candidate's own professional title in a few words, drawn from their resume.\n"
+            "- location: city and country only, and only when the resume states one.\n"
+            "- skills: up to 20 concrete technologies or competencies actually named in the resume.\n"
+            "- experience: up to 5 roles, most recent first, with the period exactly as written.\n"
+            "- summary: one short line per role, drawn from that role's own bullets.\n"
+            "- education: up to 3 entries.\n\n"
+            "Return strict JSON only:\n"
+            "{\n"
+            '  "headline": "...",\n'
+            '  "location": "...",\n'
+            '  "skills": ["..."],\n'
+            '  "experience": [{"title": "...", "company": "...", "period": "...", "summary": "..."}],\n'
+            '  "education": [{"school": "...", "qualification": "...", "period": "..."}]\n'
+            "}"
+        )
+
+        content = llm_json(
+            [
+                {
+                    "role": "system",
+                    "content": "You extract facts from resumes and output valid JSON only.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            timeout=45,
+        )
+        return _normalize_parsed_profile(parse_json_safely(content, {}))
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error reading the resume")
+        raise HTTPException(
+            status_code=500,
+            detail="An error occurred while reading the resume",
+        )
+
+
+# ---------------------------------------------------------------------------
 # DSA (Data Structures & Algorithms) round
 # ---------------------------------------------------------------------------
 

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { CONSENT_VERSION } from "@/lib/consent";
+import { writeStoredUser } from "@/lib/session";
 import {
 	getSession,
 	signInWithEmail,
@@ -86,7 +87,7 @@ const SignUp: React.FC = () => {
 			...claim,
 			consentVersion: CONSENT_VERSION,
 		});
-		localStorage.setItem("user", JSON.stringify(user));
+		writeStoredUser(user);
 		window.dispatchEvent(new Event("storage"));
 		navigate(
 			user.role === "recruiter"

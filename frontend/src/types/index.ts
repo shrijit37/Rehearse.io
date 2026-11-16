@@ -146,3 +146,65 @@ export interface NormalizedSession {
 	sessionKind?: "behavioral" | "dsa" | "mixed";
 	scoreSum: number;
 }
+
+/** One role in the candidate-maintained profile. */
+export interface ProfileExperience {
+	title: string;
+	company: string;
+	period?: string;
+	summary?: string;
+}
+
+/** One qualification in the candidate-maintained profile. */
+export interface ProfileEducation {
+	school: string;
+	qualification?: string;
+	period?: string;
+}
+
+/** A stored file, as the profile reports it — the bytes are fetched separately. */
+export interface ProfileArtifact {
+	present: boolean;
+	name?: string | null;
+	sizeBytes?: number | null;
+	updatedAt?: string | null;
+}
+
+/** What a practice round is generated from, and where that text comes from. */
+export type RoundSource =
+	| { kind: "profile"; text: string }
+	| { kind: "resume"; text: null }
+	| { kind: "none"; text: null };
+
+/** The candidate's own record, as `GET /api/users` returns it. */
+export interface UserProfile {
+	_id: string;
+	id: string;
+	name: string;
+	email: string;
+	role: "candidate" | "recruiter";
+	createdAt: string;
+	onboardingCompleted: boolean;
+	onboarded: boolean;
+	headline: string | null;
+	location: string | null;
+	skills: string[];
+	experience: ProfileExperience[];
+	education: ProfileEducation[];
+	resumeParsedAt: string | null;
+	resume: ProfileArtifact;
+	photo: ProfileArtifact;
+	voice: ProfileArtifact;
+	consent: { given: boolean; date: string | null; version: string | null };
+	roundSource: RoundSource;
+}
+
+/** One section the resume read would change, as a proposal. */
+export interface ReadPreview {
+	section: "headline" | "location" | "skills" | "experience" | "education";
+	label: string;
+	current: unknown;
+	next: unknown;
+	/** True when the read would replace something the candidate already set. */
+	replaces: boolean;
+}

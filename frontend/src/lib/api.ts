@@ -1,3 +1,5 @@
+import { clearStoredUser } from "@/lib/session";
+
 /** Exported so the live socket can derive its ws:// origin from the same base. */
 export const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:9000";
 
@@ -6,6 +8,11 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
   tokenOverride?: string;
   /** Return raw Response instead of parsed JSON (for blob downloads). */
   raw?: boolean;
+}
+
+/** An API error carrying the HTTP status, so callers can branch on it. */
+export interface ApiError extends Error {
+  status?: number;
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -33,13 +40,17 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     if (res.status === 401 && !tokenOverride) {
-      localStorage.removeItem("user");
+      clearStoredUser();
       // Don't redirect if already on signup or login pages
       if (!window.location.pathname.startsWith("/signup") && !window.location.pathname.startsWith("/login")) {
         window.location.href = "/signup";
       }
     }
-    throw new Error(data.message || `Request failed (${res.status})`);
+    // The status travels with the error so a caller can tell a request the API
+    // refused from one its dependencies could not answer.
+    const error = new Error(data.message || `Request failed (${res.status})`) as ApiError;
+    error.status = res.status;
+    throw error;
   }
   return res.json();
 }

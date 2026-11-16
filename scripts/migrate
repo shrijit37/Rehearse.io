@@ -8,3 +8,4 @@ MIGRATION_URL="${DATABASE_URL_EXTERNAL:-$DATABASE_URL}"
 
 echo "==> applying drizzle migrations"
 (cd backend && DATABASE_URL="$MIGRATION_URL" bunx drizzle-kit migrate)
+echo

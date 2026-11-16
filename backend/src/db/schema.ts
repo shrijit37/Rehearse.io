@@ -1,47 +1,12 @@
 /**
- * Postgres schema (Drizzle). Replaces the Mongoose models.
+ * Plain TS row shapes for the Supabase-backed data layer.
  *
- * IDs are UUIDs (platform standard). The HTTP layer exposes every row's `id`
- * as `_id` and reassembles Mongoose-style `populate()` objects, so the
- * frontend contract is unchanged by this migration.
+ * These mirror the old Drizzle `$inferSelect` contracts exactly (camelCase
+ * fields, `Date` timestamps) so services, controllers and the public HTTP
+ * payloads do not change. The physical Postgres columns are snake_case — see
+ * `supabase/migrations/0001_fleet_schema.sql` — and are translated at the
+ * repository boundary by `db/mappers.ts`.
  */
-import {
-    boolean,
-    index,
-    jsonb,
-    pgEnum,
-    pgTable,
-    text,
-    timestamp,
-    uniqueIndex,
-    uuid,
-    varchar,
-} from "drizzle-orm/pg-core";
-
-export const userRole = pgEnum("user_role", ["recruiter", "candidate"]);
-export const orgMemberRole = pgEnum("org_member_role", ["admin", "recruiter"]);
-export const interviewType = pgEnum("interview_type", ["behavioral", "dsa", "mixed"]);
-export const interviewStatus = pgEnum("interview_status", ["draft", "active", "closed"]);
-export const dsaDifficulty = pgEnum("dsa_difficulty", ["easy", "medium", "hard", "mixed"]);
-export const inviteStatus = pgEnum("invite_status", ["pending", "started", "completed"]);
-export const inviteRound = pgEnum("invite_round", ["behavioral", "dsa", "done"]);
-export const rehearsalSessionType = pgEnum("rehearsal_session_type", ["behavioral", "dsa"]);
-export const auditAction = pgEnum("audit_action", [
-    "signup",
-    "login",
-    "onboard",
-    "account_delete",
-    "account_export",
-    "consent_update",
-    "interview_create",
-    "interview_invite",
-    "interview_start",
-    "interview_submit",
-    "org_create",
-    "org_update",
-    "org_member_invite",
-    "profile_update",
-]);
 
 /** Shape stored in candidate_invites.results / rehearsal_sessions.results. */
 export interface ResultItem {
@@ -112,181 +77,130 @@ export interface DsaProblem {
     };
 }
 
-export const users = pgTable(
-    "users",
-    {
-        id: uuid("id").primaryKey().defaultRandom(),
-        name: varchar("name", { length: 100 }).notNull(),
-        email: varchar("email", { length: 255 }).notNull(),
-        /** id of the matching account on the shared auth service. */
-        authId: text("auth_id"),
-        /** Always null now that sign-in lives on the shared auth service. */
-        password: text("password"),
-        role: userRole("role").notNull().default("candidate"),
-        organizationId: uuid("organization_id"),
-        resumeName: text("resume_name"),
-        /** base64 PII, encrypted at rest when ENCRYPTION_KEY is set. */
-        resume: text("resume"),
-        /** When the resume file on record was last replaced or first uploaded. */
-        resumeUpdatedAt: timestamp("resume_updated_at", { withTimezone: true }),
-        photo: text("photo"),
-        audio: text("audio"),
-        /**
-         * The structured profile the candidate maintains: filled by the resume
-         * read, then edited by hand, so the candidate's corrected record — not a
-         * raw PDF extraction — is what a practice round is generated from.
-         */
-        headline: text("headline"),
-        location: text("location"),
-        skills: jsonb("skills").$type<string[]>(),
-        experience: jsonb("experience").$type<ProfileExperience[]>(),
-        education: jsonb("education").$type<ProfileEducation[]>(),
-        /** When the resume last fed the structured fields. */
-        resumeParsedAt: timestamp("resume_parsed_at", { withTimezone: true }),
-        consentGiven: boolean("consent_given").notNull().default(false),
-        consentDate: timestamp("consent_date", { withTimezone: true }),
-        consentVersion: varchar("consent_version", { length: 32 }),
-        onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
-        /** Auto-created from a candidate invite, not yet claimed via signup. */
-        isInvitedPlaceholder: boolean("is_invited_placeholder").notNull().default(false),
-        isDeleted: boolean("is_deleted").notNull().default(false),
-        deletedAt: timestamp("deleted_at", { withTimezone: true }),
-        createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-        updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-    },
-    (table) => [
-        uniqueIndex("users_email_key").on(table.email),
-        uniqueIndex("users_auth_id_key").on(table.authId),
-        index("users_organization_idx").on(table.organizationId),
-    ],
-);
+export type UserRole = "recruiter" | "candidate";
+export type OrgMemberRole = "admin" | "recruiter";
+export type InterviewType = "behavioral" | "dsa" | "mixed";
+export type InterviewStatus = "draft" | "active" | "closed";
+export type DsaDifficulty = "easy" | "medium" | "hard" | "mixed";
+export type InviteStatus = "pending" | "started" | "completed";
+export type InviteRound = "behavioral" | "dsa" | "done";
+export type RehearsalSessionType = "behavioral" | "dsa";
+export type AuditAction =
+    | "signup"
+    | "login"
+    | "onboard"
+    | "account_delete"
+    | "account_export"
+    | "consent_update"
+    | "interview_create"
+    | "interview_invite"
+    | "interview_start"
+    | "interview_submit"
+    | "org_create"
+    | "org_update"
+    | "org_member_invite"
+    | "profile_update";
 
-export const organizations = pgTable(
-    "organizations",
-    {
-        id: uuid("id").primaryKey().defaultRandom(),
-        name: varchar("name", { length: 200 }).notNull(),
-        slug: varchar("slug", { length: 200 }).notNull(),
-        createdBy: uuid("created_by")
-            .notNull()
-            .references(() => users.id, { onDelete: "restrict" }),
-        createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-        updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-    },
-    (table) => [uniqueIndex("organizations_slug_key").on(table.slug)],
-);
+export interface UserRow {
+    id: string;
+    name: string;
+    email: string;
+    /** id of the matching Supabase Auth account. */
+    authId: string | null;
+    password: string | null;
+    role: UserRole;
+    organizationId: string | null;
+    resumeName: string | null;
+    resume: string | null;
+    resumeUpdatedAt: Date | null;
+    photo: string | null;
+    audio: string | null;
+    headline: string | null;
+    location: string | null;
+    skills: string[] | null;
+    experience: ProfileExperience[] | null;
+    education: ProfileEducation[] | null;
+    resumeParsedAt: Date | null;
+    consentGiven: boolean;
+    consentDate: Date | null;
+    consentVersion: string | null;
+    onboardingCompleted: boolean;
+    isInvitedPlaceholder: boolean;
+    isDeleted: boolean;
+    deletedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+}
 
-/**
- * Was an embedded `members` array on the organization document. Normalized so
- * membership lookups are indexed and the user FK is enforced.
- */
-export const organizationMembers = pgTable(
-    "organization_members",
-    {
-        id: uuid("id").primaryKey().defaultRandom(),
-        organizationId: uuid("organization_id")
-            .notNull()
-            .references(() => organizations.id, { onDelete: "cascade" }),
-        userId: uuid("user_id")
-            .notNull()
-            .references(() => users.id, { onDelete: "cascade" }),
-        role: orgMemberRole("role").notNull().default("recruiter"),
-        joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
-    },
-    (table) => [
-        uniqueIndex("organization_members_org_user_key").on(table.organizationId, table.userId),
-        index("organization_members_user_idx").on(table.userId),
-    ],
-);
+export interface OrganizationRow {
+    id: string;
+    name: string;
+    slug: string;
+    createdBy: string;
+    createdAt: Date;
+    updatedAt: Date;
+}
 
-export const interviewSessions = pgTable(
-    "interview_sessions",
-    {
-        id: uuid("id").primaryKey().defaultRandom(),
-        organizationId: uuid("organization_id")
-            .notNull()
-            .references(() => organizations.id, { onDelete: "cascade" }),
-        createdBy: uuid("created_by")
-            .notNull()
-            .references(() => users.id, { onDelete: "cascade" }),
-        title: varchar("title", { length: 300 }).notNull(),
-        targetRole: varchar("target_role", { length: 200 }).notNull(),
-        description: text("description").notNull().default(""),
-        interviewType: interviewType("interview_type").notNull().default("behavioral"),
-        questions: text("questions").array().notNull().default([]),
-        dsaProblems: jsonb("dsa_problems").$type<DsaProblem[]>().notNull().default([]),
-        dsaDifficulty: dsaDifficulty("dsa_difficulty").notNull().default("medium"),
-        status: interviewStatus("status").notNull().default("draft"),
-        expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-        createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-        updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-    },
-    (table) => [
-        index("interview_sessions_org_status_idx").on(table.organizationId, table.status),
-        index("interview_sessions_created_by_idx").on(table.createdBy),
-    ],
-);
+export interface OrganizationMemberRow {
+    id: string;
+    organizationId: string;
+    userId: string;
+    role: OrgMemberRole;
+    joinedAt: Date;
+}
 
-export const candidateInvites = pgTable(
-    "candidate_invites",
-    {
-        id: uuid("id").primaryKey().defaultRandom(),
-        interviewId: uuid("interview_id")
-            .notNull()
-            .references(() => interviewSessions.id, { onDelete: "cascade" }),
-        candidateId: uuid("candidate_id")
-            .notNull()
-            .references(() => users.id, { onDelete: "cascade" }),
-        /** sha256 hex of the raw token. The raw token is returned once, never stored. */
-        inviteToken: varchar("invite_token", { length: 64 }).notNull(),
-        status: inviteStatus("status").notNull().default("pending"),
-        currentRound: inviteRound("current_round").notNull().default("behavioral"),
-        invitedAt: timestamp("invited_at", { withTimezone: true }).notNull().defaultNow(),
-        startedAt: timestamp("started_at", { withTimezone: true }),
-        completedAt: timestamp("completed_at", { withTimezone: true }),
-        results: jsonb("results").$type<ResultItem[]>().notNull().default([]),
-        dsaResults: jsonb("dsa_results").$type<DsaResultItem[]>().notNull().default([]),
-        createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-        updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-    },
-    (table) => [
-        uniqueIndex("candidate_invites_token_key").on(table.inviteToken),
-        index("candidate_invites_interview_status_idx").on(table.interviewId, table.status),
-        index("candidate_invites_candidate_idx").on(table.candidateId),
-    ],
-);
+export interface InterviewRow {
+    id: string;
+    organizationId: string;
+    createdBy: string;
+    title: string;
+    targetRole: string;
+    description: string;
+    interviewType: InterviewType;
+    questions: string[];
+    dsaProblems: DsaProblem[];
+    dsaDifficulty: DsaDifficulty;
+    status: InterviewStatus;
+    expiresAt: Date;
+    createdAt: Date;
+    updatedAt: Date;
+}
 
-export const rehearsalSessions = pgTable(
-    "rehearsal_sessions",
-    {
-        id: uuid("id").primaryKey().defaultRandom(),
-        userId: uuid("user_id")
-            .notNull()
-            .references(() => users.id, { onDelete: "cascade" }),
-        targetRole: varchar("target_role", { length: 200 }).notNull().default("Software Engineer"),
-        sessionType: rehearsalSessionType("session_type").notNull().default("behavioral"),
-        results: jsonb("results").$type<ResultItem[]>().notNull().default([]),
-        dsaResults: jsonb("dsa_results").$type<DsaResultItem[]>().notNull().default([]),
-        createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-        updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-    },
-    (table) => [index("rehearsal_sessions_user_idx").on(table.userId)],
-);
+export interface InviteRow {
+    id: string;
+    interviewId: string;
+    candidateId: string;
+    /** sha256 hex of the raw token. The raw token is returned once, never stored. */
+    inviteToken: string;
+    status: InviteStatus;
+    currentRound: InviteRound;
+    invitedAt: Date;
+    startedAt: Date | null;
+    completedAt: Date | null;
+    results: ResultItem[];
+    dsaResults: DsaResultItem[];
+    createdAt: Date;
+    updatedAt: Date;
+}
 
-export const auditLogs = pgTable(
-    "audit_logs",
-    {
-        id: uuid("id").primaryKey().defaultRandom(),
-        userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
-        action: auditAction("action").notNull(),
-        details: text("details").notNull().default(""),
-        metadata: jsonb("metadata").$type<Record<string, unknown>>(),
-        /** sha256 hex of the client IP. Never the raw IP. */
-        ipHash: varchar("ip_hash", { length: 64 }),
-        createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    },
-    (table) => [
-        index("audit_logs_user_created_idx").on(table.userId, table.createdAt),
-        index("audit_logs_action_idx").on(table.action),
-    ],
-);
+export interface RehearsalRow {
+    id: string;
+    userId: string;
+    targetRole: string;
+    sessionType: RehearsalSessionType;
+    results: ResultItem[];
+    dsaResults: DsaResultItem[];
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+export interface AuditRow {
+    id: string;
+    userId: string | null;
+    action: AuditAction;
+    details: string;
+    metadata: Record<string, unknown> | null;
+    /** sha256 hex of the client IP. Never the raw IP. */
+    ipHash: string | null;
+    createdAt: Date;
+}

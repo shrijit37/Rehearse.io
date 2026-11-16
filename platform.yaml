@@ -11,7 +11,8 @@ runtime: node
 service:
   port: 9000
   healthcheck: /health
-  readycheck: /ready
+  # No /ready alias: the single GET /health (200 ok / 503 down) is the gate.
+  # The Bun API image also exposes an in-image HEALTHCHECK on the same path.
 
 # The React frontend is a separate static unit deployed to Cloudflare Pages.
 # See frontend/platform.yaml.

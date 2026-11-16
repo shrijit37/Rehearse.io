@@ -2,29 +2,30 @@
  * Row-shaping helpers shared by the repository layer.
  *
  * The HTTP contract exposes every record's primary key as `_id` (that is what
- * the React frontend reads), while Postgres/Drizzle use `id`. These helpers keep
- * both names available so controllers and services stay unchanged.
+ * the React frontend reads), while Postgres/Supabase use `id`. These helpers
+ * keep both names available so controllers and services stay unchanged.
  */
-import * as t from "./schema";
+import type { UserRow } from "./schema";
 
-export type { DsaProblem, DsaResultItem, ResultItem } from "./schema";
-
-export type UserRow = typeof t.users.$inferSelect;
-export type OrganizationRow = typeof t.organizations.$inferSelect;
-export type OrganizationMemberRow = typeof t.organizationMembers.$inferSelect;
-export type InterviewRow = typeof t.interviewSessions.$inferSelect;
-export type InviteRow = typeof t.candidateInvites.$inferSelect;
-export type RehearsalRow = typeof t.rehearsalSessions.$inferSelect;
-export type AuditRow = typeof t.auditLogs.$inferSelect;
+export type {
+    AuditRow,
+    DsaProblem,
+    DsaResultItem,
+    InterviewRow,
+    InviteRow,
+    OrganizationMemberRow,
+    OrganizationRow,
+    RehearsalRow,
+    ResultItem,
+    UserRow,
+} from "./schema";
 
 export type WithId<T extends { id: string }> = T & { _id: string };
 
-/** Adds `_id` alongside the Drizzle `id`. */
+/** Adds `_id` alongside the Postgres `id`. */
 export function withId<T extends { id: string }>(row: T): WithId<T>;
 export function withId<T extends { id: string }>(row: T | undefined): WithId<T> | null;
 export function withId<T extends { id: string }>(row: T | undefined): WithId<T> | null {
-    // Drizzle types `.returning()` as `T[]` even though an INSERT always yields
-    // a row; treat an empty result as "not found" rather than crashing.
     return row ? { ...row, _id: row.id } : null;
 }
 

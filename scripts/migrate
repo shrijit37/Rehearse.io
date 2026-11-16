@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
-# Idempotent Postgres migrations. Uses the external URL so CI can reach the
-# shared instance; falls back to DATABASE_URL for in-network runs.
+# Supabase schema verification. The authoritative DDL is
+# `supabase/migrations/0001_fleet_schema.sql`; it is applied out-of-band through
+# the Supabase dashboard/CLI because raw Postgres is private and the app
+# container (and CI) can only reach the public HTTP gateway.
 set -euo pipefail
-: "${DATABASE_URL:?DATABASE_URL is required}"
+: "${SUPABASE_URL:?SUPABASE_URL is required}"
+: "${SUPABASE_SECRET_KEY:?SUPABASE_SECRET_KEY is required}"
 
-MIGRATION_URL="${DATABASE_URL_EXTERNAL:-$DATABASE_URL}"
+endpoint="${SUPABASE_URL%/}/rest/v1/"
+code=$(curl -s -o /dev/null -w "%{http_code}" \
+  -H "apikey: $SUPABASE_SECRET_KEY" \
+  -H "Authorization: Bearer $SUPABASE_SECRET_KEY" \
+  "$endpoint") || code=000
 
-echo "==> applying drizzle migrations"
-(cd backend && DATABASE_URL="$MIGRATION_URL" bunx drizzle-kit migrate)
-echo
+echo "==> Supabase gateway: $endpoint (HTTP $code)"
+cat <<'EOF'
+Schema is defined in supabase/migrations/0001_fleet_schema.sql and applied
+through the Supabase dashboard/CLI. No Drizzle migrations are run at runtime.
+EOF
+[ "$code" = "200" ]

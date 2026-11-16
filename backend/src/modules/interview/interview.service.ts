@@ -314,10 +314,10 @@ export const submitInterviewAnswer = async (userId: string, input: SubmitAnswerI
     try {
         if (!isValidId(input.inviteId)) return { status: 400, message: "Invalid inviteId format" };
 
-        // Validated on an unlocked read; the write below re-checks authority
-        // against the locked row. The interview is read here, not inside the
-        // transaction, so a locked writer never needs a second pooled
-        // connection (`DATABASE_POOL_MAX` is 10).
+        // Validated on a plain read; `mutateInvite` re-checks authority against
+        // the row it reads before writing. The interview is read here rather
+        // than inside the mutation — Supabase access is HTTP, with no shared
+        // transaction or pooled connection to protect.
         const invite = await findInviteById(input.inviteId);
         if (!invite) return { status: 404, message: "Invite not found" };
         if (invite.candidateId !== userId) return { status: 403, message: "Not authorized" };

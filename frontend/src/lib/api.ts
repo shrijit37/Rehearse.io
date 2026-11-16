@@ -1,4 +1,5 @@
 import { clearStoredUser } from "@/lib/session";
+import { supabase } from "@/lib/supabase";
 
 /** Exported so the live socket can derive its ws:// origin from the same base. */
 export const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:9000";
@@ -17,10 +18,12 @@ export interface ApiError extends Error {
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { tokenOverride, body, headers: customHeaders, raw, ...rest } = options;
-  // Session auth rides on the shared auth cookie (.shrijit.tech) — there is no
-  // local token any more. tokenOverride stays for the interview invite Bearer.
+  // Supabase Auth access token rides as a Bearer header. tokenOverride stays
+  // for the interview invite Bearer minted by the recruiter flow.
   const headers: Record<string, string> = {};
-  if (tokenOverride) headers["Authorization"] = `Bearer ${tokenOverride}`;
+  const { data } = await supabase.auth.getSession();
+  const token = tokenOverride ?? data.session?.access_token;
+  if (token) headers["Authorization"] = `Bearer ${token}`;
   if (body && !(body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
   }

@@ -1,6 +1,5 @@
-import { desc, eq } from "drizzle-orm";
 import { db } from "../index";
-import { rehearsalSessions } from "../schema";
+import { read, toDb, unwrap } from "../mappers";
 import { withId, type DsaResultItem, type RehearsalRow, type ResultItem } from "../shape";
 
 export async function createRehearsalSession(input: {
@@ -10,19 +9,24 @@ export async function createRehearsalSession(input: {
     results: ResultItem[];
     dsaResults: DsaResultItem[];
 }) {
-    const rows = await db.insert(rehearsalSessions).values(input).returning();
-    return withId(rows[0]);
+    const rows = unwrap(
+        await db.from("rehearsal_sessions").insert(toDb("rehearsal_sessions", { ...input })).select(),
+    );
+    return withId(read.rehearsal(rows[0] as Record<string, unknown>));
 }
 
 export async function listRehearsalSessions(userId: string, skip: number, limit: number) {
-    const all = await db
-        .select()
-        .from(rehearsalSessions)
-        .where(eq(rehearsalSessions.userId, userId))
-        .orderBy(desc(rehearsalSessions.createdAt));
-    return { rows: all.slice(skip, skip + limit), total: all.length };
+    const all = unwrap(
+        await db
+            .from("rehearsal_sessions")
+            .select("*")
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false }),
+    );
+    const rows = all.map((row) => read.rehearsal(row as Record<string, unknown>));
+    return { rows: rows.slice(skip, skip + limit), total: rows.length };
 }
 
 export async function deleteRehearsalSessionsForUser(userId: string) {
-    await db.delete(rehearsalSessions).where(eq(rehearsalSessions.userId, userId));
+    unwrap(await db.from("rehearsal_sessions").delete().eq("user_id", userId).select("id"));
 }

@@ -51,11 +51,10 @@ export const UNSCORED_FEEDBACK = "This answer could not be scored. Your transcri
  */
 async function recordInterviewTurn(claims: LiveTicketClaims, turn: LiveTurn): Promise<void> {
     if (!claims.inviteId) return;
-    // What the locked transaction needs is read first, because it must stay on
-    // one pooled connection (`DATABASE_POOL_MAX` is 10, and a transaction that
-    // grabs a second connection under the row lock can starve the pool). An
-    // interview's questions are authored content, not what the racing writers
-    // mutate, so they are safe to read unlocked.
+    // The invite's authored interview is read before the mutation. Its
+    // questions are not what the two writers race on, so this read is safe;
+    // the read-modify-write itself happens in `mutateInvite` over the HTTP
+    // gateway (Supabase has no cross-request row lock).
     const current = await findInviteById(claims.inviteId);
     if (!current) {
         console.warn("[live] refusing to persist a turn: the session is no longer open");

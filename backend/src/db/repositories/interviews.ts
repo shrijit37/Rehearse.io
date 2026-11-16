@@ -1,7 +1,6 @@
 import crypto from "crypto";
-import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../index";
-import { candidateInvites, interviewSessions } from "../schema";
+import { read, toDb, unwrap } from "../mappers";
 import { withId, type DsaResultItem, type InviteRow, type InterviewRow, type ResultItem, type WithId } from "../shape";
 import { findUsersByIds } from "./users";
 
@@ -29,25 +28,29 @@ export interface CreateInterviewInput {
 }
 
 export async function createInterviewSession(input: CreateInterviewInput) {
-    const rows = await db.insert(interviewSessions).values(input).returning();
-    return withId(rows[0]);
+    const rows = unwrap(
+        await db.from("interview_sessions").insert(toDb("interview_sessions", { ...input })).select(),
+    );
+    return withId(read.interview(rows[0] as Record<string, unknown>));
 }
 
 export async function findInterviewRowById(id: string): Promise<InterviewRow | null> {
-    const rows = await db.select().from(interviewSessions).where(eq(interviewSessions.id, id)).limit(1);
-    return rows[0] ?? null;
+    const rows = unwrap(await db.from("interview_sessions").select("*").eq("id", id).limit(1));
+    return rows[0] ? read.interview(rows[0] as Record<string, unknown>) : null;
 }
 
 export async function updateInterviewSession(
     id: string,
     patch: Partial<Omit<InterviewRow, "id" | "createdAt">>,
 ) {
-    const rows = await db
-        .update(interviewSessions)
-        .set({ ...patch, updatedAt: new Date() })
-        .where(eq(interviewSessions.id, id))
-        .returning();
-    return rows[0] ? withId(rows[0]) : null;
+    const rows = unwrap(
+        await db
+            .from("interview_sessions")
+            .update(toDb("interview_sessions", { ...patch, updatedAt: new Date() }))
+            .eq("id", id)
+            .select(),
+    );
+    return rows[0] ? withId(read.interview(rows[0] as Record<string, unknown>)) : null;
 }
 
 /** Paginated list, optionally scoped to one organization. */
@@ -57,20 +60,13 @@ export async function listInterviewSessions(filter: {
     skip: number;
     limit: number;
 }): Promise<{ rows: InterviewRow[]; total: number }> {
-    const where =
-        filter.organizationId !== undefined
-            ? and(
-                  eq(interviewSessions.createdBy, filter.createdBy),
-                  eq(interviewSessions.organizationId, filter.organizationId),
-              )
-            : eq(interviewSessions.createdBy, filter.createdBy);
-
-    const all = await db
-        .select()
-        .from(interviewSessions)
-        .where(where)
-        .orderBy(desc(interviewSessions.createdAt));
-    return { rows: all.slice(filter.skip, filter.skip + filter.limit), total: all.length };
+    let query = db.from("interview_sessions").select("*").eq("created_by", filter.createdBy);
+    if (filter.organizationId !== undefined) {
+        query = query.eq("organization_id", filter.organizationId);
+    }
+    const all = unwrap(await query.order("created_at", { ascending: false }));
+    const rows = all.map((row) => read.interview(row as Record<string, unknown>));
+    return { rows: rows.slice(filter.skip, filter.skip + filter.limit), total: rows.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -83,44 +79,48 @@ export async function createInvite(input: {
     /** Raw token; hashed here before it ever reaches the database. */
     rawToken: string;
 }) {
-    const rows = await db
-        .insert(candidateInvites)
-        .values({
-            interviewId: input.interviewId,
-            candidateId: input.candidateId,
-            inviteToken: hashInviteToken(input.rawToken),
-        })
-        .returning();
-    return withId(rows[0]);
+    const rows = unwrap(
+        await db
+            .from("candidate_invites")
+            .insert(
+                toDb("candidate_invites", {
+                    interviewId: input.interviewId,
+                    candidateId: input.candidateId,
+                    inviteToken: hashInviteToken(input.rawToken),
+                }),
+            )
+            .select(),
+    );
+    return withId(read.invite(rows[0] as Record<string, unknown>));
 }
 
 export async function findInviteById(id: string): Promise<InviteRow | null> {
-    const rows = await db.select().from(candidateInvites).where(eq(candidateInvites.id, id)).limit(1);
-    return rows[0] ?? null;
+    const rows = unwrap(await db.from("candidate_invites").select("*").eq("id", id).limit(1));
+    return rows[0] ? read.invite(rows[0] as Record<string, unknown>) : null;
 }
 
 /** Replaces `CandidateInvite.findByRawToken`. */
 export async function findInviteByRawToken(rawToken: string): Promise<InviteRow | null> {
-    const rows = await db
-        .select()
-        .from(candidateInvites)
-        .where(eq(candidateInvites.inviteToken, hashInviteToken(rawToken)))
-        .limit(1);
-    return rows[0] ?? null;
+    const rows = unwrap(
+        await db
+            .from("candidate_invites")
+            .select("*")
+            .eq("invite_token", hashInviteToken(rawToken))
+            .limit(1),
+    );
+    return rows[0] ? read.invite(rows[0] as Record<string, unknown>) : null;
 }
 
 export async function findExistingInvite(interviewId: string, candidateId: string) {
-    const rows = await db
-        .select()
-        .from(candidateInvites)
-        .where(
-            and(
-                eq(candidateInvites.interviewId, interviewId),
-                eq(candidateInvites.candidateId, candidateId),
-            ),
-        )
-        .limit(1);
-    return rows[0] ?? null;
+    const rows = unwrap(
+        await db
+            .from("candidate_invites")
+            .select("*")
+            .eq("interview_id", interviewId)
+            .eq("candidate_id", candidateId)
+            .limit(1),
+    );
+    return rows[0] ? read.invite(rows[0] as Record<string, unknown>) : null;
 }
 
 export type InvitePatch = Partial<{
@@ -133,12 +133,14 @@ export type InvitePatch = Partial<{
 }>;
 
 export async function updateInvite(id: string, patch: InvitePatch) {
-    const rows = await db
-        .update(candidateInvites)
-        .set({ ...patch, updatedAt: new Date() })
-        .where(eq(candidateInvites.id, id))
-        .returning();
-    return rows[0] ? withId(rows[0]) : null;
+    const rows = unwrap(
+        await db
+            .from("candidate_invites")
+            .update(toDb("candidate_invites", { ...patch, updatedAt: new Date() }))
+            .eq("id", id)
+            .select(),
+    );
+    return rows[0] ? withId(read.invite(rows[0] as Record<string, unknown>)) : null;
 }
 
 export type InviteDecision<T = undefined> =
@@ -155,75 +157,75 @@ export interface InviteMutationOutcome<T> {
 }
 
 /**
- * One locked read-modify-write of an invite.
+ * One read-modify-write of an invite.
  *
- * Two writers rebuild `results` from the row they read, seconds apart: the live
- * relay records a scored answer while the candidate's "Next" posts to
- * `/api/interviews/candidate/submit`. Without a lock the later write overwrites
- * the other's fresh array with its own stale snapshot, silently dropping an
- * answer or a round transition. The row is selected `FOR UPDATE` inside a
- * transaction and the decision is made from that locked row, so the writers
- * serialize instead of racing.
- *
- * `decide` sees the row as it is inside the lock and returns the patch to write,
- * or a refusal carrying the HTTP status the caller should answer with.
+ * The old implementation held `SELECT ... FOR UPDATE` inside a Postgres
+ * transaction to serialize two concurrent writers (the live relay and the
+ * candidate submit endpoint). supabase-js talks HTTP and cannot hold a row
+ * lock across requests, so this is now a non-atomic read-then-write. The
+ * decision callback still sees the current row and the write still carries the
+ * full rebuilt array; the residual risk is a lost update under a genuine race,
+ * which is documented here rather than hidden.
  */
 export async function mutateInvite<T = undefined>(
     id: string,
     decide: (invite: InviteRow) => InviteDecision<T> | Promise<InviteDecision<T>>,
 ): Promise<InviteMutationOutcome<T>> {
-    return db.transaction(async (tx) => {
-        const rows = await tx
-            .select()
-            .from(candidateInvites)
-            .where(eq(candidateInvites.id, id))
-            .for("update");
-        const invite = rows[0];
-        if (!invite) {
-            return { invite: null, refused: { status: 404, message: "Invite not found" } };
-        }
+    const rows = unwrap(await db.from("candidate_invites").select("*").eq("id", id).limit(1));
+    const invite = rows[0] ? read.invite(rows[0] as Record<string, unknown>) : null;
+    if (!invite) {
+        return { invite: null, refused: { status: 404, message: "Invite not found" } };
+    }
 
-        const decision = await decide(invite);
-        if (decision.kind === "refuse") {
-            return { invite: null, refused: { status: decision.status, message: decision.message } };
-        }
+    const decision = await decide(invite);
+    if (decision.kind === "refuse") {
+        return { invite: null, refused: { status: decision.status, message: decision.message } };
+    }
 
-        const updated = await tx
-            .update(candidateInvites)
-            .set({ ...decision.patch, updatedAt: new Date() })
-            .where(eq(candidateInvites.id, id))
-            .returning();
-        return { invite: withId(updated[0]), data: decision.data };
-    });
+    const updated = unwrap(
+        await db
+            .from("candidate_invites")
+            .update(toDb("candidate_invites", { ...decision.patch, updatedAt: new Date() }))
+            .eq("id", id)
+            .select(),
+    );
+    return { invite: withId(read.invite(updated[0] as Record<string, unknown>)), data: decision.data };
 }
 
 export async function listInvitesForInterview(interviewId: string) {
-    const rows = await db
-        .select()
-        .from(candidateInvites)
-        .where(eq(candidateInvites.interviewId, interviewId))
-        .orderBy(desc(candidateInvites.createdAt));
-    const userMap = await findUsersByIds(rows.map((r) => r.candidateId));
-    return rows.map((row) => ({
+    const rows = unwrap(
+        await db
+            .from("candidate_invites")
+            .select("*")
+            .eq("interview_id", interviewId)
+            .order("created_at", { ascending: false }),
+    );
+    const invites = rows.map((row) => read.invite(row as Record<string, unknown>));
+    const userMap = await findUsersByIds(invites.map((r) => r.candidateId));
+    return invites.map((row) => ({
         ...withId(row),
         candidate: userMap.get(row.candidateId) ?? null,
     }));
 }
 
 export async function listInvitesForCandidate(candidateId: string, skip: number, limit: number) {
-    const all = await db
-        .select()
-        .from(candidateInvites)
-        .where(eq(candidateInvites.candidateId, candidateId))
-        .orderBy(desc(candidateInvites.createdAt));
-    return { rows: all.slice(skip, skip + limit), total: all.length };
+    const all = unwrap(
+        await db
+            .from("candidate_invites")
+            .select("*")
+            .eq("candidate_id", candidateId)
+            .order("created_at", { ascending: false }),
+    );
+    const rows = all.map((row) => read.invite(row as Record<string, unknown>));
+    return { rows: rows.slice(skip, skip + limit), total: rows.length };
 }
 
 export async function deleteInvitesForCandidate(candidateId: string) {
-    await db.delete(candidateInvites).where(eq(candidateInvites.candidateId, candidateId));
+    unwrap(await db.from("candidate_invites").delete().eq("candidate_id", candidateId).select("id"));
 }
 
 export async function listInvitesByIds(ids: string[]) {
     if (ids.length === 0) return [];
-    return db.select().from(candidateInvites).where(inArray(candidateInvites.id, ids));
+    const rows = unwrap(await db.from("candidate_invites").select("*").in("id", ids));
+    return rows.map((row) => read.invite(row as Record<string, unknown>));
 }

@@ -1,40 +1,42 @@
-import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "../index";
-import { users } from "../schema";
+import { read, toDb, unwrap } from "../mappers";
+import type { UserRow } from "../schema";
 import type { ProfileEducation, ProfileExperience } from "../schema";
 import { withId, type PopulatedUser, type WithId } from "../shape";
 
 /** Columns safe to return to any caller (never includes the password hash). */
-export const USER_PUBLIC_COLUMNS = {
-    id: users.id,
-    name: users.name,
-    email: users.email,
-    authId: users.authId,
-    role: users.role,
-    organizationId: users.organizationId,
-    resumeName: users.resumeName,
-    resume: users.resume,
-    photo: users.photo,
-    audio: users.audio,
-    headline: users.headline,
-    location: users.location,
-    skills: users.skills,
-    experience: users.experience,
-    education: users.education,
-    resumeParsedAt: users.resumeParsedAt,
-    resumeUpdatedAt: users.resumeUpdatedAt,
-    consentGiven: users.consentGiven,
-    consentDate: users.consentDate,
-    consentVersion: users.consentVersion,
-    onboardingCompleted: users.onboardingCompleted,
-    isInvitedPlaceholder: users.isInvitedPlaceholder,
-    isDeleted: users.isDeleted,
-    deletedAt: users.deletedAt,
-    createdAt: users.createdAt,
-    updatedAt: users.updatedAt,
-} as const;
+export const USER_PUBLIC_COLUMNS = [
+    "id",
+    "name",
+    "email",
+    "auth_id",
+    "role",
+    "organization_id",
+    "resume_name",
+    "resume",
+    "photo",
+    "audio",
+    "headline",
+    "location",
+    "skills",
+    "experience",
+    "education",
+    "resume_parsed_at",
+    "resume_updated_at",
+    "consent_given",
+    "consent_date",
+    "consent_version",
+    "onboarding_completed",
+    "is_invited_placeholder",
+    "is_deleted",
+    "deleted_at",
+    "created_at",
+    "updated_at",
+] as const;
 
-export type PublicUser = typeof users.$inferSelect;
+const PUBLIC_SELECT = USER_PUBLIC_COLUMNS.join(",");
+
+export type PublicUser = UserRow;
 
 /**
  * A user row as the read paths below return it: the public columns plus `_id`.
@@ -44,37 +46,47 @@ export type PublicUser = typeof users.$inferSelect;
  */
 export type UserRecord = WithId<Omit<PublicUser, "password">>;
 
+function publicUser(row: Record<string, unknown>): Omit<UserRow, "password"> {
+    const mapped = read.user(row);
+    const { password: _password, ...rest } = mapped;
+    return rest;
+}
+
 export async function findUserById(id: string): Promise<UserRecord | null> {
-    const rows = await db.select(USER_PUBLIC_COLUMNS).from(users).where(eq(users.id, id)).limit(1);
-    return rows[0] ? withId(rows[0]) : null;
+    const rows = unwrap(await db.from("users").select("*").eq("id", id).limit(1));
+    return rows[0] ? withId(publicUser(rows[0] as Record<string, unknown>)) : null;
 }
 
 export async function findUserByEmail(email: string): Promise<UserRecord | null> {
-    const rows = await db.select(USER_PUBLIC_COLUMNS).from(users).where(eq(users.email, email)).limit(1);
-    return rows[0] ? withId(rows[0]) : null;
+    const rows = unwrap(await db.from("users").select("*").eq("email", email).limit(1));
+    return rows[0] ? withId(publicUser(rows[0] as Record<string, unknown>)) : null;
 }
 
-/** Looks a visitor up by the account id minted by the shared auth service. */
+/** Looks a visitor up by the account id minted by Supabase Auth. */
 export async function findUserByAuthId(authId: string): Promise<UserRecord | null> {
-    const rows = await db.select(USER_PUBLIC_COLUMNS).from(users).where(eq(users.authId, authId)).limit(1);
-    return rows[0] ? withId(rows[0]) : null;
+    const rows = unwrap(await db.from("users").select("*").eq("auth_id", authId).limit(1));
+    return rows[0] ? withId(publicUser(rows[0] as Record<string, unknown>)) : null;
 }
 
 export async function setUserOrganization(userId: string, organizationId: string) {
-    await db.update(users).set({ organizationId, updatedAt: new Date() }).where(eq(users.id, userId));
+    unwrap(
+        await db
+            .from("users")
+            .update(toDb("users", { organizationId, updatedAt: new Date() }))
+            .eq("id", userId)
+            .select("id"),
+    );
 }
 
 /** Batch lookup used to populate member/creator references. */
 export async function findUsersByIds(ids: string[]): Promise<Map<string, PopulatedUser>> {
     const unique = [...new Set(ids)];
     if (unique.length === 0) return new Map();
-    const rows = await db
-        .select({ id: users.id, name: users.name, email: users.email, role: users.role })
-        .from(users)
-        .where(inArray(users.id, unique));
+    const rows = unwrap(await db.from("users").select("id,name,email,role").in("id", unique));
     const out = new Map<string, PopulatedUser>();
     for (const row of rows) {
-        out.set(row.id, { ...row, _id: row.id });
+        const user = read.user(row as Record<string, unknown>);
+        out.set(user.id, { ...user, _id: user.id });
     }
     return out;
 }
@@ -97,21 +109,25 @@ export interface CreateUserInput {
 }
 
 export async function createUser(input: CreateUserInput) {
-    const rows = await db
-        .insert(users)
-        .values({
-            name: sanitizeName(input.name),
-            email: input.email,
-            password: input.password ?? null,
-            authId: input.authId ?? null,
-            role: input.role ?? "candidate",
-            isInvitedPlaceholder: input.isInvitedPlaceholder ?? false,
-            consentGiven: input.consentGiven ?? false,
-            consentDate: input.consentDate ?? null,
-            consentVersion: input.consentVersion ?? null,
-        })
-        .returning(USER_PUBLIC_COLUMNS);
-    return withId(rows[0]);
+    const rows = unwrap(
+        await db
+            .from("users")
+            .insert(
+                toDb("users", {
+                    name: sanitizeName(input.name),
+                    email: input.email,
+                    password: input.password ?? null,
+                    authId: input.authId ?? null,
+                    role: input.role ?? "candidate",
+                    isInvitedPlaceholder: input.isInvitedPlaceholder ?? false,
+                    consentGiven: input.consentGiven ?? false,
+                    consentDate: input.consentDate ?? null,
+                    consentVersion: input.consentVersion ?? null,
+                }),
+            )
+            .select("*"),
+    );
+    return withId(publicUser(rows[0] as Record<string, unknown>));
 }
 
 export type UserPatch = Partial<{
@@ -143,19 +159,19 @@ export type UserPatch = Partial<{
 
 export async function updateUser(id: string, patch: UserPatch) {
     const value = patch.name !== undefined ? { ...patch, name: sanitizeName(patch.name) } : patch;
-    const rows = await db
-        .update(users)
-        .set({ ...value, updatedAt: new Date() })
-        .where(eq(users.id, id))
-        .returning(USER_PUBLIC_COLUMNS);
-    return rows[0] ? withId(rows[0]) : null;
+    const rows = unwrap(
+        await db
+            .from("users")
+            .update(toDb("users", { ...value, updatedAt: new Date() }))
+            .eq("id", id)
+            .select("*"),
+    );
+    return rows[0] ? withId(publicUser(rows[0] as Record<string, unknown>)) : null;
 }
 
 export async function isOnboarded(id: string): Promise<boolean> {
-    const rows = await db
-        .select({ onboardingCompleted: users.onboardingCompleted })
-        .from(users)
-        .where(eq(users.id, id))
-        .limit(1);
-    return rows[0]?.onboardingCompleted === true;
+    const rows = unwrap(
+        await db.from("users").select("onboarding_completed").eq("id", id).limit(1),
+    );
+    return (rows[0] as { onboarding_completed?: boolean } | undefined)?.onboarding_completed === true;
 }

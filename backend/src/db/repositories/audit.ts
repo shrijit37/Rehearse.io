@@ -1,21 +1,8 @@
 import { db } from "../index";
-import { auditLogs } from "../schema";
+import { toDb, unwrap } from "../mappers";
+import type { AuditAction } from "../schema";
 
-export type AuditAction =
-    | "signup"
-    | "login"
-    | "onboard"
-    | "account_delete"
-    | "account_export"
-    | "consent_update"
-    | "interview_create"
-    | "interview_invite"
-    | "interview_start"
-    | "interview_submit"
-    | "org_create"
-    | "org_update"
-    | "org_member_invite"
-    | "profile_update";
+export type { AuditAction };
 
 export async function writeAuditLog(entry: {
     userId: string | null;
@@ -25,11 +12,18 @@ export async function writeAuditLog(entry: {
     /** sha256 hex of the client IP. Never the raw IP. */
     ipHash?: string | null;
 }) {
-    await db.insert(auditLogs).values({
-        userId: entry.userId,
-        action: entry.action,
-        details: entry.details ?? "",
-        metadata: entry.metadata ?? {},
-        ipHash: entry.ipHash ?? null,
-    });
+    unwrap(
+        await db
+            .from("audit_logs")
+            .insert(
+                toDb("audit_logs", {
+                    userId: entry.userId,
+                    action: entry.action,
+                    details: entry.details ?? "",
+                    metadata: entry.metadata ?? {},
+                    ipHash: entry.ipHash ?? null,
+                }),
+            )
+            .select("id"),
+    );
 }

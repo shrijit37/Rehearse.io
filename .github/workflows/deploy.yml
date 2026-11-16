@@ -79,7 +79,9 @@ jobs:
       - name: Build and push (amd64+arm64, SHA + latest)
         uses: docker/build-push-action@v6
         with:
-          context: .
+          # Deployable is the Bun API only; the frontend ships to Pages.
+          context: ./backend
+          file: ./backend/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
@@ -133,14 +135,22 @@ jobs:
           [ -n "$DOTENV_PRIVATE_KEY_PRODUCTION" ] || { echo "DOTENV_PRIVATE_KEY_PRODUCTION empty" >&2; exit 1; }
           dotenvx decrypt -f .env.production
 
-      - name: Run migrations
-        # dotenvx output is a plain .env.production after decrypt. Source it
-        # for the migration client. Non-fatal by design (idempotent SQL).
+      - name: Verify Supabase gateway
+        # Supabase is reached over the public HTTP gateway — raw Postgres is
+        # private and not reachable from CI either. The schema in
+        # supabase/migrations/0001_fleet_schema.sql is applied centrally via
+        # the Supabase dashboard/CLI; here we only confirm the service-role key
+        # is accepted. Non-fatal by design.
         run: |
+          set -euo pipefail
           set -a
           . ./.env.production
           set +a
-          make migrate || echo "::warning::migrations failed; deploying anyway"
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "apikey: $SUPABASE_SECRET_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SECRET_KEY" \
+            "${SUPABASE_URL%/}/rest/v1/") || code=000
+          [ "$code" = "200" ] || echo "::warning::Supabase gateway check returned $code"
 
       # ---- Coolify deploy webhook replaces Dokploy API -------------------
       - name: Trigger Coolify deployment

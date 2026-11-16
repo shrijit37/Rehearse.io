@@ -8,7 +8,7 @@ import {
 } from "../../db/repositories/users";
 import type { IClaimSchema } from "./auth.validation";
 
-/** The user object the shared auth service returns for a valid session. */
+/** The Supabase Auth user fields needed to map a session to a local row. */
 export interface SessionUser {
     id: string;
     email: string;
@@ -25,14 +25,14 @@ export const toPublicUser = (user: UserRecord) => ({
 });
 
 /**
- * Maps a shared-auth session onto a local user row: same account -> same row,
+ * Maps a Supabase Auth user onto a local user row: same account -> same row,
  * an invited placeholder with a matching email -> claimed, otherwise created.
  * Returns null when the row cannot be trusted (deleted, or already bound to a
  * different auth account), which the middleware turns into a 401.
  *
- * The auth service owns the display name, and this refreshes the local copy from
+ * Supabase Auth owns the display name, and this refreshes the local copy from
  * every session — so a name edited on the profile page is written there FIRST
- * (POST /api/auth/update-user) and PATCH /api/users/profile only mirrors it.
+ * (`supabase.auth.updateUser`) and PATCH /api/users/profile only mirrors it.
  */
 export async function resolveSessionUser(sessionUser: SessionUser): Promise<UserRecord | null> {
     const email = sessionUser.email.toLowerCase().trim();

@@ -27,11 +27,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Validate backend (typecheck + migrations against real Postgres)
+      - name: Validate backend (typecheck + behavioural test)
+        # Supabase schema is applied out-of-band; the API only uses the public
+        # HTTP gateway, so there is no local Postgres to migrate here.
         run: |
-          docker run -d --name pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=rehearse_io_test -p 5432:5432 postgres:18-alpine
-          cd backend && bun install --frozen-lockfile && bunx tsc --noEmit && cd ..
-          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/rehearse_io_test ./scripts/migrate
+          cd backend && bun install --frozen-lockfile && bunx tsc --noEmit && bun tests/live-proxy.ts
 
       - name: Validate frontend
         working-directory: frontend

@@ -42,13 +42,13 @@ interface FormData {
 	consentGiven: boolean;
 }
 
-/** Better Auth answers with terse strings; show something a human can act on. */
+/** Supabase Auth answers with terse strings; show something a human can act on. */
 const friendlyError = (message: string): string => {
-	if (/not verified/i.test(message))
+	if (/not confirmed|not verified|confirm your email/i.test(message))
 		return "Verify your email first — open the link we just sent you.";
-	if (/invalid email or password/i.test(message))
+	if (/invalid login credentials|invalid email or password/i.test(message))
 		return "That email and password do not match.";
-	if (/already exists/i.test(message))
+	if (/already registered|already exists|user already/i.test(message))
 		return "An account already exists for that email. Try signing in.";
 	if (/password/i.test(message) && /(short|at least|weak)/i.test(message))
 		return "Password must be at least 8 characters.";
@@ -98,7 +98,7 @@ const SignUp: React.FC = () => {
 		);
 	};
 
-	// Already signed in at auth.shrijit.tech? Skip the form.
+	// Already signed in with Supabase? Skip the form.
 	useEffect(() => {
 		getSession()
 			.then((session) => (session ? finishSignIn() : null))

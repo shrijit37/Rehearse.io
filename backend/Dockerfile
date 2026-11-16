@@ -13,7 +13,7 @@ RUN bun install --frozen-lockfile
 FROM deps AS build
 ARG APP_VERSION
 WORKDIR /app
-COPY tsconfig.json drizzle.config.ts ./
+COPY tsconfig.json ./
 COPY src ./src
 # Typecheck in the build so a broken image never reaches the registry.
 RUN bunx tsc --noEmit
@@ -24,10 +24,12 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV APP_VERSION=${APP_VERSION}
 
-# Migrations ship with the image so Dokploy can run them at release.
-COPY package.json bun.lock drizzle.config.ts tsconfig.json ./
-COPY drizzle ./drizzle
-RUN bun install --frozen-lockfile --production && \
+# The Supabase schema migration lives at repo root (supabase/migrations/) and
+# is applied out-of-band through the Supabase dashboard/CLI — not from the app
+# container. curl is installed for Coolify's container healthchecks.
+COPY package.json bun.lock tsconfig.json ./
+RUN apk add --no-cache curl && \
+    bun install --frozen-lockfile --production && \
     addgroup -S rehearse && adduser -S -G rehearse rehearse
 
 COPY --from=build /app/src ./src

@@ -104,7 +104,7 @@ app.use("/api/interviews", interviewRoutes);
 app.use("/api/live", liveRoutes);
 
 // Uniform fleet health contract (standards/platform.md#health): exactly
-// GET /health -> { status, service, version, checks }. Postgres is the
+// GET /health -> { status, service, version, checks }. Supabase is the
 // critical dependency: down means 503. No /ready alias.
 app.get("/health", async (_req: Request, res: Response) => {
     const database = (await checkDb()) ? "up" : "down";
@@ -140,7 +140,7 @@ process.on("SIGTERM", async () => {
     try {
         await closeDb();
     } catch (err) {
-        console.error("Error closing Postgres pool:", err);
+        console.error("Error closing Supabase client:", err);
     }
     process.exit(0);
 });

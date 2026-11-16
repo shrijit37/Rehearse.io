@@ -1,55 +1,79 @@
-// Shared Better Auth service (auth.shrijit.tech). No SDK: a plain fetch keeps
-// the cookie jar, which is all we need — the session cookie lives on
-// .shrijit.tech and the browser attaches it automatically.
-const AUTH_URL = import.meta.env.VITE_AUTH_URL || "https://auth.shrijit.tech";
+import { supabase } from "@/lib/supabase";
 
 export interface SessionUser {
-  id: string;
-  email: string;
-  name?: string | null;
+    id: string;
+    email: string;
+    name?: string | null;
 }
 
-async function call<T>(path: string, body?: unknown, fallbackMessage = "Sign-in failed"): Promise<T> {
-  const res = await fetch(`${AUTH_URL}${path}`, {
-    method: body === undefined ? "GET" : "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(data?.message || fallbackMessage);
-  return data as T;
+function toSessionUser(user: {
+    id: string;
+    email?: string | null;
+    user_metadata?: Record<string, unknown> | null;
+} | null): SessionUser | null {
+    if (!user?.email) return null;
+    const meta = user.user_metadata ?? {};
+    const name =
+        typeof meta.name === "string"
+            ? meta.name
+            : typeof meta.full_name === "string"
+                ? meta.full_name
+                : null;
+    return { id: user.id, email: user.email, name };
 }
 
-export const getSession = () =>
-  call<{ user: SessionUser | null; session: unknown } | null>("/api/auth/get-session");
+/** Null when there is no valid Supabase session (the sign-in form is shown). */
+export async function getSession(): Promise<{ user: SessionUser | null; session: unknown } | null> {
+    const { data, error } = await supabase.auth.getSession();
+    if (error || !data.session) return null;
+    return { user: toSessionUser(data.session.user), session: data.session };
+}
 
-export const signOut = () => call("/api/auth/sign-out", {});
+export async function signOut(): Promise<void> {
+    await supabase.auth.signOut();
+}
 
 /**
- * Renames the signed-in account. This service owns the name — the app's own row
- * is rebuilt from its session on every sign-in — so a name change has to land
- * here first, or it disappears the next time the candidate signs in.
+ * Renames the signed-in account. Supabase Auth owns the name — the app's own
+ * row is rebuilt from the session on every sign-in — so a name change has to
+ * land here first, or it disappears the next time the candidate signs in.
  */
-export const updateAccountName = (name: string) =>
-  call<{ user: SessionUser }>("/api/auth/update-user", { name }, "Could not update your name");
+export async function updateAccountName(name: string) {
+    const { data, error } = await supabase.auth.updateUser({ data: { name } });
+    if (error) throw new Error(error.message);
+    const user = toSessionUser(data.user);
+    if (!user) throw new Error("Could not update your name");
+    return { user };
+}
 
-export const signInWithEmail = (email: string, password: string) =>
-  call("/api/auth/sign-in/email", { email, password });
+export async function signInWithEmail(email: string, password: string): Promise<void> {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw new Error(error.message);
+}
 
-export const signUpWithEmail = (
-  email: string,
-  password: string,
-  name: string,
-) => call("/api/auth/sign-up/email", { email, password, name });
+export async function signUpWithEmail(
+    email: string,
+    password: string,
+    name: string,
+): Promise<void> {
+    const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { name } },
+    });
+    if (error) throw new Error(error.message);
+}
 
-export const signInWithProvider = (provider: "google" | "github") =>
-  call<{ url: string }>("/api/auth/sign-in/social", {
-    provider,
-    callbackURL: window.location.origin,
-});
+export async function signInWithProvider(provider: "google" | "github") {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: window.location.origin },
+    });
+    if (error) throw new Error(error.message);
+    return { url: data.url };
+}
 
 export async function signInWithProviderRedirect(provider: "google" | "github") {
-  const { url } = await signInWithProvider(provider);
-  window.location.href = url;
+    const { url } = await signInWithProvider(provider);
+    if (url) window.location.href = url;
 }

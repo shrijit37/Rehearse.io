@@ -15,7 +15,9 @@
  * in place before they load. Static imports would hoist above them.
  */
 
-process.env.DATABASE_URL ||= "postgresql://x:x@127.0.0.1:1/none";
+process.env.SUPABASE_URL ||= "https://supabase.invalid/project";
+process.env.SUPABASE_PUBLISHABLE_KEY ||= "sb_publishable_test";
+process.env.SUPABASE_SECRET_KEY ||= "sb_secret_test";
 process.env.JWT_SECRET ||= "test-secret";
 process.env.GEMINI_API_KEY ||= "test-key";
 process.env.LIVE_TICKET_SECRET ||= "test-ticket-secret";

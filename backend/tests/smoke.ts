@@ -1,20 +1,21 @@
 /**
  * Smoke test for the deployed (or locally booted) API.
  *
- * Every app-specific flow now authenticates with the shared Better Auth
- * session cookie, so these checks:
+ * Every app-specific flow authenticates with a Supabase Auth access token
+ * (Bearer), so these checks:
  *   - refuse anonymous access (401)
- *   - sign in through the shared auth service with SMOKE_EMAIL / SMOKE_PASSWORD
- *     and carry that cookie through the whole run
+ *   - sign in through Supabase Auth with SMOKE_EMAIL / SMOKE_PASSWORD and carry
+ *     that token through the whole run
  *   - claim a profile for the signed-in visitor (role + consent)
  *   - prove the role from the claim is what the app authorizes on
- *   - reject a forged session cookie
+ *   - reject a forged token
  */
 import { config } from "dotenv";
 config();
 
 const BASE = process.env.SMOKE_BASE_URL ?? "http://127.0.0.1:9000";
-const AUTH_URL = process.env.AUTH_URL ?? "https://auth.shrijit.tech";
+const SUPABASE_URL = (process.env.SUPABASE_URL ?? "").replace(/\/+$/, "");
+const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY ?? "";
 const SMOKE_EMAIL = process.env.SMOKE_EMAIL;
 const SMOKE_PASSWORD = process.env.SMOKE_PASSWORD;
 const RECRUITER_EMAIL = process.env.SMOKE_RECRUITER_EMAIL;
@@ -33,14 +34,17 @@ function check(name: string, ok: boolean, detail = ""): void {
     }
 }
 
-let cookie = "";
+let token = "";
 
-async function api(path: string, init: RequestInit = {}, options: { token?: string; cookie?: string } = {}): Promise<{ status: number; body: any }> {
+async function api(
+    path: string,
+    init: RequestInit = {},
+    options: { token?: string } = {},
+): Promise<{ status: number; body: any }> {
     const headers = new Headers(init.headers);
     headers.set("Content-Type", "application/json");
-    const sentCookie = options.cookie ?? cookie;
-    if (sentCookie) headers.set("Cookie", sentCookie);
-    if (options.token) headers.set("Authorization", `Bearer ${options.token}`);
+    const authToken = options.token ?? token;
+    if (authToken) headers.set("Authorization", `Bearer ${authToken}`);
 
     const res = await fetch(`${BASE}${path}`, { ...init, headers });
     const text = await res.text();
@@ -54,36 +58,45 @@ async function api(path: string, init: RequestInit = {}, options: { token?: stri
 }
 
 async function signIn(email: string, password: string): Promise<boolean> {
-    const res = await fetch(`${AUTH_URL}/api/auth/sign-in/email`, {
+    if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+        console.log("  !! SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY are required");
+        return false;
+    }
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+            "Content-Type": "application/json",
+            apikey: SUPABASE_PUBLISHABLE_KEY,
+            Authorization: `Bearer ${SUPABASE_PUBLISHABLE_KEY}`,
+        },
         body: JSON.stringify({ email, password }),
     });
     if (!res.ok) {
-        console.log(`  !! shared auth sign-in failed for ${email}: ${res.status} ${await res.text()}`);
+        console.log(`  !! Supabase sign-in failed for ${email}: ${res.status} ${await res.text()}`);
         return false;
     }
-    const setCookie = res.headers.get("set-cookie") ?? "";
-    cookie = setCookie.split(";")[0] ?? cookie;
-    return cookie.includes("better-auth.session_token");
+    const data = (await res.json()) as { access_token?: string };
+    if (!data.access_token) return false;
+    token = data.access_token;
+    return true;
 }
 
 async function main(): Promise<void> {
-    console.log(`smoke: ${BASE} (auth ${AUTH_URL})`);
+    console.log(`smoke: ${BASE} (supabase ${SUPABASE_URL || "unset"})`);
 
     const health = await api("/health");
     check("health 200", health.status === 200, `got ${health.status}`);
 
-    const anon = await api("/api/auth/session", {}, { cookie: "" });
+    const anon = await api("/api/auth/session", {}, { token: "" });
     check("anonymous /api/auth/session is 401", anon.status === 401, `got ${anon.status}`);
 
-    const anonUsers = await api("/api/users/", {}, { cookie: "" });
+    const anonUsers = await api("/api/users/", {}, { token: "" });
     check("anonymous /api/users/ is 401", anonUsers.status === 401, `got ${anonUsers.status}`);
 
     if (!SMOKE_EMAIL || !SMOKE_PASSWORD) {
-        throw new Error("SMOKE_EMAIL and SMOKE_PASSWORD are required for the shared-auth smoke test");
+        throw new Error("SMOKE_EMAIL and SMOKE_PASSWORD are required for the Supabase smoke test");
     }
-    if (!(await signIn(SMOKE_EMAIL, SMOKE_PASSWORD))) throw new Error("could not sign in to the shared auth service");
+    if (!(await signIn(SMOKE_EMAIL, SMOKE_PASSWORD))) throw new Error("could not sign in to Supabase Auth");
 
     const session = await api("/api/auth/session");
     check("authenticated /api/auth/session is 200", session.status === 200, `got ${session.status}`);
@@ -99,8 +112,8 @@ async function main(): Promise<void> {
     const badClaim = await api("/api/auth/claim", { method: "POST", body: JSON.stringify({ role: "wizard" }) });
     check("claim rejects an unknown role with 400", badClaim.status === 400, `got ${badClaim.status}`);
 
-    const forged = await api("/api/users/", {}, { cookie: "better-auth.session_token=forged" });
-    check("forged session cookie is 401", forged.status === 401, `got ${forged.status}`);
+    const forged = await api("/api/users/", {}, { token: "forged" });
+    check("forged token is 401", forged.status === 401, `got ${forged.status}`);
 
     const users = await api("/api/users/");
     check("authenticated /api/users/ is 200", users.status === 200, `got ${users.status}`);
@@ -115,9 +128,6 @@ async function main(): Promise<void> {
     );
     check(
         "profile omits the sealed blobs",
-        // resume/photo/voice carry metadata (present, name, sizeBytes). What must
-        // never appear is a sealed field: the encrypted envelope, or the raw
-        // audio column, which no client has any use for.
         profile?.audio === undefined &&
             !JSON.stringify(profile).includes("enc:v1:") &&
             typeof profile?.resume.present === "boolean" &&
@@ -136,16 +146,12 @@ async function main(): Promise<void> {
         JSON.stringify(profile?.roundSource),
     );
 
-    const anonMedia = await api("/api/users/profile/media/resume", {}, { cookie: "" });
+    const anonMedia = await api("/api/users/profile/media/resume", {}, { token: "" });
     check("anonymous media fetch is 401", anonMedia.status === 401, `got ${anonMedia.status}`);
 
     const badMedia = await api("/api/users/profile/media/not-a-kind");
     check("unknown media kind is 400", badMedia.status === 400, `got ${badMedia.status}`);
 
-    // A read proposes: asking for a preview must leave the record byte-identical,
-    // whether or not the text provider can be reached. Asserting the record rather
-    // than the status keeps this meaningful on a machine whose ai-service has no
-    // LLM key, where the read legitimately cannot run and answers 5xx.
     const readShape = (body: any): string => {
         const d = body?.data ?? {};
         return JSON.stringify({
@@ -164,8 +170,6 @@ async function main(): Promise<void> {
         body: JSON.stringify({ apply: false }),
     });
     check(
-        // The read may legitimately be unavailable (5xx from the text provider),
-        // but it must never be refused as the caller's fault.
         "a preview is never refused as malformed",
         ![400, 401, 403].includes(preview.status),
         `got ${preview.status}`,
@@ -201,15 +205,15 @@ async function main(): Promise<void> {
     check("claimed candidate is refused recruiter routes (403)", interviews.status === 403, `got ${interviews.status}`);
 
     if (RECRUITER_EMAIL && RECRUITER_PASSWORD) {
-        const saved = cookie;
-        cookie = "";
+        const saved = token;
+        token = "";
         if (await signIn(RECRUITER_EMAIL, RECRUITER_PASSWORD)) {
             const recInterviews = await api("/api/interviews/");
             check("recruiter reaches recruiter routes (200)", recInterviews.status === 200, `got ${recInterviews.status}`);
         } else {
-            check("recruiter signs in to the shared auth service", false);
+            check("recruiter signs in to Supabase Auth", false);
         }
-        cookie = saved;
+        token = saved;
     } else {
         console.log("  --   skipping recruiter check (no SMOKE_RECRUITER_* credentials)");
     }

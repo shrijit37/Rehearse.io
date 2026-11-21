@@ -225,6 +225,9 @@ const InterviewSetup: React.FC = () => {
 							placeholder="e.g., Senior Software Engineer"
 							value={targetRole}
 							onChange={(e) => setTargetRole(e.target.value)}
+							// The API bounds the role at 200 (the same bound a live
+							// session puts on it), so the form should not promise more.
+							maxLength={200}
 							className="text-[13px]"
 						/>
 					</div>
@@ -317,6 +320,10 @@ const InterviewSetup: React.FC = () => {
 											placeholder={`Question ${idx + 1}`}
 											value={q}
 											onChange={(e) => updateQuestion(idx, e.target.value)}
+											// 600 is the API's per-question bound
+											// (LIVE_MAX_QUESTION_CHARS): the coach is
+											// instructed with this text in one spoken turn.
+											maxLength={600}
 											className="flex-1 text-[13px]"
 										/>
 										<Button

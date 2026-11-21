@@ -1,5 +1,5 @@
 import z from "zod";
-import { LIVE_MAX_QUESTIONS } from "../live/live.config";
+import { LIVE_MAX_QUESTIONS, LIVE_MAX_QUESTION_CHARS } from "../live/live.config";
 
 // DSA problems come from the AI service and their example inputs/outputs may
 // arrive as strings, arrays, or objects. Coerce anything non-string to a JSON
@@ -31,20 +31,55 @@ const dsaProblemSchema = z.object({
     }).optional(),
 });
 
+/**
+ * The two interview fields a spoken session is built from, bounded by what one
+ * live turn can carry: the relay refuses an advance past `LIVE_MAX_QUESTIONS`, so
+ * a longer list would hold questions no session could ever reach, and it builds
+ * the coach's instruction from the question the turn will be scored against, so a
+ * question past `LIVE_MAX_QUESTION_CHARS` could not be spoken and scored as the
+ * same text. Creation and update share these, so the two write paths cannot
+ * disagree about them.
+ */
+const interviewTargetRoleSchema = z.string().min(1).max(200);
+const interviewQuestionsSchema = z
+    .array(z.string().max(LIVE_MAX_QUESTION_CHARS))
+    .max(LIVE_MAX_QUESTIONS);
+/** Every status the `interview_status` column defines, including the ones a
+ *  recruiter only reaches by updating: "closed" is how an interview is retired. */
+const interviewStatusSchema = z.enum(["draft", "active", "closed"]);
+
 export const createInterviewSchema = z.object({
     title: z.string().min(1),
-    targetRole: z.string().min(1),
+    targetRole: interviewTargetRoleSchema,
     description: z.string().optional().default(""),
     organizationId: z.string().min(1),
     expiresAt: z.string().min(1),
     interviewType: z.enum(["behavioral", "dsa", "mixed"]).optional().default("behavioral"),
-    // Bounded to what a spoken session can address: the live relay refuses an
-    // advance past its cap, so a longer list would hold questions no session
-    // could ever reach.
-    questions: z.array(z.string()).max(LIVE_MAX_QUESTIONS).optional().default([]),
+    questions: interviewQuestionsSchema.optional().default([]),
     dsaProblems: z.array(dsaProblemSchema).optional().default([]),
     dsaDifficulty: z.enum(["easy", "medium", "hard", "mixed"]).optional().default("medium"),
-    status: z.enum(["draft", "active"]).optional().default("draft"),
+    status: interviewStatusSchema.optional().default("draft"),
+});
+
+/**
+ * What a recruiter may change after creation, bounded exactly as creation is.
+ *
+ * Deliberately not `createInterviewSchema.partial()`: partial keeps the defaults,
+ * so an update carrying only a status would also write an empty description and
+ * `interviewType: "behavioral"` over what is stored. Nothing here has a default,
+ * so the patch holds only the fields the caller actually sent, and it doubles as
+ * the allow-list the update path writes through.
+ */
+export const updateInterviewSchema = z.object({
+    title: z.string().min(1).optional(),
+    targetRole: interviewTargetRoleSchema.optional(),
+    description: z.string().optional(),
+    expiresAt: z.string().min(1).optional(),
+    interviewType: z.enum(["behavioral", "dsa", "mixed"]).optional(),
+    questions: interviewQuestionsSchema.optional(),
+    dsaProblems: z.array(dsaProblemSchema).optional(),
+    dsaDifficulty: z.enum(["easy", "medium", "hard", "mixed"]).optional(),
+    status: interviewStatusSchema.optional(),
 });
 
 export const generateInviteSchema = z.object({
@@ -71,6 +106,7 @@ export const generateDsaSchema = z.object({
 });
 
 export type CreateInterviewInput = z.infer<typeof createInterviewSchema>;
+export type UpdateInterviewInput = z.infer<typeof updateInterviewSchema>;
 export type GenerateInviteInput = z.infer<typeof generateInviteSchema>;
 export type SubmitAnswerInput = z.infer<typeof submitAnswerSchema>;
 export type EvaluateInterviewDsaInput = z.infer<typeof evaluateDsaSchema>;

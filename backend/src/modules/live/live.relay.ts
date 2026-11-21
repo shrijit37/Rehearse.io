@@ -1,12 +1,14 @@
 import { WebSocket as WsServer, type WebSocket as ClientSocket } from "ws";
 import { logAudit } from "../../middleware/auditLog";
 import {
+    LIVE_KICKOFF,
     LIVE_MAX_QUESTIONS,
     LIVE_MAX_QUESTION_CHARS,
     LIVE_MAX_RESUMPTIONS,
     LIVE_MODEL,
     LIVE_SETUP_TIMEOUT_MS,
     LIVE_VOICE,
+    buildLiveInstruction,
     liveUpstreamUrl,
 } from "./live.config";
 import {
@@ -83,7 +85,7 @@ function classifyClientFrame(
     return { kind: "ask", index: parsedIndex, question: typeof question === "string" ? question : undefined };
 }
 
-function buildSetup(claims: LiveTicketClaims, handle: string | null) {
+function buildSetup(claims: LiveTicketClaims, handle: string | null, question: string) {
     return {
         setup: {
             model: `models/${LIVE_MODEL}`,
@@ -93,7 +95,11 @@ function buildSetup(claims: LiveTicketClaims, handle: string | null) {
                 responseModalities: ["AUDIO"],
                 speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: LIVE_VOICE } } },
             },
-            systemInstruction: { parts: [{ text: claims.instruction }] },
+            // Rebuilt here, not carried in the ticket: a ticket is a bearer value
+            // the browser holds in base64, and this text is the coach's own
+            // instruction. `question` moves with the conversation, so the caller
+            // passes the current turn rather than reading the claim.
+            systemInstruction: { parts: [{ text: buildLiveInstruction(claims.targetRole, question) }] },
             inputAudioTranscription: {},
             outputAudioTranscription: {},
             sessionResumption: handle ? { handle } : {},
@@ -269,7 +275,7 @@ export function relayLiveSession({ client, claims, apiKey, deps = liveDeps }: Re
             // connection gets it — a resumed socket also reports setupComplete,
             // and re-sending would make the coach greet twice.
             if (resumptions === 0 && upstream?.readyState === WebSocket.OPEN) {
-                upstream.send(JSON.stringify({ realtimeInput: { text: claims.kickoff } }));
+                upstream.send(JSON.stringify({ realtimeInput: { text: LIVE_KICKOFF } }));
             }
             return;
         }
@@ -278,7 +284,12 @@ export function relayLiveSession({ client, claims, apiKey, deps = liveDeps }: Re
         }
         if (frame.goAway) {
             goAwaySeen = true;
-            console.log(`[live] goAway received (timeLeft=${frame.goAway.timeLeft ?? "?"})`);
+            // Upstream frames are provider data, so the log line carries the
+            // duration only when it is one; anything else is reported as absent
+            // rather than interpolated.
+            const { timeLeft } = frame.goAway;
+            const shaped = typeof timeLeft === "string" && /^\d+(\.\d+)?s$/.test(timeLeft) ? timeLeft : "?";
+            console.log(`[live] goAway received (timeLeft=${shaped})`);
         }
 
         const finalInput = frame.serverContent?.inputTranscription?.text;
@@ -302,7 +313,7 @@ export function relayLiveSession({ client, claims, apiKey, deps = liveDeps }: Re
             if (!accepted && upstream === socket) finish(1011, "The voice service did not accept the session.");
         }, LIVE_SETUP_TIMEOUT_MS);
 
-        socket.onopen = () => socket.send(JSON.stringify(buildSetup(claims, resumptionHandle)));
+        socket.onopen = () => socket.send(JSON.stringify(buildSetup(claims, resumptionHandle, currentQuestion)));
 
         socket.onmessage = (event: MessageEvent) => {
             if (finished) return;

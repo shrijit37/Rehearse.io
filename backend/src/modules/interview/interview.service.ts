@@ -26,6 +26,7 @@ import {
 } from "../../utils/aiClient";
 import type {
     CreateInterviewInput,
+    UpdateInterviewInput,
     GenerateInviteInput,
     SubmitAnswerInput,
     EvaluateInterviewDsaInput,
@@ -179,7 +180,7 @@ export const getInterview = async (userId: string, id: string): Promise<Intervie
     }
 };
 
-export const updateInterview = async (userId: string, id: string, body: Record<string, unknown>): Promise<InterviewResult> => {
+export const updateInterview = async (userId: string, id: string, patch: UpdateInterviewInput): Promise<InterviewResult> => {
     try {
         if (!isValidId(id)) return { status: 400, message: "Invalid interview ID format" };
         const existing = await findInterviewRowById(id);
@@ -188,14 +189,16 @@ export const updateInterview = async (userId: string, id: string, body: Record<s
             return { status: 403, message: "Only the creator can update this interview" };
         }
 
-        const patch: Record<string, unknown> = {};
-        for (const field of [
-            "title", "targetRole", "questions", "description", "status", "expiresAt",
-            "interviewType", "dsaProblems", "dsaDifficulty",
-        ]) {
-            if (body[field] !== undefined) patch[field] = body[field];
-        }
-        const updated = await updateInterviewSession(id, patch);
+        // Already the allow-list: `updateInterviewSchema` dropped every field the
+        // recruiter may not change, so there is no second list here to drift out
+        // of step with the one that bounds what a spoken session can carry. The
+        // one field whose shape differs from the wire is converted as creation
+        // converts it.
+        const { expiresAt, ...rest } = patch;
+        const updated = await updateInterviewSession(id, {
+            ...rest,
+            ...(expiresAt ? { expiresAt: new Date(expiresAt) } : {}),
+        });
 
         return { status: 200, message: "Interview updated", interview: updated };
     } catch (error: unknown) {
